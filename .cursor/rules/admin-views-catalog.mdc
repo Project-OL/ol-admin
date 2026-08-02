@@ -1,0 +1,27 @@
+---
+description: Keep admin views & endpoints catalog in sync when adding views or API endpoints
+alwaysApply: true
+---
+
+# Admin views catalog maintenance
+
+When you add, remove, or rename an **admin view**, or add/change an **admin API endpoint** used by a view, update:
+
+1. **`docs/ADMIN_VIEWS_AND_ENDPOINTS.md`** — add/extend the view section and endpoint list (required).
+2. **`src/constants/viewRoutes.ts`** — `VIEW_ROUTES` / `VIEW_NAV_PATHS` / companions if it is a new route or list↔detail pair.
+3. **`src/router/index.ts`** — route + `meta.viewName` matching the catalog name.
+4. **`src/components/layout/AdminSidebar.vue`** — nav item + `viewName` if it appears in the sidebar.
+5. Backend seed when the API repo is in scope: `ol-node-rest/src/config/admin-default-views.ts` (then re-seed).
+
+## Endpoint format
+
+Each line must be: `METHOD /admin/...` (e.g. `GET /admin/users/:id`).
+
+## Checklist for a new view
+
+- [ ] Entry in `docs/ADMIN_VIEWS_AND_ENDPOINTS.md` with full endpoint list
+- [ ] Same name used as Vue route `meta.viewName` and sidebar `viewName`
+- [ ] Companions registered if it is a detail screen under a list/workbench
+- [ ] Backend default view seed updated when applicable
+
+Do not leave the catalog stale after wiring a new admin API call into an existing screen — add that endpoint under the correct view section.
