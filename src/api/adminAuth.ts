@@ -1,5 +1,6 @@
 import api, { clearTokens, setTokens } from '@/api/client'
 import type {
+  AdminPasswordResetResponse,
   CreateAdminPayload,
   CreateAdminResponse,
   LoginResponse,
@@ -26,6 +27,14 @@ export const adminAuthApi = {
 
   createAdmin(payload: CreateAdminPayload) {
     return api.post<CreateAdminResponse>('/admin/auth/create-admin', payload)
+  },
+
+  /** SUPER_ADMIN only. Omit newPassword to receive a one-time temporaryPassword. */
+  resetAdminPassword(adminId: string, newPassword?: string) {
+    return api.post<AdminPasswordResetResponse>(
+      `/admin/auth/admins/${adminId}/password/reset`,
+      newPassword ? { newPassword } : {},
+    )
   },
 }
 

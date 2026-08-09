@@ -48,10 +48,32 @@ const router = createRouter({
           meta: { title: 'User Detail', roles: ['SUPER_ADMIN'], viewName: 'UserDetailView' },
         },
         {
+          path: 'admin/locations',
+          name: 'user-locations',
+          component: () => import('../views/UserLocationsView.vue'),
+          meta: { title: 'Locations', roles: ['SUPER_ADMIN'], viewName: 'UserLocationsView' },
+        },
+        {
           path: 'admin/agency',
           name: 'agency-list',
           component: () => import('../views/AgencyListView.vue'),
           meta: { title: 'Agency', roles: ['SUPER_ADMIN'], viewName: 'AgencyListView' },
+        },
+        {
+          path: 'admin/agency-payroll',
+          name: 'agency-payroll',
+          component: () => import('../views/AgencyPayrollView.vue'),
+          meta: { title: 'Payroll', roles: ['SUPER_ADMIN'], viewName: 'AgencyPayrollView' },
+        },
+        {
+          path: 'admin/agency-payroll/:assignmentId',
+          name: 'agency-payroll-detail',
+          component: () => import('../views/AgencyPayrollAssignmentDetailView.vue'),
+          meta: {
+            title: 'Payroll Assignment',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'AgencyPayrollAssignmentDetailView',
+          },
         },
         {
           path: 'admin/agency/:id',
@@ -109,7 +131,7 @@ const router = createRouter({
           component: () => import('../views/SupportTicketDetailView.vue'),
           meta: {
             title: 'Ticket',
-            roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'MODERATOR'],
+            roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT'],
             viewName: 'SupportTicketDetailView',
           },
         },
@@ -147,6 +169,16 @@ const router = createRouter({
             title: 'Transactions',
             roles: ['SUPER_ADMIN'],
             viewName: 'TransactionsView',
+          },
+        },
+        {
+          path: 'admin/system-settings',
+          name: 'system-settings',
+          component: () => import('../views/SystemSettingsView.vue'),
+          meta: {
+            title: 'System Settings',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'SystemSettingsView',
           },
         },
         {

@@ -6,8 +6,11 @@ export const VIEW_ROUTES: Record<string, string> = {
   HomeView: '/',
   UserListView: '/admin/users',
   UserDetailView: '/admin/users/:id',
+  UserLocationsView: '/admin/locations',
   AgencyListView: '/admin/agency',
   AgencyDetailView: '/admin/agency/:id',
+  AgencyPayrollView: '/admin/agency-payroll',
+  AgencyPayrollAssignmentDetailView: '/admin/agency-payroll/:assignmentId',
   PlatformMessagesView: '/admin/messages',
   GiftAdminView: '/admin/gifts',
   StoreAdminView: '/admin/store',
@@ -19,6 +22,7 @@ export const VIEW_ROUTES: Record<string, string> = {
   PushNotificationsView: '/admin/push-notifications',
   LedgerAuditView: '/admin/ledger-audit',
   TransactionsView: '/admin/transactions',
+  SystemSettingsView: '/admin/system-settings',
 }
 
 /**
@@ -29,6 +33,7 @@ export const VIEW_ROUTES: Record<string, string> = {
 export const VIEW_PARENT_BY_DETAIL: Record<string, string> = {
   UserDetailView: 'UserListView',
   AgencyDetailView: 'AgencyListView',
+  AgencyPayrollAssignmentDetailView: 'AgencyPayrollView',
   SupportTicketDetailView: 'CustomerSupportView',
 }
 
@@ -36,6 +41,7 @@ export const VIEW_PARENT_BY_DETAIL: Record<string, string> = {
 export const VIEW_COMPANIONS: Record<string, string[]> = {
   UserListView: ['UserDetailView'],
   AgencyListView: ['AgencyDetailView'],
+  AgencyPayrollView: ['AgencyPayrollAssignmentDetailView'],
   CustomerSupportView: ['SupportTicketDetailView'],
 }
 
@@ -43,7 +49,9 @@ export const VIEW_COMPANIONS: Record<string, string[]> = {
 export const VIEW_NAV_PATHS: Record<string, string> = {
   HomeView: '/',
   UserListView: '/admin/users',
+  UserLocationsView: '/admin/locations',
   AgencyListView: '/admin/agency',
+  AgencyPayrollView: '/admin/agency-payroll',
   PlatformMessagesView: '/admin/messages',
   GiftAdminView: '/admin/gifts',
   StoreAdminView: '/admin/store',
@@ -54,6 +62,7 @@ export const VIEW_NAV_PATHS: Record<string, string> = {
   PushNotificationsView: '/admin/push-notifications',
   LedgerAuditView: '/admin/ledger-audit',
   TransactionsView: '/admin/transactions',
+  SystemSettingsView: '/admin/system-settings',
 }
 
 export function isViewAllowed(viewName: string, assigned: Set<string>): boolean {

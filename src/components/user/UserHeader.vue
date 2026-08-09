@@ -90,39 +90,53 @@ async function handleSearch() {
             <StatusBadge :status="user.status" />
           </div>
           <p class="mt-0.5 break-all text-sm text-admin-subtext">ID: {{ user.id }}</p>
+          <div class="mt-1 flex flex-wrap gap-x-4 gap-y-0.5 text-sm text-admin-subtext">
+            <p v-if="user.publicId">
+              Public ID:
+              <span class="font-mono tabular-nums text-admin-text">{{ user.publicId }}</span>
+            </p>
+            <p v-if="user.displayPublicId">
+              Display ID:
+              <span class="font-mono tabular-nums text-admin-text">{{ user.displayPublicId }}</span>
+              <span
+                v-if="user.vip && user.displayPublicId !== user.publicId"
+                class="ml-1 text-xs text-amber-400"
+              >VIP</span>
+            </p>
+          </div>
         </div>
       </div>
 
       <div class="mt-4 flex flex-wrap gap-3">
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Wealth Level</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ user.wealthLevel }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Stream Level</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ user.streamLevel }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Wallet</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatCoins(user.walletCoins) }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Points</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatPoints(user.points) }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Total Earnings</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatINR(user.totalEarnings) }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Total Points</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatNumber(user.totalPoints) }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Total RC</p>
           <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatCoins(user.totalRechargeCoin) }}</p>
         </div>
-        <div class="w-max max-w-full rounded-md bg-admin-bg/60 px-3 py-2">
+        <div class="min-w-max flex-1 rounded-md bg-admin-bg/60 px-3 py-2">
           <p class="text-xs text-admin-subtext">Last Active</p>
           <p class="whitespace-nowrap text-sm font-medium">
             {{ formatDistanceToNow(new Date(user.lastActive), { addSuffix: true }) }}

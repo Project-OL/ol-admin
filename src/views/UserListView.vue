@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { userAdminApi } from '@/api/userAdmin'
 import { mapSearchUser } from '@/api/mappers'
@@ -15,6 +15,34 @@ const searchType = ref('auto')
 const loading = ref(false)
 const results = ref<UserSearchResult[]>([])
 const matchedBy = ref('')
+const recent = ref<UserSearchResult[]>([])
+const loadingHistory = ref(false)
+
+async function loadHistory() {
+  if (useMock) {
+    recent.value = [
+      {
+        id: mockUser.id,
+        name: mockUser.name,
+        username: mockUser.username,
+        publicId: mockUser.publicId,
+        avatar: mockUser.avatar,
+        status: mockUser.status,
+        tags: mockUser.tags,
+      },
+    ]
+    return
+  }
+  loadingHistory.value = true
+  try {
+    const { data } = await userAdminApi.getSearchHistory()
+    recent.value = data.users.map(mapSearchUser)
+  } catch {
+    recent.value = []
+  } finally {
+    loadingHistory.value = false
+  }
+}
 
 async function search() {
   const q = query.value.trim()
@@ -29,9 +57,11 @@ async function search() {
       return
     }
     const { data } = await userAdminApi.searchUsers(q, searchType.value)
-    matchedBy.value = data.matchedBy
+    matchedBy.value = data.matchedBy ?? ''
     results.value = data.users.map(mapSearchUser)
     if (!results.value.length) showToast('No users found', 'error')
+    // Exact single-match search updates history server-side; refresh chips.
+    if (results.value.length === 1) void loadHistory()
   } catch {
     /* interceptor handles toast */
   } finally {
@@ -42,6 +72,10 @@ async function search() {
 function openUser(id: string) {
   router.push(`/admin/users/${id}`)
 }
+
+onMounted(() => {
+  void loadHistory()
+})
 </script>
 
 <template>
@@ -72,6 +106,37 @@ function openUser(id: string) {
         <button type="button" class="admin-btn-primary w-full shrink-0 sm:w-auto" :disabled="loading" @click="search">
           {{ loading ? 'Searching...' : 'Search' }}
         </button>
+      </div>
+
+      <div v-if="recent.length || loadingHistory" class="mt-4">
+        <p class="mb-2 text-xs font-medium uppercase tracking-wide text-admin-subtext">Recent</p>
+        <p v-if="loadingHistory && !recent.length" class="text-xs text-admin-muted">Loading…</p>
+        <div v-else class="flex flex-wrap gap-2">
+          <button
+            v-for="user in recent"
+            :key="user.id"
+            type="button"
+            class="inline-flex max-w-full items-center gap-2 rounded-md border border-admin-border bg-admin-bg/60 px-2.5 py-1.5 text-left text-sm transition-colors hover:border-admin-accent/40"
+            @click="openUser(user.id)"
+          >
+            <img
+              v-if="user.avatar"
+              :src="user.avatar"
+              :alt="user.name"
+              class="h-6 w-6 shrink-0 rounded-full object-cover"
+            />
+            <span
+              v-else
+              class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-admin-accent/20 text-[10px] font-bold text-admin-accent"
+            >
+              {{ user.name.charAt(0) }}
+            </span>
+            <span class="min-w-0 truncate font-medium">{{ user.name }}</span>
+            <span class="shrink-0 font-mono text-xs text-admin-muted">
+              {{ user.publicId ?? user.id.slice(0, 8) }}
+            </span>
+          </button>
+        </div>
       </div>
 
       <p v-if="matchedBy && results.length" class="mt-4 text-xs text-admin-muted">

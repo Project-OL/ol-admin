@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
+import axios from 'axios'
 import { format } from 'date-fns'
-import type { UserProfile } from '@/types/user'
+import type { UpdateUserPayload, UserProfile } from '@/types/user'
 import { getInitials } from '@/utils/format'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import { useUserDetailStore } from '@/stores/userDetail'
+import { showToast } from '@/utils/toast'
 
 const props = defineProps<{ user: UserProfile }>()
 const store = useUserDetailStore()
@@ -28,11 +30,20 @@ const tagsInput = computed({
   },
 })
 
+const genderLocked = computed(() => props.user.genderEditable === false)
+
+function tagsEqual(a: string[], b: string[]) {
+  if (a.length !== b.length) return false
+  const sortedA = [...a].sort()
+  const sortedB = [...b].sort()
+  return sortedA.every((t, i) => t === sortedB[i])
+}
+
 function startEdit() {
-  form.username = props.user.name
+  form.username = props.user.username ?? props.user.name
   form.mobile = props.user.mobile ?? ''
   form.email = props.user.email ?? ''
-  form.gender = props.user.gender ?? ''
+  form.gender = (props.user.gender ?? '').toLowerCase()
   form.country = props.user.country ?? ''
   form.tags = [...props.user.tags]
   editing.value = true
@@ -42,18 +53,64 @@ function cancelEdit() {
   editing.value = false
 }
 
+function buildDirtyPayload(): UpdateUserPayload | null {
+  const payload: UpdateUserPayload = {}
+  const currentUsername = props.user.username ?? props.user.name
+  const username = form.username.trim()
+  if (username && username !== currentUsername) payload.username = username
+
+  const phone = form.mobile.trim()
+  if (phone !== (props.user.mobile ?? '')) payload.phone = phone || undefined
+
+  const email = form.email.trim()
+  if (email !== (props.user.email ?? '')) payload.email = email || undefined
+
+  const country = form.country.trim()
+  if (country !== (props.user.country ?? '')) payload.country = country || undefined
+
+  if (!tagsEqual(form.tags, props.user.tags)) payload.tags = [...form.tags]
+
+  const gender = form.gender.trim().toLowerCase()
+  const currentGender = (props.user.gender ?? '').toLowerCase()
+  if (gender !== currentGender) {
+    if (genderLocked.value) {
+      showToast('Revoke face verification first to change gender', 'error')
+    } else if (gender) {
+      payload.gender = gender
+    }
+  }
+
+  return Object.keys(payload).length ? payload : null
+}
+
 async function saveEdit() {
+  const payload = buildDirtyPayload()
+  if (!payload) {
+    // No dirty fields (or only a blocked gender change) — stay in edit mode.
+    return
+  }
+
   saving.value = true
   try {
-    await store.updateUser(props.user.id, {
-      username: form.username,
-      phone: form.mobile,
-      email: form.email,
-      gender: form.gender.toLowerCase(),
-      country: form.country,
-      tags: form.tags,
-    })
+    await store.updateUser(props.user.id, payload)
     editing.value = false
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const code = (err.response?.data as { code?: string } | undefined)?.code
+      if (code === 'FACE_VERIFIED_GENDER_LOCKED') {
+        showToast('Revoke face verification first to change gender', 'error')
+        return
+      }
+      if (code === 'EMAIL_TAKEN') {
+        showToast('Email is already in use', 'error')
+        return
+      }
+      if (code === 'PHONE_TAKEN') {
+        showToast('Phone is already in use', 'error')
+        return
+      }
+    }
+    /* store / interceptor may also toast */
   } finally {
     saving.value = false
   }
@@ -113,12 +170,15 @@ function formatDate(date: string) {
         </div>
         <div>
           <label class="mb-1 block text-xs text-admin-subtext">Gender</label>
-          <select v-model="form.gender" class="admin-input">
+          <select v-model="form.gender" class="admin-input" :disabled="genderLocked">
             <option value="">Select</option>
             <option value="male">Male</option>
             <option value="female">Female</option>
             <option value="other">Other</option>
           </select>
+          <p v-if="genderLocked" class="mt-1 text-xs text-admin-warn">
+            Revoke face verification first
+          </p>
         </div>
         <div>
           <label class="mb-1 block text-xs text-admin-subtext">Country (ISO code)</label>
@@ -136,6 +196,24 @@ function formatDate(date: string) {
           <span class="admin-kv-value break-all font-mono text-xs tabular-nums">{{ user.id }}</span>
         </div>
         <div class="admin-kv-row">
+          <span class="admin-kv-label">Public ID</span>
+          <span class="admin-kv-value font-mono tabular-nums">{{ user.publicId ?? '—' }}</span>
+        </div>
+        <div class="admin-kv-row">
+          <span class="admin-kv-label">Display ID</span>
+          <span class="admin-kv-value font-mono tabular-nums">
+            {{ user.displayPublicId ?? '—' }}
+            <span
+              v-if="user.vip && user.displayPublicId && user.displayPublicId !== user.publicId"
+              class="ml-1 text-xs text-amber-400"
+            >VIP</span>
+          </span>
+        </div>
+        <div class="admin-kv-row">
+          <span class="admin-kv-label">Username</span>
+          <span class="admin-kv-value">{{ user.username ?? user.name }}</span>
+        </div>
+        <div class="admin-kv-row">
           <span class="admin-kv-label">Mobile</span>
           <span class="admin-kv-value">{{ user.mobile ?? '—' }}</span>
         </div>
@@ -145,7 +223,13 @@ function formatDate(date: string) {
         </div>
         <div class="admin-kv-row">
           <span class="admin-kv-label">Gender</span>
-          <span class="admin-kv-value">{{ user.gender ?? '—' }}</span>
+          <span class="admin-kv-value">
+            {{ user.gender ?? '—' }}
+            <span
+              v-if="user.faceVerified"
+              class="ml-1 text-xs text-admin-muted"
+            >(face locked)</span>
+          </span>
         </div>
         <div class="admin-kv-row">
           <span class="admin-kv-label">Location</span>

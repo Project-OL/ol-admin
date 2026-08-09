@@ -14,6 +14,8 @@ export interface DeviceInfo {
 export interface UserProfile {
   id: string
   name: string
+  /** Handle used for PATCH `username` (distinct from display `name`). */
+  username?: string
   avatar?: string
   vip: boolean
   status: UserStatus
@@ -46,6 +48,9 @@ export interface UserProfile {
   pointInDollar: number
   totalWithdrawUsd: number
   coinsInTrading: number
+  faceVerified?: boolean
+  /** When false, gender select is locked until face verification is revoked. */
+  genderEditable?: boolean
   faceVerificationStatus: FaceVerificationStatus
   faceVerificationDetail?: {
     duplicateUsername?: string
@@ -54,7 +59,10 @@ export interface UserProfile {
   }
   postingBanned?: boolean
   postingSuspendedUntil?: string | null
+  /** Numeric/public user id from the profile. */
   publicId?: string
+  /** Prefer VIP display id when present (`vip.displayPublicId`). */
+  displayPublicId?: string
 }
 
 export interface CoinTransaction {

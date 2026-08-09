@@ -16,6 +16,7 @@ const dialogOpen = ref(false)
 const levelType = ref<LevelType>('wealth')
 const targetLevel = ref(1)
 const reason = ref('')
+const confirmLower = ref(false)
 const acting = ref(false)
 
 const currentLevel = computed(() =>
@@ -24,17 +25,33 @@ const currentLevel = computed(() =>
 
 const maxLevel = computed(() => (levelType.value === 'wealth' ? 200 : 35))
 
-const canSubmit = computed(
+const isLowering = computed(
+  () =>
+    Number.isFinite(targetLevel.value) &&
+    targetLevel.value < currentLevel.value &&
+    targetLevel.value >= 1,
+)
+
+const isRaising = computed(
   () =>
     Number.isFinite(targetLevel.value) &&
     targetLevel.value > currentLevel.value &&
     targetLevel.value <= maxLevel.value,
 )
 
+const canSubmit = computed(() => {
+  if (!Number.isFinite(targetLevel.value)) return false
+  if (targetLevel.value < 1 || targetLevel.value > maxLevel.value) return false
+  if (targetLevel.value === currentLevel.value) return false
+  if (isLowering.value && !confirmLower.value) return false
+  return true
+})
+
 function open(type: LevelType) {
   levelType.value = type
   targetLevel.value = Math.min(currentLevel.value + 1, maxLevel.value)
   reason.value = ''
+  confirmLower.value = false
   dialogOpen.value = true
 }
 
@@ -43,6 +60,11 @@ watch(levelType, () => {
     (levelType.value === 'wealth' ? props.user.wealthLevel : props.user.streamLevel) + 1,
     levelType.value === 'wealth' ? 200 : 35,
   )
+  confirmLower.value = false
+})
+
+watch(targetLevel, () => {
+  if (!isLowering.value) confirmLower.value = false
 })
 
 async function confirm() {
@@ -62,8 +84,8 @@ async function confirm() {
   } catch (err) {
     if (axios.isAxiosError(err)) {
       const code = (err.response?.data as { code?: string } | undefined)?.code
-      if (code === 'LEVEL_ALREADY_AT_OR_ABOVE') {
-        showToast('Target level must be higher than current', 'error')
+      if (code === 'LEVEL_ALREADY_AT_TARGET' || code === 'LEVEL_ALREADY_AT_OR_ABOVE') {
+        showToast('User is already at that level threshold', 'error')
         return
       }
       if (code === 'INVALID_TARGET_LEVEL') {
@@ -104,7 +126,7 @@ defineExpose({ open })
       </div>
     </div>
     <p class="text-xs text-admin-muted">
-      Increase-only support adjustment. Raises XP to the target level threshold (no ledger write).
+      Sets cumulative XP to the target level threshold (raise or lower). No ledger write.
     </p>
   </div>
 
@@ -117,7 +139,7 @@ defineExpose({ open })
       <div class="space-y-3 text-sm">
         <p class="text-admin-subtext">
           Current level <strong class="text-admin-text">{{ currentLevel }}</strong>
-          → target must be higher (max {{ maxLevel }}).
+          (range 1–{{ maxLevel }}). Leaving the user at the start of the target level.
         </p>
         <div>
           <label class="mb-1 block text-xs text-admin-subtext">Target level</label>
@@ -125,7 +147,7 @@ defineExpose({ open })
             v-model.number="targetLevel"
             type="number"
             class="admin-input tabular-nums"
-            :min="currentLevel + 1"
+            :min="1"
             :max="maxLevel"
           />
         </div>
@@ -139,6 +161,19 @@ defineExpose({ open })
             maxlength="500"
           />
         </div>
+        <div
+          v-if="isLowering"
+          class="rounded-md border border-admin-warn/40 bg-admin-warn/10 px-3 py-2 text-xs text-admin-warn"
+        >
+          <p class="font-medium">Lowering will claw back XP to this level’s threshold.</p>
+          <label class="mt-2 flex cursor-pointer items-start gap-2 text-admin-text">
+            <input v-model="confirmLower" type="checkbox" class="mt-0.5" />
+            <span>I understand this intentionally lowers the user’s level</span>
+          </label>
+        </div>
+        <p v-else-if="isRaising" class="text-xs text-admin-muted">
+          Raising will set XP to the threshold for level {{ targetLevel }}.
+        </p>
       </div>
     </template>
     <template #footer>
@@ -146,10 +181,17 @@ defineExpose({ open })
       <button
         type="button"
         class="admin-btn-primary"
+        :class="isLowering ? 'bg-admin-warn hover:opacity-90' : ''"
         :disabled="acting || !canSubmit"
         @click="confirm"
       >
-        {{ acting ? 'Saving…' : `Set to ${targetLevel}` }}
+        {{
+          acting
+            ? 'Saving…'
+            : isLowering
+              ? `Lower to ${targetLevel}`
+              : `Set to ${targetLevel}`
+        }}
       </button>
     </template>
   </BaseDialog>

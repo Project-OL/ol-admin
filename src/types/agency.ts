@@ -38,29 +38,86 @@ export interface AgencyKycReview {
   govtIdUploaded?: boolean
   govtIdUrl?: string | null
   govtIdSubmittedAt?: string | null
+  contactSubmitted?: boolean
   contactPhone?: string | null
   contactEmail?: string | null
   contactSubmittedAt?: string | null
   faceVerified?: boolean
+  faceImageUrl?: string | null
   isComplete?: boolean
 }
 
-export interface PendingApplication {
+/** KYC block on pending/rejected application list items */
+export interface AgencyApplicationKyc {
+  govtIdUploaded: boolean
+  govtIdUrl: string | null
+  govtIdSubmittedAt: string | null
+  contactSubmitted: boolean
+  contactPhone: string | null
+  contactEmail: string | null
+  contactSubmittedAt: string | null
+  faceVerified: boolean
+  faceImageUrl: string | null
+  isComplete: boolean
+}
+
+export type AgencyApplicationStatus =
+  | 'PENDING'
+  | 'UNDER_REVIEW'
+  | 'MORE_DOCS_REQUIRED'
+  | 'APPROVED'
+  | 'REJECTED'
+
+/** Shared shape for GET pending + GET rejected application lists */
+export interface AgencyApplicationListItem {
   applicationId: string
   applicantUserId: string
   applicantUserName: string
+  username: string
   userPublicId: string
   country: string | null
-  kyc: AgencyKycReview
-  status: string
+  avatarUrl: string | null
+  faceImageUrl: string | null
+  status: AgencyApplicationStatus | string
   appliedAt: string
+  reviewedAt: string | null
+  reviewedBy: string | null
+  adminNote: string | null
+  userNote: string | null
+  kyc: AgencyApplicationKyc
 }
 
-export interface PendingApplicationsResponse {
-  items: PendingApplication[]
+export type PendingApplication = AgencyApplicationListItem
+
+export interface AgencyApplicationListPage {
+  items: AgencyApplicationListItem[]
   total: number
   skip: number
   take: number
+}
+
+/** @deprecated Use AgencyApplicationListPage */
+export type PendingApplicationsResponse = AgencyApplicationListPage
+
+/** @deprecated Use AgencyApplicationListPage */
+export type RejectedAgencyApplicationsPage = AgencyApplicationListPage
+
+/** @deprecated Use AgencyApplicationListItem */
+export type RejectedAgencyApplication = AgencyApplicationListItem
+
+/** Response from GET /admin/agency/applications/:userId/kyc */
+export interface AgencyApplicationKycDetail {
+  govtIdUrl: string | null
+  faceImageUrl: string | null
+  contactPhone: string | null
+  contactEmail: string | null
+  contactSubmittedAt: string | null
+  govtIdSubmittedAt: string | null
+  govtIdUploaded: boolean
+  contactSubmitted: boolean
+  faceVerified: boolean
+  /** Raw KYC row — prefer URL fields above for display */
+  kyc?: Record<string, unknown>
 }
 
 export interface AgencyDetail {
@@ -246,6 +303,28 @@ export type AgencyRecomputeLevelResponse = {
 export type AgencyRecomputeMasterResponse = {
   ok: boolean
   enqueued: boolean
+}
+
+/** GET /admin/agency/commission/config */
+export type AgencyCommissionWindowConfig = {
+  windowDays: number
+  windowHours: number
+  windowMinutes: number
+  /** Convenience: days*24*60 + hours*60 + minutes */
+  totalMinutes: number
+  updatedAt: string | null
+  updatedByAdminId: string | null
+}
+
+/** PUT /admin/agency/commission/config — partial update, at least one field */
+export type AgencyCommissionWindowConfigUpdate = {
+  windowDays?: number
+  windowHours?: number
+  windowMinutes?: number
+}
+
+export type AgencyCommissionWindowConfigUpdateResponse = AgencyCommissionWindowConfig & {
+  recomputeEnqueued: boolean
 }
 
 export const COMMISSION_TIERS = ['D', 'C', 'B', 'A'] as const

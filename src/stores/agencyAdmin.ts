@@ -8,10 +8,11 @@ import type {
   AgencyDetail,
   AgencyListItem,
   AgencyListQuery,
+  AgencyApplicationKycDetail,
+  AgencyApplicationListItem,
   AgencyOverviewStats,
   AgencyPeriodQuery,
   ApproveApplicationPayload,
-  PendingApplication,
   RejectApplicationPayload,
   SuspendAgencyPayload,
 } from '@/types/agency'
@@ -24,15 +25,19 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
     agenciesTotal: 0,
     agenciesSkip: 0,
     agenciesTake: 20,
-    pending: [] as PendingApplication[],
+    pending: [] as AgencyApplicationListItem[],
     pendingTotal: 0,
     pendingSkip: 0,
+    rejected: [] as AgencyApplicationListItem[],
+    rejectedTotal: 0,
+    rejectedSkip: 0,
     detail: null as AgencyDetail | null,
     /** Kept after ban so ops can unbar without hunting the UUID */
     lastBannedAgencyUserId: null as string | null,
     loadingStats: false,
     loadingList: false,
     loadingPending: false,
+    loadingRejected: false,
     loadingDetail: false,
   }),
 
@@ -76,6 +81,30 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
       }
     },
 
+    async fetchRejected(params: { skip?: number; take?: number } = {}) {
+      this.loadingRejected = true
+      try {
+        const skip = params.skip ?? this.rejectedSkip
+        const take = params.take ?? 20
+        const { data } = await agencyAdminApi.listRejectedApplications({ skip, take })
+        this.rejected = data.items
+        this.rejectedTotal = data.total
+        this.rejectedSkip = data.skip
+      } finally {
+        this.loadingRejected = false
+      }
+    },
+
+    async fetchApplicationKyc(userId: string): Promise<AgencyApplicationKycDetail | null> {
+      try {
+        const { data } = await agencyAdminApi.getApplicationKyc(userId)
+        return data
+      } catch {
+        showToast('Failed to load KYC details', 'error')
+        return null
+      }
+    },
+
     async fetchDetail(identifier: string) {
       this.loadingDetail = true
       try {
@@ -103,6 +132,8 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
           : undefined
         if (code === 'AGENCY_BARRED') {
           showToast('User is agency-barred — unbar before approving', 'error')
+        } else if (code === 'KYC_INCOMPLETE') {
+          showToast('KYC incomplete — face, government ID, and contact are required', 'error')
         }
         throw err
       }
@@ -111,7 +142,7 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
     async rejectApplication(applicantUserId: string, payload: RejectApplicationPayload) {
       await agencyAdminApi.rejectApplication(applicantUserId, payload)
       showToast('Application rejected', 'success')
-      await this.fetchPending()
+      await Promise.all([this.fetchPending(), this.fetchRejected()])
     },
 
     async updateCommissionTier(agencyIdentifier: string, commissionTier: string) {

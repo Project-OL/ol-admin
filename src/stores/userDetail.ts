@@ -551,6 +551,8 @@ export const useUserDetailStore = defineStore('userDetail', {
 
             ...this.user,
 
+            username: payload.username ?? this.user.username,
+
             name: payload.username ?? this.user.name,
 
             email: payload.email ?? this.user.email,
@@ -560,6 +562,8 @@ export const useUserDetailStore = defineStore('userDetail', {
             gender: payload.gender ?? this.user.gender,
 
             country: payload.country ?? this.user.country,
+
+            tags: payload.tags ?? this.user.tags,
 
           }
 
@@ -573,47 +577,23 @@ export const useUserDetailStore = defineStore('userDetail', {
 
 
 
-      if (payload.tags) {
+      // Prefer a single dirty-field PATCH (tags included when present).
 
-        await userAdminApi.updateTags(id, payload.tags)
+      await userAdminApi.updateUser(id, {
 
-        const { tags, ...profile } = payload
+        username: payload.username,
 
-        if (Object.keys(profile).length) {
+        email: payload.email,
 
-          await userAdminApi.updateUser(id, {
+        phone: payload.phone,
 
-            username: profile.username,
+        gender: payload.gender,
 
-            email: profile.email,
+        country: payload.country,
 
-            phone: profile.phone,
+        tags: payload.tags,
 
-            gender: profile.gender,
-
-            country: profile.country,
-
-          })
-
-        }
-
-      } else {
-
-        await userAdminApi.updateUser(id, {
-
-          username: payload.username,
-
-          email: payload.email,
-
-          phone: payload.phone,
-
-          gender: payload.gender,
-
-          country: payload.country,
-
-        })
-
-      }
+      })
 
       await this.fetchUser(id)
 
@@ -683,7 +663,15 @@ export const useUserDetailStore = defineStore('userDetail', {
 
         await delay()
 
-        if (this.user) this.user.faceVerificationStatus = 'none'
+        if (this.user) {
+
+          this.user.faceVerificationStatus = 'none'
+
+          this.user.faceVerified = false
+
+          this.user.genderEditable = true
+
+        }
 
         showToast('Face verification revoked', 'success')
 
@@ -693,7 +681,9 @@ export const useUserDetailStore = defineStore('userDetail', {
 
       await userAdminApi.revokeFaceVerification(id, options.reason, options.revokeRelated)
 
-      await this.fetchFaceVerification(id)
+      // Refresh profile so genderEditable / faceVerified unlock for gender edits.
+
+      await this.fetchUser(id)
 
       showToast('Face verification revoked', 'success')
 

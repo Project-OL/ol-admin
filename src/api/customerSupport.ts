@@ -3,8 +3,12 @@ import type {
   AdminStatus,
   CreateCsaPayload,
   CsaAdmin,
+  CsaIpWhitelistEntry,
+  CsaIpWhitelistResponse,
   CsaOverview,
   CsaPerformance,
+  CsaTicketsResponse,
+  FailedLoginsResponse,
   NotificationBadge,
   ReportListQuery,
   SupportNotification,
@@ -15,6 +19,7 @@ import type {
   UpdateCsaPayload,
   SupportTicketPriority,
   SupportTicketResolution,
+  SupportTicketStatus,
 } from '@/types/customerSupport'
 
 export const customerSupportApi = {
@@ -61,6 +66,44 @@ export const customerSupportApi = {
     )
   },
 
+  listFailedLogins(params: {
+    withinHours?: number
+    includeLocked?: boolean
+    page?: number
+    limit?: number
+  } = {}) {
+    return api.get<FailedLoginsResponse>('/admin/support/csas/failed-logins', { params })
+  },
+
+  listCsaTickets(
+    adminId: string,
+    params: {
+      status?: SupportTicketStatus
+      ratedOnly?: boolean
+      page?: number
+      limit?: number
+    } = {},
+  ) {
+    return api.get<CsaTicketsResponse>(`/admin/support/csas/${adminId}/tickets`, { params })
+  },
+
+  listCsaIpWhitelist(adminId: string) {
+    return api.get<CsaIpWhitelistResponse>(`/admin/support/csas/${adminId}/ip-whitelist`)
+  },
+
+  addCsaIp(adminId: string, ipAddress: string) {
+    return api.post<{ ip: CsaIpWhitelistEntry }>(
+      `/admin/support/csas/${adminId}/ip-whitelist`,
+      { ipAddress },
+    )
+  },
+
+  removeCsaIp(adminId: string, whitelistId: string) {
+    return api.delete<{ ok: true; id: string }>(
+      `/admin/support/csas/${adminId}/ip-whitelist/${whitelistId}`,
+    )
+  },
+
   async exportCsasCsv(status?: AdminStatus) {
     const { data } = await api.get<string>('/admin/support/csas/export', {
       params: status ? { status } : undefined,
@@ -85,7 +128,7 @@ export const customerSupportApi = {
     return api.post('/admin/support/tickets/' + ticketId + '/reply', payload)
   },
 
-  resolve(ticketId: string, payload: { resolution: SupportTicketResolution; note?: string }) {
+  resolve(ticketId: string, payload: { resolution: SupportTicketResolution; note: string }) {
     return api.post('/admin/support/tickets/' + ticketId + '/resolve', payload)
   },
 

@@ -66,11 +66,15 @@ export interface CsaAdmin {
   createdAt: string
   lastLoginAt: string | null
   failedLoginCount: number
+  lastFailedLoginAt?: string | null
   lockedUntil: string | null
+  /** Convenience: lockedUntil is in the future (login lockout, not SUSPENDED/DISABLED). */
+  isLocked?: boolean
   isOnline?: boolean
   openTicketCount?: number
   performance?: CsaPerformance
   reassignment?: { reassigned: number; unassigned: number } | null
+  ipWhitelist?: CsaIpWhitelistEntry[]
 }
 
 export interface CsaOverview {
@@ -92,6 +96,20 @@ export interface CreateCsaPayload {
   phoneCountryCode: string
   gender?: 'male' | 'female' | 'other'
   country: string
+  /** Exact IPv4/IPv6 allow-list for CSA login (max 20). Empty → cannot log in until IPs added. */
+  allowedIps?: string[]
+}
+
+export interface CsaIpWhitelistEntry {
+  id: string
+  ipAddress: string
+  createdAt: string
+  createdByAdminId?: string | null
+}
+
+export interface CsaIpWhitelistResponse {
+  adminId: string
+  ips: CsaIpWhitelistEntry[]
 }
 
 export interface UpdateCsaPayload {
@@ -142,6 +160,8 @@ export interface SupportTicketListItem {
   updatedAt: string
   createdAt: string
   hasUnread?: boolean
+  rating?: number | null
+  ratedAt?: string | null
 }
 
 export interface SupportMessage {
@@ -165,6 +185,7 @@ export interface SupportTicketDetail extends SupportTicketListItem {
   description?: string | null
   resolvedAt?: string | null
   rating?: number | null
+  ratedAt?: string | null
 }
 
 export interface TicketDetailResponse {
@@ -173,6 +194,23 @@ export interface TicketDetailResponse {
   notes: SupportNote[]
   hasMore: boolean
   nextCursor: string | null
+}
+
+export interface CsaTicketsResponse {
+  adminId: string
+  avgRating: number | null
+  ratingCount: number
+  tickets: SupportTicketListItem[]
+  pagination: { page: number; limit: number; total: number; hasMore: boolean }
+}
+
+export interface FailedLoginsResponse {
+  withinHours: number
+  accounts: CsaAdmin[]
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
 }
 
 export interface TicketListQuery {

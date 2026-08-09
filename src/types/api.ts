@@ -60,7 +60,7 @@ export interface UserSearchItem {
 }
 
 export interface UserSearchResponse {
-  matchedBy: string
+  matchedBy?: string
   users: UserSearchItem[]
 }
 
@@ -71,14 +71,23 @@ export interface ApiUserDetail {
   publicId?: string
   avatarUrl?: string | null
   vip?: {
-    membership?: { isActive?: boolean }
+    displayPublicId?: string | null
+    currentVipPublicId?: string | null
+    vipPublicIdExpiresAt?: string | null
+    rareIdActive?: boolean
+    membership?: { isActive?: boolean; tier?: number | null; expiresAt?: string | null; daysRemaining?: number }
     vipSubscriptionActive?: boolean
+    vipSubscriptionExpiresAt?: string | null
     richTier?: { tier?: number; displayName?: string }
   }
   email?: string | null
   phone?: string | null
   gender?: string | null
   country?: string | null
+  /** Face INDEXED or KYC face flag — gates gender edits. */
+  faceVerified?: boolean
+  /** `!faceVerified` — enable gender control when true. */
+  genderEditable?: boolean
   joinedAt?: string
   lastLoggedInAt?: string | null
   lastActiveAt?: string | null
@@ -150,6 +159,7 @@ export interface PatchUserPayload {
   phone?: string
   gender?: string
   country?: string
+  tags?: string[]
   status?: StatusActionPayload['status']
 }
 
@@ -259,4 +269,47 @@ export interface FaceVerificationResponse {
 
 export interface PasswordResetResponse {
   temporaryPassword?: string
+}
+
+export interface AdminPasswordResetResponse {
+  ok: true
+  adminId: string
+  email: string
+  role: AdminRole
+  temporaryPassword?: string
+  sessionsRevoked: boolean
+  message: string
+}
+
+export type UserRestrictionType =
+  | 'LIVE_CHAT_MUTE'
+  | 'LIVE_AUDIO_MUTE'
+  | 'MESSAGING_DISABLE'
+  | 'LIVE_STREAM_START_BAN'
+
+export interface ApiUserRestriction {
+  id: string
+  type: UserRestrictionType
+  restrictedUntil: string
+  reason?: string | null
+  reportId?: string | null
+  active?: boolean
+  createdByAdminId?: string
+  clearedAt?: string | null
+  clearedByAdminId?: string | null
+  createdAt?: string
+  updatedAt?: string
+}
+
+export interface ApiUserRestrictionsResponse {
+  userId: string
+  active: ApiUserRestriction[]
+  history?: ApiUserRestriction[]
+}
+
+export interface ApplyUserRestrictionPayload {
+  type: UserRestrictionType
+  restrictedUntil: string
+  reason?: string
+  reportId?: string
 }

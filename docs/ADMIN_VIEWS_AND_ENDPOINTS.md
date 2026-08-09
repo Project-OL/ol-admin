@@ -17,6 +17,7 @@ Use this when creating/editing views in **Admin Views** (`/admin/views`) or assi
 |--------|------------------|
 | `UserListView` | `UserDetailView` |
 | `AgencyListView` | `AgencyDetailView` |
+| `AgencyPayrollView` | `AgencyPayrollAssignmentDetailView` |
 | `CustomerSupportView` | `SupportTicketDetailView` |
 
 **Always callable** (not gated by view assignment):  
@@ -50,6 +51,7 @@ Route: `/admin/users` · Sidebar: Users
 
 ```
 GET /admin/users/search
+GET /admin/users/search/history
 ```
 
 ## UserDetailView
@@ -58,6 +60,7 @@ Route: `/admin/users/:id` · Sidebar: no (companion of UserListView)
 
 ```
 GET /admin/users/search
+GET /admin/users/search/history
 GET /admin/users/:id
 PATCH /admin/users/:id
 PUT /admin/users/:id/tags
@@ -65,6 +68,13 @@ GET /admin/users/:id/wallet
 GET /admin/users/:id/devices
 GET /admin/users/:id/face-verification
 DELETE /admin/users/:id/face-verification
+GET /admin/users/:id/restrictions
+POST /admin/users/:id/restrictions
+DELETE /admin/users/:id/restrictions/:restrictionId
+POST /admin/users/:id/restrictions/:type/clear
+GET /admin/users/:id/vip
+GET /admin/users/:id/guardians
+GET /admin/users/:id/locations
 GET /admin/users/transactions/filter-types
 GET /admin/users/:id/transactions/coins
 GET /admin/users/:id/transactions/points
@@ -111,6 +121,14 @@ POST /admin/users/:id/devices/ban
 DELETE /admin/devices/:deviceId/ban
 ```
 
+## UserLocationsView
+
+Route: `/admin/locations` · Sidebar: Locations
+
+```
+GET /admin/locations
+```
+
 ## AgencyListView
 
 Route: `/admin/agency` · Sidebar: Agency
@@ -119,8 +137,37 @@ Route: `/admin/agency` · Sidebar: Agency
 GET /admin/agency/stats
 GET /admin/agency
 GET /admin/agency/applications/pending
+GET /admin/agency/applications/rejected
+GET /admin/agency/applications/:userId/kyc
 POST /admin/agency/:applicantUserId/approve
 POST /admin/agency/applications/:applicantUserId/reject
+```
+
+## AgencyPayrollView
+
+Route: `/admin/agency-payroll` · Sidebar: Payroll
+
+```
+GET /admin/agency/payroll/assignments
+GET /admin/agency/payroll/assignments/:assignmentId
+GET /admin/agency/payroll/disputed
+GET /admin/agency/payroll/pending-platform
+POST /admin/agency/withdrawal/:id/assign
+POST /admin/agency/withdrawal/:id/reverse
+POST /admin/agency/withdrawal/:id/resolve-dispute/favour-agent
+POST /admin/agency/withdrawal/:id/resolve-dispute/favour-host
+```
+
+## AgencyPayrollAssignmentDetailView
+
+Route: `/admin/agency-payroll/:assignmentId` · Sidebar: no (companion of AgencyPayrollView)
+
+```
+GET /admin/agency/payroll/assignments/:assignmentId
+POST /admin/agency/withdrawal/:id/assign
+POST /admin/agency/withdrawal/:id/reverse
+POST /admin/agency/withdrawal/:id/resolve-dispute/favour-agent
+POST /admin/agency/withdrawal/:id/resolve-dispute/favour-host
 ```
 
 ## AgencyDetailView
@@ -134,6 +181,8 @@ GET /admin/agency/:identifier/commission/history
 POST /admin/agency/:identifier/recompute-level
 POST /admin/agency/recompute/:agencyUserId
 POST /admin/agency/recompute-master
+GET /admin/agency/commission/config
+PUT /admin/agency/commission/config
 PATCH /admin/agency/:identifier/commission-tier
 POST /admin/agency/:identifier/hosts
 POST /admin/agency/:identifier/transfer-hosts
@@ -145,6 +194,38 @@ POST /admin/agency/barred/:userId/unbar
 DELETE /admin/agency/:identifier
 POST /admin/agency/users/:userId/wallet/credit
 POST /admin/users/:userId/messages/system
+```
+
+## SystemSettingsView
+
+Route: `/admin/system-settings` · Sidebar: Settings
+
+Platform + agency coin/point rate catalogues (including Call Price caps). Hydrate once via aggregate GET; each section saves with its own PUT.
+
+```
+GET /admin/system-settings/rates
+GET /admin/system-settings/host-revenue-shares
+PUT /admin/system-settings/host-revenue-shares
+GET /admin/system-settings/personal-exchange-rates
+PUT /admin/system-settings/personal-exchange-rates
+GET /admin/system-settings/coin-packages
+PUT /admin/system-settings/coin-packages
+GET /admin/system-settings/wallet-level-configs
+PUT /admin/system-settings/wallet-level-configs
+GET /admin/system-settings/video-call-price-caps
+PUT /admin/system-settings/video-call-price-caps
+GET /admin/agency/coin-trading/topup-rates
+PUT /admin/agency/coin-trading/topup-rates
+GET /admin/agency/coin-trading/exchange-rates
+PUT /admin/agency/coin-trading/exchange-rates
+GET /admin/agency/coin-trading/topup-packages
+PUT /admin/agency/coin-trading/topup-packages
+GET /admin/agency/commission/levels
+PUT /admin/agency/commission/levels
+GET /admin/agency/commission/config
+PUT /admin/agency/commission/config
+GET /admin/agency/payroll/config
+PUT /admin/agency/payroll/config
 ```
 
 ## PlatformMessagesView
@@ -273,10 +354,18 @@ Route: `/admin/support` · Sidebar: Support
 ```
 GET /admin/support/csas/overview
 GET /admin/support/csas
+GET /admin/support/csas/failed-logins
 POST /admin/support/csas
 PATCH /admin/support/csas/:adminId
 PATCH /admin/support/csas/:adminId/status
 GET /admin/support/csas/export
+GET /admin/support/csas/:adminId
+GET /admin/support/csas/:adminId/stats
+GET /admin/support/csas/:adminId/tickets
+GET /admin/support/csas/:adminId/ip-whitelist
+POST /admin/support/csas/:adminId/ip-whitelist
+DELETE /admin/support/csas/:adminId/ip-whitelist/:whitelistId
+POST /admin/auth/admins/:adminId/password/reset
 GET /admin/support/me/stats
 GET /admin/support/tickets
 GET /admin/support/tickets/:ticketId

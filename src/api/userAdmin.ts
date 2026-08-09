@@ -13,7 +13,22 @@ import type {
   TransactionFilterTypes,
   UserSearchResponse,
   WalletAdjustPayload,
+  ApplyUserRestrictionPayload,
+  ApiUserRestrictionsResponse,
+  UserRestrictionType,
 } from '@/types/api'
+import type {
+  AdminUserGuardianDossier,
+  AdminUserVipDossier,
+  GuardianDossierQuery,
+  VipDossierQuery,
+} from '@/types/userVipGuardian'
+import type {
+  AdminLocationsPage,
+  AdminLocationsQuery,
+  AdminUserLocations,
+  UserLocationsQuery,
+} from '@/types/userLocation'
 
 export type AdminSetLevelResponse = {
   ok: boolean
@@ -52,6 +67,11 @@ function extractTransactions(data: ApiTransactionListResponse) {
 export const userAdminApi = {
   searchUsers(q: string, type = 'auto', limit = 20) {
     return api.get<UserSearchResponse>('/admin/users/search', { params: { q, type, limit } })
+  },
+
+  /** Last 10 profiles opened / exact-matched by this admin. */
+  getSearchHistory() {
+    return api.get<UserSearchResponse>('/admin/users/search/history')
   },
 
   getUser(id: string) {
@@ -264,6 +284,40 @@ export const userAdminApi = {
     return api.patch<ApiUserDetail>(`/admin/users/${id}`, {
       status: { action, ...options },
     })
+  },
+
+  listRestrictions(id: string, includeCleared = false) {
+    return api.get<ApiUserRestrictionsResponse>(`/admin/users/${id}/restrictions`, {
+      params: includeCleared ? { includeCleared: true } : undefined,
+    })
+  },
+
+  applyRestriction(id: string, payload: ApplyUserRestrictionPayload) {
+    return api.post(`/admin/users/${id}/restrictions`, payload)
+  },
+
+  deleteRestriction(id: string, restrictionId: string) {
+    return api.delete(`/admin/users/${id}/restrictions/${restrictionId}`)
+  },
+
+  clearRestrictionByType(id: string, type: UserRestrictionType) {
+    return api.post(`/admin/users/${id}/restrictions/${type}/clear`)
+  },
+
+  getUserVip(id: string, params: VipDossierQuery = {}) {
+    return api.get<AdminUserVipDossier>(`/admin/users/${id}/vip`, { params })
+  },
+
+  getUserGuardians(id: string, params: GuardianDossierQuery = {}) {
+    return api.get<AdminUserGuardianDossier>(`/admin/users/${id}/guardians`, { params })
+  },
+
+  getUserLocations(id: string, params: UserLocationsQuery = {}) {
+    return api.get<AdminUserLocations>(`/admin/users/${id}/locations`, { params })
+  },
+
+  listLocations(params: AdminLocationsQuery = {}) {
+    return api.get<AdminLocationsPage>('/admin/locations', { params })
   },
 
   extractTransactions,

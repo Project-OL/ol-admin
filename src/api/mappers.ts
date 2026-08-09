@@ -37,9 +37,14 @@ export function mapUserDetail(user: ApiUserDetail, wallet?: ApiWallet | null): U
   const totalRecharge = wallet ? parseBigInt(wallet.totalCoinsRecharged) : 0
   const totalWithdrawPoints = wallet ? parseBigInt(wallet.totalWithdrawalProcessedPoints) : 0
 
+  const faceVerified = Boolean(user.faceVerified)
+  const genderEditable =
+    typeof user.genderEditable === 'boolean' ? user.genderEditable : !faceVerified
+
   return {
     id: user.userId,
-    name: user.username || user.name || 'Unknown',
+    name: user.name || user.username || 'Unknown',
+    username: user.username,
     avatar: user.avatarUrl ?? undefined,
     vip: Boolean(user.vip?.membership?.isActive || user.vip?.vipSubscriptionActive),
     status: mapUserStatus(user.status),
@@ -71,11 +76,14 @@ export function mapUserDetail(user: ApiUserDetail, wallet?: ApiWallet | null): U
     pointInDollar: 0,
     totalWithdrawUsd: totalWithdrawPoints,
     coinsInTrading: trading,
-    faceVerificationStatus: 'none' as FaceVerificationStatus,
+    faceVerified,
+    genderEditable,
+    faceVerificationStatus: (faceVerified ? 'verified' : 'none') as FaceVerificationStatus,
     postingBanned: Boolean(user.posting?.banned ?? user.postingBanned),
     postingSuspendedUntil:
       user.posting?.suspendedUntil ?? user.postingSuspendedUntil ?? null,
     publicId: user.publicId,
+    displayPublicId: user.vip?.displayPublicId ?? user.publicId ?? undefined,
   }
 }
 

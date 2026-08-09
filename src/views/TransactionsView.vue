@@ -273,7 +273,16 @@ async function confirmRevert() {
     const body = { reason, idempotencyKey }
 
     if (activeTab.value === 'coins' || activeTab.value === 'trading-coins') {
-      await transactionsApi.revertCoin(entry.id, body)
+      // Prefer dedicated transfer revert so TRADING_COIN restores to the agent.
+      const transferId =
+        isLedger(entry) && entry.coinTradingTransfer?.id
+          ? entry.coinTradingTransfer.id
+          : null
+      if (transferId) {
+        await transactionsApi.revertCoinTradingTransfer(transferId, body)
+      } else {
+        await transactionsApi.revertCoin(entry.id, body)
+      }
     } else if (activeTab.value === 'points') {
       await transactionsApi.revertPoint(entry.id, body)
     } else if (activeTab.value === 'coin-trading-transfers') {

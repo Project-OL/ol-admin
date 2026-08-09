@@ -2,7 +2,14 @@
 import { computed, ref, watch } from 'vue'
 import BaseDialog from './BaseDialog.vue'
 
-const props = defineProps<{ open: boolean }>()
+const props = withDefaults(
+  defineProps<{
+    open: boolean
+    /** Min password length (user reset: 8, system admin: 12). */
+    minLength?: number
+  }>(),
+  { minLength: 8 },
+)
 const emit = defineEmits<{
   close: []
   confirm: [password: string]
@@ -15,7 +22,7 @@ const showConfirm = ref(false)
 
 const rules = computed(() => ({
   required: password.value.length > 0,
-  minLength: password.value.length >= 8,
+  minLength: password.value.length >= props.minLength,
   uppercase: /[A-Z]/.test(password.value),
   lowercase: /[a-z]/.test(password.value),
   number: /\d/.test(password.value),
@@ -71,7 +78,7 @@ function ruleClass(passed: boolean, touched: boolean) {
           </div>
         </div>
         <div>
-          <label class="mb-1 block text-xs font-medium text-admin-subtext">Confirm Password</label>
+          <label class="mb-1 block text-xs text-admin-subtext">Confirm Password</label>
           <div class="relative">
             <input
               v-model="confirmPassword"
@@ -89,7 +96,9 @@ function ruleClass(passed: boolean, touched: boolean) {
           </div>
         </div>
         <ul class="space-y-1 text-xs">
-          <li :class="ruleClass(rules.minLength, password.length > 0)">At least 8 characters</li>
+          <li :class="ruleClass(rules.minLength, password.length > 0)">
+            At least {{ minLength }} characters
+          </li>
           <li :class="ruleClass(rules.uppercase, password.length > 0)">At least 1 uppercase letter</li>
           <li :class="ruleClass(rules.lowercase, password.length > 0)">At least 1 lowercase letter</li>
           <li :class="ruleClass(rules.number, password.length > 0)">At least 1 number</li>

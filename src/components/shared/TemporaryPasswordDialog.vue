@@ -6,6 +6,8 @@ import { showToast } from '@/utils/toast'
 const props = defineProps<{
   open: boolean
   password: string
+  /** Shown under the password; defaults to user-session wording. */
+  sessionHint?: string
 }>()
 
 const emit = defineEmits<{
@@ -47,7 +49,9 @@ async function copyPassword() {
             {{ copied ? 'Copied' : 'Copy' }}
           </button>
         </div>
-        <p class="text-xs text-admin-muted">All user sessions have been revoked.</p>
+        <p class="text-xs text-admin-muted">
+          {{ sessionHint ?? 'All user sessions have been revoked.' }}
+        </p>
       </div>
     </template>
     <template #footer>

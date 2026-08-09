@@ -10,6 +10,9 @@ import type {
 export const mockUser: UserProfile = {
   id: '24566789',
   name: 'Riya Sharma',
+  username: 'riya_sharma',
+  publicId: '34216589',
+  displayPublicId: '34216589',
   avatar: 'https://i.pravatar.cc/150?u=24566789',
   vip: true,
   status: 'active',
@@ -24,7 +27,7 @@ export const mockUser: UserProfile = {
   mobile: '+91 98765 43210',
   email: 'riya.sharma@example.com',
   gender: 'Female',
-  country: 'India',
+  country: 'IN',
   city: 'Mumbai',
   tags: ['Top Host', 'Verified', 'Premium'],
   registrationDate: '2023-04-15T10:30:00Z',
@@ -39,6 +42,8 @@ export const mockUser: UserProfile = {
   pointInDollar: 84.5,
   totalWithdrawUsd: 12500,
   coinsInTrading: 15000,
+  faceVerified: true,
+  genderEditable: false,
   faceVerificationStatus: 'verified',
 }
 

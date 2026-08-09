@@ -20,8 +20,14 @@ import type {
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import AssignCsaViewsDialog from '@/components/support/AssignCsaViewsDialog.vue'
+import CsaIpWhitelistDialog from '@/components/support/CsaIpWhitelistDialog.vue'
+import ResetPasswordDialog from '@/components/shared/ResetPasswordDialog.vue'
+import TemporaryPasswordDialog from '@/components/shared/TemporaryPasswordDialog.vue'
+import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import { adminAuthApi } from '@/api/adminAuth'
 import { formatNumber } from '@/utils/format'
 import { showToast } from '@/utils/toast'
+import axios from 'axios'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -62,6 +68,29 @@ const createCsaOpen = ref(false)
 const editCsa = ref<CsaAdmin | null>(null)
 const viewsCsa = ref<CsaAdmin | null>(null)
 const acting = ref(false)
+const passwordTarget = ref<CsaAdmin | null>(null)
+const showSetPassword = ref(false)
+const autoResetOpen = ref(false)
+const autoResetting = ref(false)
+const settingPassword = ref(false)
+const tempPassword = ref('')
+const showTempPassword = ref(false)
+const pendingSelfLogout = ref(false)
+const failedLoginsOpen = ref(false)
+const failedLogins = ref<CsaAdmin[]>([])
+const failedLoginsTotal = ref(0)
+const failedLoginsPage = ref(1)
+const loadingFailedLogins = ref(false)
+const failedLoginHours = ref(24)
+const csaTicketsOpen = ref(false)
+const csaTicketsTarget = ref<CsaAdmin | null>(null)
+const csaTickets = ref<SupportTicketListItem[]>([])
+const csaTicketsPage = ref(1)
+const csaTicketsTotal = ref(0)
+const csaTicketsAvg = ref<number | null>(null)
+const csaTicketsRatingCount = ref(0)
+const loadingCsaTickets = ref(false)
+const csaTicketsRatedOnly = ref(false)
 const csaForm = reactive({
   name: '',
   username: '',
@@ -71,6 +100,7 @@ const csaForm = reactive({
   phoneCountryCode: '+91',
   gender: '' as '' | 'male' | 'female' | 'other',
   country: '',
+  allowedIps: [] as string[],
 })
 const csaFormErrors = reactive({
   name: '',
@@ -80,7 +110,10 @@ const csaFormErrors = reactive({
   phone: '',
   phoneCountryCode: '',
   country: '',
+  allowedIps: '',
 })
+const createIpDraft = ref('')
+const ipWhitelistCsa = ref<CsaAdmin | null>(null)
 
 // --- Tickets ---
 const tickets = ref<SupportTicketListItem[]>([])
@@ -88,7 +121,8 @@ const ticketsTotal = ref(0)
 const ticketsPage = ref(1)
 const loadingTickets = ref(false)
 const myStats = ref<CsaPerformance | null>(null)
-const ticketQueue = ref<'me' | 'unassigned' | 'all'>('me')
+const ticketQueue = ref<'me' | 'unassigned' | 'all' | 'csa'>('me')
+const ticketAssignedCsaId = ref('')
 const ticketFilters = reactive({
   status: '' as '' | SupportTicketStatus,
   priority: '' as '' | SupportTicketPriority,
@@ -116,9 +150,46 @@ function resetCsaForm() {
   csaForm.phoneCountryCode = '+91'
   csaForm.gender = ''
   csaForm.country = ''
+  csaForm.allowedIps = []
+  createIpDraft.value = ''
   Object.keys(csaFormErrors).forEach((k) => {
     csaFormErrors[k as keyof typeof csaFormErrors] = ''
   })
+}
+
+const IPV4_RE =
+  /^(?:(?:25[0-5]|2[0-4]\d|[01]?\d\d?)\.){3}(?:25[0-5]|2[0-4]\d|[01]?\d\d?)$/
+const IPV6_RE = /^[0-9a-fA-F:.]{2,45}$/
+
+function isValidIpAddress(raw: string) {
+  const ip = raw.trim()
+  if (!ip) return false
+  if (IPV4_RE.test(ip)) return true
+  return ip.includes(':') && IPV6_RE.test(ip)
+}
+
+function addCreateIpChip() {
+  const ip = createIpDraft.value.trim()
+  csaFormErrors.allowedIps = ''
+  if (!ip) return
+  if (!isValidIpAddress(ip)) {
+    csaFormErrors.allowedIps = 'Enter a valid IPv4 or IPv6 address'
+    return
+  }
+  if (csaForm.allowedIps.includes(ip)) {
+    csaFormErrors.allowedIps = 'IP already added'
+    return
+  }
+  if (csaForm.allowedIps.length >= 20) {
+    csaFormErrors.allowedIps = 'Maximum 20 IPs'
+    return
+  }
+  csaForm.allowedIps.push(ip)
+  createIpDraft.value = ''
+}
+
+function removeCreateIpChip(ip: string) {
+  csaForm.allowedIps = csaForm.allowedIps.filter((x) => x !== ip)
 }
 
 function validateCsaForm(isEdit: boolean): boolean {
@@ -217,9 +288,15 @@ async function submitCreateCsa() {
     showToast('Fix validation errors', 'error')
     return
   }
+  if (csaForm.allowedIps.length === 0) {
+    const ok = confirm(
+      'Without at least one IP, this agent cannot log in. Create anyway and add IPs later?',
+    )
+    if (!ok) return
+  }
   acting.value = true
   try {
-    await customerSupportApi.createCsa({
+    const { data } = await customerSupportApi.createCsa({
       name: csaForm.name.trim(),
       username: csaForm.username.trim(),
       email: csaForm.email.trim(),
@@ -228,10 +305,14 @@ async function submitCreateCsa() {
       phoneCountryCode: csaForm.phoneCountryCode.trim(),
       gender: csaForm.gender || undefined,
       country: csaForm.country.trim(),
+      allowedIps: csaForm.allowedIps.length ? [...csaForm.allowedIps] : undefined,
     })
     showToast('Customer support agent created', 'success')
     createCsaOpen.value = false
     await Promise.all([loadCsas(1), loadOverview()])
+    if (data.csa) {
+      ipWhitelistCsa.value = data.csa
+    }
   } catch {
     showToast('Failed to create CSA', 'error')
   } finally {
@@ -284,6 +365,101 @@ async function setCsaStatus(csa: CsaAdmin, status: AdminStatus) {
   }
 }
 
+function openSetPassword(csa: CsaAdmin) {
+  passwordTarget.value = csa
+  showSetPassword.value = true
+}
+
+function openAutoReset(csa: CsaAdmin) {
+  passwordTarget.value = csa
+  autoResetOpen.value = true
+}
+
+async function afterAdminPasswordReset(adminId: string, temporary?: string) {
+  const isSelf = auth.admin?.id === adminId
+  if (temporary) {
+    tempPassword.value = temporary
+    showTempPassword.value = true
+    if (isSelf) pendingSelfLogout.value = true
+    return
+  }
+  showToast('Password updated; sessions revoked', 'success')
+  if (isSelf) {
+    showToast('Your sessions were revoked — sign in again', 'error')
+    await auth.logout()
+    await router.push({ name: 'login' })
+  }
+}
+
+async function handleSetCsaPassword(password: string) {
+  const csa = passwordTarget.value
+  if (!csa || settingPassword.value) return
+  settingPassword.value = true
+  try {
+    await adminAuthApi.resetAdminPassword(csa.id, password)
+    showSetPassword.value = false
+    passwordTarget.value = null
+    await afterAdminPasswordReset(csa.id)
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const code = (err.response?.data as { code?: string } | undefined)?.code
+      if (code === 'WEAK_PASSWORD') {
+        showToast('Password does not meet strength requirements', 'error')
+        return
+      }
+      if (code === 'ADMIN_FORBIDDEN') {
+        showToast('Only SUPER_ADMIN can reset admin passwords', 'error')
+        return
+      }
+      if (code === 'ADMIN_NOT_FOUND') {
+        showToast('Admin not found', 'error')
+        return
+      }
+    }
+    showToast('Failed to reset password', 'error')
+  } finally {
+    settingPassword.value = false
+  }
+}
+
+async function handleAutoResetCsaPassword() {
+  const csa = passwordTarget.value
+  if (!csa || autoResetting.value) return
+  autoResetting.value = true
+  try {
+    const { data } = await adminAuthApi.resetAdminPassword(csa.id)
+    autoResetOpen.value = false
+    passwordTarget.value = null
+    await afterAdminPasswordReset(csa.id, data.temporaryPassword)
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const code = (err.response?.data as { code?: string } | undefined)?.code
+      if (code === 'ADMIN_FORBIDDEN') {
+        showToast('Only SUPER_ADMIN can reset admin passwords', 'error')
+        return
+      }
+      if (code === 'ADMIN_NOT_FOUND') {
+        showToast('Admin not found', 'error')
+        return
+      }
+    }
+    showToast('Failed to reset password', 'error')
+  } finally {
+    autoResetting.value = false
+  }
+}
+
+async function closeTempPassword() {
+  showTempPassword.value = false
+  tempPassword.value = ''
+  if (pendingSelfLogout.value) {
+    pendingSelfLogout.value = false
+    showToast('Your sessions were revoked — sign in again', 'error')
+    await auth.logout()
+    await router.push({ name: 'login' })
+  }
+}
+
 async function exportCsas() {
   try {
     const csv = await customerSupportApi.exportCsasCsv(csaFilters.status || undefined)
@@ -313,11 +489,14 @@ async function loadTickets(page = 1) {
   loadingTickets.value = true
   ticketsPage.value = page
   try {
-    const assignedTo = isSuperAdmin.value
-      ? ticketQueue.value
-      : ticketQueue.value === 'all'
-        ? 'me'
-        : ticketQueue.value
+    let assignedTo: string
+    if (isSuperAdmin.value && ticketQueue.value === 'csa') {
+      assignedTo = ticketAssignedCsaId.value || 'me'
+    } else if (isSuperAdmin.value) {
+      assignedTo = ticketQueue.value
+    } else {
+      assignedTo = ticketQueue.value === 'all' ? 'me' : ticketQueue.value
+    }
     const { data } = await customerSupportApi.listTickets({
       page,
       limit: 20,
@@ -329,6 +508,69 @@ async function loadTickets(page = 1) {
     ticketsTotal.value = data.pagination?.total ?? 0
   } finally {
     loadingTickets.value = false
+  }
+}
+
+function csaIsLocked(csa: CsaAdmin) {
+  if (typeof csa.isLocked === 'boolean') return csa.isLocked
+  if (!csa.lockedUntil) return false
+  return new Date(csa.lockedUntil).getTime() > Date.now()
+}
+
+async function loadFailedLogins(page = 1) {
+  loadingFailedLogins.value = true
+  failedLoginsPage.value = page
+  try {
+    const { data } = await customerSupportApi.listFailedLogins({
+      withinHours: failedLoginHours.value,
+      includeLocked: true,
+      page,
+      limit: 50,
+    })
+    failedLogins.value = data.accounts ?? []
+    failedLoginsTotal.value = data.total ?? failedLogins.value.length
+  } catch {
+    failedLogins.value = []
+    failedLoginsTotal.value = 0
+    showToast('Failed to load failed-login roster', 'error')
+  } finally {
+    loadingFailedLogins.value = false
+  }
+}
+
+function openFailedLogins() {
+  failedLoginsOpen.value = true
+  void loadFailedLogins(1)
+}
+
+async function openCsaTickets(csa: CsaAdmin) {
+  csaTicketsTarget.value = csa
+  csaTicketsRatedOnly.value = false
+  csaTicketsOpen.value = true
+  await loadCsaTickets(1)
+}
+
+async function loadCsaTickets(page = 1) {
+  const csa = csaTicketsTarget.value
+  if (!csa) return
+  loadingCsaTickets.value = true
+  csaTicketsPage.value = page
+  try {
+    const { data } = await customerSupportApi.listCsaTickets(csa.id, {
+      page,
+      limit: 20,
+      ratedOnly: csaTicketsRatedOnly.value || undefined,
+    })
+    csaTickets.value = data.tickets ?? []
+    csaTicketsTotal.value = data.pagination?.total ?? csaTickets.value.length
+    csaTicketsAvg.value = data.avgRating
+    csaTicketsRatingCount.value = data.ratingCount ?? 0
+  } catch {
+    csaTickets.value = []
+    csaTicketsTotal.value = 0
+    showToast('Failed to load CSA tickets', 'error')
+  } finally {
+    loadingCsaTickets.value = false
   }
 }
 
@@ -432,7 +674,13 @@ async function escalateReport() {
 
 watch(tab, (t) => {
   if (t === 'agents') void Promise.all([loadOverview(), loadCsas()])
-  if (t === 'tickets') void Promise.all([loadTickets(), loadMyStats()])
+  if (t === 'tickets') {
+    void Promise.all([
+      loadTickets(),
+      loadMyStats(),
+      isSuperAdmin.value && !csas.value.length ? loadCsas(1) : Promise.resolve(),
+    ])
+  }
   if (t === 'reports') void loadReports()
 })
 
@@ -536,18 +784,28 @@ onMounted(() => {
             <p class="text-xs text-admin-subtext">Disabled</p>
             <p class="mt-1 text-xl font-semibold tabular-nums">{{ formatNumber(overview?.disabledCsa ?? 0) }}</p>
           </div>
-          <div class="rounded-md border border-admin-border bg-admin-bg/40 p-3">
+          <button
+            type="button"
+            class="rounded-md border border-admin-border bg-admin-bg/40 p-3 text-left transition-colors hover:border-admin-accent/40"
+            @click="openFailedLogins"
+          >
             <p class="text-xs text-admin-subtext">Failed logins 24h</p>
             <p class="mt-1 text-xl font-semibold tabular-nums">
               {{ formatNumber(overview?.failedLoginAttempts24h ?? 0) }}
             </p>
-          </div>
-          <div class="rounded-md border border-admin-border bg-admin-bg/40 p-3">
+            <p class="mt-1 text-[10px] text-admin-accent">View roster →</p>
+          </button>
+          <button
+            type="button"
+            class="rounded-md border border-admin-border bg-admin-bg/40 p-3 text-left transition-colors hover:border-admin-accent/40"
+            @click="openFailedLogins"
+          >
             <p class="text-xs text-admin-subtext">Locked</p>
             <p class="mt-1 text-xl font-semibold tabular-nums text-admin-danger">
               {{ formatNumber(overview?.lockedAccounts ?? 0) }}
             </p>
-          </div>
+            <p class="mt-1 text-[10px] text-admin-accent">View roster →</p>
+          </button>
         </div>
 
         <div class="flex flex-wrap gap-2">
@@ -584,6 +842,7 @@ onMounted(() => {
                 <th>Country</th>
                 <th>Open</th>
                 <th>Status</th>
+                <th>Login lock</th>
                 <th>Last login</th>
                 <th>Actions</th>
               </tr>
@@ -617,6 +876,20 @@ onMounted(() => {
                     :label="csa.status"
                   />
                 </td>
+                <td class="text-xs">
+                  <template v-if="csaIsLocked(csa)">
+                    <span class="rounded bg-admin-danger/15 px-1.5 py-0.5 font-medium text-admin-danger">
+                      Locked
+                    </span>
+                    <p v-if="csa.lockedUntil" class="mt-1 text-admin-muted">
+                      until {{ format(new Date(csa.lockedUntil), 'dd MMM HH:mm') }}
+                    </p>
+                  </template>
+                  <template v-else-if="(csa.failedLoginCount ?? 0) > 0">
+                    <span class="text-admin-warn">{{ csa.failedLoginCount }} fails</span>
+                  </template>
+                  <span v-else class="text-admin-muted">—</span>
+                </td>
                 <td class="text-xs whitespace-nowrap">
                   {{ csa.lastLoginAt ? format(new Date(csa.lastLoginAt), 'dd MMM yyyy HH:mm') : '—' }}
                 </td>
@@ -628,9 +901,37 @@ onMounted(() => {
                     <button
                       type="button"
                       class="admin-btn-secondary py-1 text-xs"
+                      @click="openCsaTickets(csa)"
+                    >
+                      Tickets
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      @click="ipWhitelistCsa = csa"
+                    >
+                      IPs
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
                       @click="openAssignViews(csa)"
                     >
                       Views
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      @click="openSetPassword(csa)"
+                    >
+                      Set password
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      @click="openAutoReset(csa)"
+                    >
+                      Gen. password
                     </button>
                     <button
                       v-if="csa.status !== 'ACTIVE'"
@@ -663,7 +964,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!csas.length && !loadingCsas">
-                <td colspan="7" class="py-10 text-center text-admin-muted">No CSA agents yet</td>
+                <td colspan="8" class="py-10 text-center text-admin-muted">No CSA agents yet</td>
               </tr>
             </tbody>
           </table>
@@ -760,7 +1061,27 @@ onMounted(() => {
             >
               All
             </button>
+            <button
+              v-if="isSuperAdmin"
+              type="button"
+              :class="[
+                'rounded-md px-3 py-1.5 text-xs font-medium',
+                ticketQueue === 'csa' ? 'bg-admin-accent text-white' : 'text-admin-subtext',
+              ]"
+              @click="ticketQueue = 'csa'; loadTickets(1)"
+            >
+              By CSA
+            </button>
           </div>
+          <select
+            v-if="isSuperAdmin && ticketQueue === 'csa'"
+            v-model="ticketAssignedCsaId"
+            class="admin-input w-auto"
+            @change="loadTickets(1)"
+          >
+            <option value="">Select CSA…</option>
+            <option v-for="c in csas" :key="c.id" :value="c.id">{{ c.name }}</option>
+          </select>
           <select v-model="ticketFilters.status" class="admin-input w-auto" @change="loadTickets(1)">
             <option value="">All status</option>
             <option value="OPEN">OPEN</option>
@@ -789,6 +1110,7 @@ onMounted(() => {
                 <th>User</th>
                 <th>Priority</th>
                 <th>Stage</th>
+                <th>Rating</th>
                 <th>Updated</th>
                 <th>Actions</th>
               </tr>
@@ -817,6 +1139,10 @@ onMounted(() => {
                 <td>
                   <StatusBadge :status="stageTone(t.stage)" :label="stageLabel(t.stage)" />
                 </td>
+                <td class="text-xs tabular-nums">
+                  <span v-if="t.rating != null" class="text-amber-400">★ {{ t.rating }}</span>
+                  <span v-else class="text-admin-muted">—</span>
+                </td>
                 <td class="text-xs whitespace-nowrap">
                   {{ format(new Date(t.updatedAt), 'dd MMM HH:mm') }}
                 </td>
@@ -835,7 +1161,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!tickets.length && !loadingTickets">
-                <td colspan="6" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
+                <td colspan="7" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
               </tr>
             </tbody>
           </table>
@@ -935,6 +1261,12 @@ onMounted(() => {
       @close="viewsCsa = null"
     />
 
+    <CsaIpWhitelistDialog
+      :open="!!ipWhitelistCsa"
+      :csa="ipWhitelistCsa"
+      @close="ipWhitelistCsa = null"
+    />
+
     <!-- Create / Edit CSA -->
     <BaseDialog
       :open="createCsaOpen || !!editCsa"
@@ -989,6 +1321,49 @@ onMounted(() => {
             <label class="mb-1 block text-xs text-admin-subtext">Country * (routing)</label>
             <input v-model="csaForm.country" class="admin-input" placeholder="India" />
             <p v-if="csaFormErrors.country" class="mt-1 text-xs text-admin-danger">{{ csaFormErrors.country }}</p>
+          </div>
+        </div>
+
+        <div v-if="!editCsa" class="mt-4 space-y-2 border-t border-admin-border pt-4">
+          <label class="block text-xs font-medium text-admin-subtext">
+            Allowed login IPs
+            <span class="font-normal text-admin-muted">(exact IPv4/IPv6, max 20)</span>
+          </label>
+          <p class="text-xs text-admin-warn">
+            Without at least one IP, this agent cannot log in.
+          </p>
+          <div class="flex flex-col gap-2 sm:flex-row">
+            <input
+              v-model="createIpDraft"
+              type="text"
+              class="admin-input min-w-0 flex-1 font-mono"
+              placeholder="203.0.113.10"
+              maxlength="45"
+              @keydown.enter.prevent="addCreateIpChip"
+            />
+            <button type="button" class="admin-btn-secondary w-full sm:w-auto" @click="addCreateIpChip">
+              Add IP
+            </button>
+          </div>
+          <p v-if="csaFormErrors.allowedIps" class="text-xs text-admin-danger">
+            {{ csaFormErrors.allowedIps }}
+          </p>
+          <div v-if="csaForm.allowedIps.length" class="flex flex-wrap gap-2">
+            <span
+              v-for="ip in csaForm.allowedIps"
+              :key="ip"
+              class="inline-flex items-center gap-1 rounded-md border border-admin-border bg-admin-bg/60 px-2 py-1 font-mono text-xs"
+            >
+              {{ ip }}
+              <button
+                type="button"
+                class="text-admin-muted hover:text-admin-danger"
+                aria-label="Remove IP"
+                @click="removeCreateIpChip(ip)"
+              >
+                ×
+              </button>
+            </span>
           </div>
         </div>
       </template>
@@ -1085,6 +1460,263 @@ onMounted(() => {
           @click="reviewReport('RESOLVED')"
         >
           Resolve
+        </button>
+      </template>
+    </BaseDialog>
+
+    <ResetPasswordDialog
+      :open="showSetPassword"
+      :min-length="12"
+      @close="showSetPassword = false; passwordTarget = null"
+      @confirm="handleSetCsaPassword"
+    />
+
+    <ConfirmActionDialog
+      :open="autoResetOpen"
+      title="Generate temporary password"
+      message="This logs the CSA out of the portal everywhere. A one-time password will be shown once for you to share out-of-band."
+      confirm-label="Generate password"
+      variant="warn"
+      @close="autoResetOpen = false; passwordTarget = null"
+      @confirm="handleAutoResetCsaPassword"
+    />
+
+    <TemporaryPasswordDialog
+      :open="showTempPassword"
+      :password="tempPassword"
+      session-hint="All portal sessions for this admin have been revoked."
+      @close="closeTempPassword"
+    />
+
+    <BaseDialog
+      :open="failedLoginsOpen"
+      title="Failed logins roster"
+      size="lg"
+      @close="failedLoginsOpen = false"
+    >
+      <template #body>
+        <div class="mb-3 flex flex-wrap items-center gap-2">
+          <label class="text-xs text-admin-subtext">Within hours</label>
+          <select
+            v-model.number="failedLoginHours"
+            class="admin-input w-auto py-1 text-xs"
+            @change="loadFailedLogins(1)"
+          >
+            <option :value="6">6h</option>
+            <option :value="24">24h</option>
+            <option :value="72">72h</option>
+          </select>
+          <button
+            type="button"
+            class="admin-btn-secondary py-1 text-xs"
+            :disabled="loadingFailedLogins"
+            @click="loadFailedLogins(failedLoginsPage)"
+          >
+            Refresh
+          </button>
+        </div>
+        <div class="admin-table-wrap max-h-[50vh] overflow-auto">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>CSA</th>
+                <th>Status</th>
+                <th>Fails</th>
+                <th>Lock</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="csa in failedLogins" :key="csa.id">
+                <td>
+                  <p class="font-medium">{{ csa.name }}</p>
+                  <p class="text-xs text-admin-muted">{{ csa.email }}</p>
+                </td>
+                <td>
+                  <StatusBadge
+                    :status="csa.status === 'ACTIVE' ? 'active' : 'inactive'"
+                    :label="csa.status"
+                  />
+                </td>
+                <td class="tabular-nums text-sm">{{ csa.failedLoginCount ?? 0 }}</td>
+                <td class="text-xs">
+                  <span v-if="csaIsLocked(csa)" class="text-admin-danger">
+                    Locked
+                    <template v-if="csa.lockedUntil">
+                      until {{ format(new Date(csa.lockedUntil), 'dd MMM HH:mm') }}
+                    </template>
+                  </span>
+                  <span v-else class="text-admin-muted">—</span>
+                </td>
+                <td>
+                  <div class="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      @click="openSetPassword(csa)"
+                    >
+                      Set password
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      @click="openAutoReset(csa)"
+                    >
+                      Gen. password
+                    </button>
+                    <button
+                      v-if="csa.status === 'ACTIVE'"
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      :disabled="acting"
+                      @click="setCsaStatus(csa, 'SUSPENDED')"
+                    >
+                      Suspend
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!failedLogins.length && !loadingFailedLogins">
+                <td colspan="5" class="py-8 text-center text-admin-muted">No failed-login accounts</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="admin-pagination mt-3">
+          <span class="text-xs">{{ failedLoginsTotal }} total</span>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="failedLoginsPage <= 1"
+              @click="loadFailedLogins(failedLoginsPage - 1)"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="failedLoginsPage * 50 >= failedLoginsTotal"
+              @click="loadFailedLogins(failedLoginsPage + 1)"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="failedLoginsOpen = false">Close</button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :open="csaTicketsOpen"
+      :title="csaTicketsTarget ? `Tickets · ${csaTicketsTarget.name}` : 'CSA tickets'"
+      size="lg"
+      @close="csaTicketsOpen = false; csaTicketsTarget = null"
+    >
+      <template #body>
+        <div class="mb-3 flex flex-wrap items-center gap-3 text-sm">
+          <p>
+            Avg rating:
+            <strong class="tabular-nums">
+              {{ csaTicketsAvg != null ? csaTicketsAvg.toFixed(1) : '—' }}
+            </strong>
+            <span class="text-admin-muted">({{ csaTicketsRatingCount }} ratings)</span>
+          </p>
+          <label class="flex items-center gap-1.5 text-xs text-admin-subtext">
+            <input
+              v-model="csaTicketsRatedOnly"
+              type="checkbox"
+              class="accent-admin-accent"
+              @change="loadCsaTickets(1)"
+            />
+            Rated only
+          </label>
+          <button
+            type="button"
+            class="admin-btn-secondary py-1 text-xs"
+            :disabled="loadingCsaTickets"
+            @click="loadCsaTickets(csaTicketsPage)"
+          >
+            Refresh
+          </button>
+        </div>
+        <div class="admin-table-wrap max-h-[50vh] overflow-auto">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Ticket</th>
+                <th>Stage</th>
+                <th>Rating</th>
+                <th>Updated</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in csaTickets" :key="t.id">
+                <td>
+                  <p class="font-medium">{{ t.publicId ?? t.id }}</p>
+                  <p class="text-xs text-admin-muted">{{ t.user?.name || t.user?.username || '—' }}</p>
+                </td>
+                <td>
+                  <StatusBadge :status="stageTone(t.stage)" :label="stageLabel(t.stage)" />
+                </td>
+                <td class="text-xs tabular-nums">
+                  <span v-if="t.rating != null" class="text-amber-400">★ {{ t.rating }}</span>
+                  <span v-else class="text-admin-muted">—</span>
+                  <p v-if="t.ratedAt" class="text-admin-muted">
+                    {{ format(new Date(t.ratedAt), 'dd MMM HH:mm') }}
+                  </p>
+                </td>
+                <td class="text-xs whitespace-nowrap">
+                  {{ format(new Date(t.updatedAt), 'dd MMM HH:mm') }}
+                </td>
+                <td>
+                  <button
+                    type="button"
+                    class="admin-btn-secondary py-1 text-xs"
+                    @click="openTicket(t)"
+                  >
+                    Open
+                  </button>
+                </td>
+              </tr>
+              <tr v-if="!csaTickets.length && !loadingCsaTickets">
+                <td colspan="5" class="py-8 text-center text-admin-muted">No tickets</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="admin-pagination mt-3">
+          <span class="text-xs">{{ csaTicketsTotal }} total</span>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="csaTicketsPage <= 1"
+              @click="loadCsaTickets(csaTicketsPage - 1)"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="csaTicketsPage * 20 >= csaTicketsTotal"
+              @click="loadCsaTickets(csaTicketsPage + 1)"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <button
+          type="button"
+          class="admin-btn-secondary"
+          @click="csaTicketsOpen = false; csaTicketsTarget = null"
+        >
+          Close
         </button>
       </template>
     </BaseDialog>

@@ -14,6 +14,10 @@ import DeviceList from '@/components/user/DeviceList.vue'
 import RecentReports from '@/components/user/RecentReports.vue'
 import RecentLiveSummary from '@/components/user/RecentLiveSummary.vue'
 import UserLevelControls from '@/components/user/UserLevelControls.vue'
+import UserRestrictions from '@/components/user/UserRestrictions.vue'
+import UserVipPanel from '@/components/user/UserVipPanel.vue'
+import UserGuardianPanel from '@/components/user/UserGuardianPanel.vue'
+import UserLocationsPanel from '@/components/user/UserLocationsPanel.vue'
 
 const route = useRoute()
 const store = useUserDetailStore()
@@ -24,6 +28,9 @@ const isDetails = computed(() => store.activeTab === 'details')
 
 const tabs = [
   { id: 'details', label: 'User Details' },
+  { id: 'vip', label: 'VIP' },
+  { id: 'guardian', label: 'Guardian' },
+  { id: 'locations', label: 'Location' },
   { id: 'transactions', label: 'Transactions' },
   { id: 'wallet', label: 'Wallet & Points' },
   { id: 'live', label: 'Live & Activity' },
@@ -120,6 +127,7 @@ function setTab(tab: string) {
         >
           <RecentReports :user-id="store.user.id" :summary="store.reportsSummary" />
           <UserLevelControls :user="store.user" />
+          <UserRestrictions :user-id="store.user.id" />
           <QuickActions :user="store.user" />
           <ModerationControls :user="store.user" />
         </div>
@@ -140,6 +148,15 @@ function setTab(tab: string) {
             store.activeTab === 'devices' ? 'lg:col-span-9' : 'lg:col-span-12',
           ]"
         >
+          <div v-if="store.activeTab === 'vip'">
+            <UserVipPanel :user-id="store.user.id" />
+          </div>
+          <div v-if="store.activeTab === 'guardian'">
+            <UserGuardianPanel :user-id="store.user.id" />
+          </div>
+          <div v-if="store.activeTab === 'locations'">
+            <UserLocationsPanel :user-id="store.user.id" />
+          </div>
           <div v-show="store.activeTab === 'wallet'">
             <WalletOverview :user="store.user" />
           </div>

@@ -4,10 +4,15 @@ import type {
   AgencyBanResponse,
   AgencyCommissionHistoryQuery,
   AgencyCommissionHistoryResponse,
+  AgencyCommissionWindowConfig,
+  AgencyCommissionWindowConfigUpdate,
+  AgencyCommissionWindowConfigUpdateResponse,
   AgencyDetail,
   AgencyHostEarningsResponse,
   AgencyListQuery,
   AgencyListResponse,
+  AgencyApplicationKycDetail,
+  AgencyApplicationListPage,
   AgencyOverviewStats,
   AgencyPayrollResponse,
   AgencyPeriodQuery,
@@ -15,7 +20,6 @@ import type {
   AgencyRecomputeMasterResponse,
   AgencyUnbarResponse,
   ApproveApplicationPayload,
-  PendingApplicationsResponse,
   RejectApplicationPayload,
   SuspendAgencyPayload,
   TransferHostsPayload,
@@ -31,7 +35,19 @@ export const agencyAdminApi = {
   },
 
   listPendingApplications(params: { skip?: number; take?: number } = {}) {
-    return api.get<PendingApplicationsResponse>('/admin/agency/applications/pending', { params })
+    return api.get<AgencyApplicationListPage>('/admin/agency/applications/pending', { params })
+  },
+
+  listRejectedApplications(params: { skip?: number; take?: number } = {}) {
+    return api.get<AgencyApplicationListPage>('/admin/agency/applications/rejected', {
+      params,
+    })
+  },
+
+  getApplicationKyc(userId: string) {
+    return api.get<AgencyApplicationKycDetail>(
+      `/admin/agency/applications/${encodeURIComponent(userId)}/kyc`,
+    )
   },
 
   getAgency(identifier: string) {
@@ -113,6 +129,17 @@ export const agencyAdminApi = {
     return api.post<AgencyRecomputeMasterResponse>('/admin/agency/recompute-master', undefined, {
       params,
     })
+  },
+
+  getCommissionConfig() {
+    return api.get<AgencyCommissionWindowConfig>('/admin/agency/commission/config')
+  },
+
+  updateCommissionConfig(payload: AgencyCommissionWindowConfigUpdate) {
+    return api.put<AgencyCommissionWindowConfigUpdateResponse>(
+      '/admin/agency/commission/config',
+      payload,
+    )
   },
 
   listHostEarnings(agencyIdentifier: string, params: AgencyPeriodQuery = {}) {

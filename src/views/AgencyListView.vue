@@ -4,10 +4,11 @@ import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { useAgencyAdminStore } from '@/stores/agencyAdmin'
 import AgencyStatsCards from '@/components/agency/AgencyStatsCards.vue'
+import AgencyApplicationReviewDrawer from '@/components/agency/AgencyApplicationReviewDrawer.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
-import { COMMISSION_TIERS, type PendingApplication } from '@/types/agency'
+import { COMMISSION_TIERS, type AgencyApplicationListItem } from '@/types/agency'
 import { formatPoints, formatUsd } from '@/utils/format'
 import axios from 'axios'
 import { showToast } from '@/utils/toast'
@@ -15,13 +16,15 @@ import { showToast } from '@/utils/toast'
 const router = useRouter()
 const store = useAgencyAdminStore()
 
-const activeTab = ref<'agencies' | 'pending'>('agencies')
+const activeTab = ref<'agencies' | 'pending' | 'rejected'>('agencies')
 const searchQuery = ref('')
 const statusFilter = ref<'ACTIVE' | 'SUSPENDED' | ''>('')
 const countryFilter = ref('')
 
-const approveTarget = ref<PendingApplication | null>(null)
-const rejectTarget = ref<PendingApplication | null>(null)
+const approveTarget = ref<AgencyApplicationListItem | null>(null)
+const rejectTarget = ref<AgencyApplicationListItem | null>(null)
+const reviewTarget = ref<AgencyApplicationListItem | null>(null)
+const reviewMode = ref<'pending' | 'rejected'>('pending')
 const recomputeMasterDialog = ref(false)
 const commissionTier = ref('D')
 const rejectAdminNote = ref('')
@@ -38,6 +41,30 @@ function usdLabel(value: string | undefined, points: string) {
   return formatUsd(Number(points) / 10_000)
 }
 
+function faceThumb(app: AgencyApplicationListItem) {
+  return app.faceImageUrl || app.kyc.faceImageUrl || app.avatarUrl
+}
+
+function openReview(app: AgencyApplicationListItem, mode: 'pending' | 'rejected') {
+  reviewMode.value = mode
+  reviewTarget.value = app
+}
+
+function closeReview() {
+  reviewTarget.value = null
+}
+
+function onReviewApprove(app: AgencyApplicationListItem) {
+  closeReview()
+  approveTarget.value = app
+  approveBarred.value = false
+}
+
+function onReviewReject(app: AgencyApplicationListItem) {
+  closeReview()
+  rejectTarget.value = app
+}
+
 async function loadAgencies(page = 0) {
   await store.fetchAgencies({
     skip: page * store.agenciesTake,
@@ -52,13 +79,25 @@ async function loadPending(page = 0) {
   await store.fetchPending({ skip: page * 20, take: 20 })
 }
 
+async function loadRejected(page = 0) {
+  await store.fetchRejected({ skip: page * 20, take: 20 })
+}
+
 function openAgency(item: { agencyPublicId: string }) {
   router.push(`/admin/agency/${item.agencyPublicId}`)
+}
+
+function openUser(userId: string) {
+  router.push(`/admin/users/${userId}`)
 }
 
 async function handleApprove() {
   const target = approveTarget.value
   if (!target) return
+  if (!target.kyc.isComplete) {
+    showToast('KYC incomplete — face, government ID, and contact are required', 'error')
+    return
+  }
   acting.value = true
   approveBarred.value = false
   try {
@@ -137,6 +176,7 @@ async function handleRecomputeMaster() {
 
 const agenciesPage = ref(0)
 const pendingPage = ref(0)
+const rejectedPage = ref(0)
 
 function prevAgenciesPage() {
   if (agenciesPage.value > 0) {
@@ -166,8 +206,23 @@ function nextPendingPage() {
   }
 }
 
+function prevRejectedPage() {
+  if (rejectedPage.value > 0) {
+    rejectedPage.value -= 1
+    loadRejected(rejectedPage.value)
+  }
+}
+
+function nextRejectedPage() {
+  if ((rejectedPage.value + 1) * 20 < store.rejectedTotal) {
+    rejectedPage.value += 1
+    loadRejected(rejectedPage.value)
+  }
+}
+
 watch(activeTab, (tab) => {
   if (tab === 'pending' && !store.pending.length) loadPending()
+  if (tab === 'rejected' && !store.rejected.length) loadRejected()
 })
 
 onMounted(async () => {
@@ -181,7 +236,7 @@ onMounted(async () => {
       <div>
         <h1 class="text-xl font-semibold sm:text-2xl">Agency Management</h1>
         <p class="mt-1 text-sm text-admin-subtext">
-          Overview, agency list, pending applications, and lifecycle actions
+          Overview, agency list, pending and rejected applications
         </p>
       </div>
       <button
@@ -250,6 +305,24 @@ onMounted(async () => {
               class="ml-1.5 rounded-full bg-admin-warn/20 px-1.5 py-0.5 text-xs text-admin-warn"
             >
               {{ store.pendingTotal }}
+            </span>
+          </button>
+          <button
+            type="button"
+            :class="[
+              'rounded-md px-4 py-2 text-sm font-medium transition-colors',
+              activeTab === 'rejected'
+                ? 'bg-admin-accent text-white'
+                : 'text-admin-subtext hover:text-admin-text',
+            ]"
+            @click="activeTab = 'rejected'"
+          >
+            Rejected
+            <span
+              v-if="store.rejectedTotal"
+              class="ml-1.5 rounded-full bg-admin-muted/30 px-1.5 py-0.5 text-xs text-admin-subtext"
+            >
+              {{ store.rejectedTotal }}
             </span>
           </button>
         </div>
@@ -391,6 +464,7 @@ onMounted(async () => {
           <table class="admin-table">
             <thead>
               <tr>
+                <th>Face</th>
                 <th>Applicant</th>
                 <th>Country</th>
                 <th>KYC</th>
@@ -401,6 +475,20 @@ onMounted(async () => {
             </thead>
             <tbody>
               <tr v-for="app in store.pending" :key="app.applicationId">
+                <td>
+                  <img
+                    v-if="faceThumb(app)"
+                    :src="faceThumb(app)!"
+                    alt=""
+                    class="h-9 w-9 rounded-full object-cover"
+                  />
+                  <div
+                    v-else
+                    class="flex h-9 w-9 items-center justify-center rounded-full bg-admin-muted/20 text-[10px] text-admin-muted"
+                  >
+                    —
+                  </div>
+                </td>
                 <td>
                   <p class="font-medium">{{ app.applicantUserName }}</p>
                   <p class="font-mono text-xs text-admin-subtext">{{ app.userPublicId }}</p>
@@ -419,7 +507,7 @@ onMounted(async () => {
                     <span
                       :class="[
                         'rounded px-1.5 py-0.5 text-xs',
-                        app.kyc.contactPhone || app.kyc.contactEmail
+                        app.kyc.contactSubmitted
                           ? 'bg-admin-success/20 text-admin-success'
                           : 'bg-admin-muted/20',
                       ]"
@@ -434,6 +522,12 @@ onMounted(async () => {
                     >
                       Face
                     </span>
+                    <span
+                      v-if="app.kyc.isComplete"
+                      class="rounded bg-admin-accent/15 px-1.5 py-0.5 text-xs text-admin-accent"
+                    >
+                      Complete
+                    </span>
                   </div>
                 </td>
                 <td>
@@ -443,8 +537,21 @@ onMounted(async () => {
                   {{ format(new Date(app.appliedAt), 'dd MMM yyyy') }}
                 </td>
                 <td>
-                  <div class="flex gap-1">
-                    <button type="button" class="admin-btn-primary text-xs" @click="approveTarget = app">
+                  <div class="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      class="admin-btn-secondary text-xs"
+                      @click="openReview(app, 'pending')"
+                    >
+                      Review
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-primary text-xs"
+                      :disabled="!app.kyc.isComplete"
+                      :title="app.kyc.isComplete ? 'Approve' : 'KYC incomplete'"
+                      @click="approveTarget = app"
+                    >
                       Approve
                     </button>
                     <button type="button" class="admin-btn-danger text-xs" @click="rejectTarget = app">
@@ -454,7 +561,7 @@ onMounted(async () => {
                 </td>
               </tr>
               <tr v-if="!store.pending.length && !store.loadingPending">
-                <td colspan="6" class="py-10 text-center text-admin-muted">No pending applications</td>
+                <td colspan="7" class="py-10 text-center text-admin-muted">No pending applications</td>
               </tr>
             </tbody>
           </table>
@@ -477,7 +584,154 @@ onMounted(async () => {
           </div>
         </div>
       </div>
+
+      <!-- Rejected tab -->
+      <div v-show="activeTab === 'rejected'">
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Face</th>
+                <th>Applicant</th>
+                <th>Country</th>
+                <th>KYC</th>
+                <th>Applied</th>
+                <th>Reviewed</th>
+                <th>Admin note</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="app in store.rejected" :key="app.applicationId">
+                <td>
+                  <img
+                    v-if="faceThumb(app)"
+                    :src="faceThumb(app)!"
+                    alt=""
+                    class="h-9 w-9 rounded-full object-cover"
+                  />
+                  <div
+                    v-else
+                    class="flex h-9 w-9 items-center justify-center rounded-full bg-admin-muted/20 text-[10px] text-admin-muted"
+                  >
+                    —
+                  </div>
+                </td>
+                <td>
+                  <p class="font-medium">{{ app.applicantUserName }}</p>
+                  <p class="font-mono text-xs text-admin-subtext">{{ app.userPublicId }}</p>
+                </td>
+                <td>{{ app.country ?? '—' }}</td>
+                <td>
+                  <div class="flex flex-wrap gap-1">
+                    <span
+                      :class="[
+                        'rounded px-1.5 py-0.5 text-xs',
+                        app.kyc.govtIdUploaded
+                          ? 'bg-admin-success/20 text-admin-success'
+                          : 'bg-admin-muted/20',
+                      ]"
+                    >
+                      ID
+                    </span>
+                    <span
+                      :class="[
+                        'rounded px-1.5 py-0.5 text-xs',
+                        app.kyc.contactSubmitted
+                          ? 'bg-admin-success/20 text-admin-success'
+                          : 'bg-admin-muted/20',
+                      ]"
+                    >
+                      Contact
+                    </span>
+                    <span
+                      :class="[
+                        'rounded px-1.5 py-0.5 text-xs',
+                        app.kyc.faceVerified
+                          ? 'bg-admin-success/20 text-admin-success'
+                          : 'bg-admin-muted/20',
+                      ]"
+                    >
+                      Face
+                    </span>
+                    <span
+                      v-if="app.kyc.isComplete"
+                      class="rounded bg-admin-accent/15 px-1.5 py-0.5 text-xs text-admin-accent"
+                    >
+                      Complete
+                    </span>
+                  </div>
+                </td>
+                <td class="text-xs whitespace-nowrap">
+                  {{ format(new Date(app.appliedAt), 'dd MMM yyyy') }}
+                </td>
+                <td class="text-xs whitespace-nowrap">
+                  {{ app.reviewedAt ? format(new Date(app.reviewedAt), 'dd MMM yyyy HH:mm') : '—' }}
+                </td>
+                <td class="max-w-[200px] truncate text-sm" :title="app.adminNote ?? undefined">
+                  {{ app.adminNote || '—' }}
+                </td>
+                <td>
+                  <div class="flex flex-wrap gap-1">
+                    <button
+                      type="button"
+                      class="admin-btn-secondary text-xs"
+                      @click="openReview(app, 'rejected')"
+                    >
+                      Review
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-secondary text-xs"
+                      @click="openUser(app.applicantUserId)"
+                    >
+                      User
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!store.rejected.length && !store.loadingRejected">
+                <td colspan="8" class="py-10 text-center text-admin-muted">No rejected applications</td>
+              </tr>
+              <tr v-else-if="store.loadingRejected && !store.rejected.length">
+                <td colspan="8" class="py-10 text-center text-admin-muted">Loading…</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="admin-pagination mt-4">
+          <span>{{ store.rejectedTotal }} rejected</span>
+          <div class="flex gap-2">
+            <button
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="rejectedPage === 0"
+              @click="prevRejectedPage"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="(rejectedPage + 1) * 20 >= store.rejectedTotal"
+              @click="nextRejectedPage"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
+
+    <AgencyApplicationReviewDrawer
+      :open="!!reviewTarget"
+      :application="reviewTarget"
+      :mode="reviewMode"
+      @close="closeReview"
+      @approve="onReviewApprove"
+      @reject="onReviewReject"
+    />
 
     <BaseDialog
       :open="!!approveTarget"
@@ -525,7 +779,7 @@ onMounted(async () => {
         <button
           type="button"
           class="admin-btn-primary"
-          :disabled="acting || approveBarred"
+          :disabled="acting || approveBarred || !approveTarget?.kyc.isComplete"
           @click="handleApprove"
         >
           Approve

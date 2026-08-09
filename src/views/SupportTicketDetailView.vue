@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { format } from 'date-fns'
 import { useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import {
   customerSupportApi,
   uploadSupportReplyImage,
@@ -40,9 +41,40 @@ const assignOpen = ref(false)
 const assignAdminId = ref('')
 const csaOptions = ref<Array<{ id: string; name: string }>>([])
 
+const isFrozen = computed(() => {
+  if (!ticket.value) return false
+  if (ticket.value.stage === 'pending_review' || ticket.value.status === 'PENDING_REVIEW') return true
+  if (ticket.value.rating != null) return true
+  return false
+})
+
 const canAct = computed(() => {
   if (!ticket.value) return false
   if (ticket.value.stage === 'closed') return false
+  if (isFrozen.value) return false
+  if (auth.isSuperAdmin) return true
+  return ticket.value.assignedAdminId === auth.admin?.id
+})
+
+const canReply = computed(() => {
+  if (!ticket.value) return false
+  if (ticket.value.stage === 'closed') return false
+  // Pending review: user may contest by messaging; CSA can continue after reopen.
+  // While still pending_review, assignee may still reply if needed? Doc says frozen for hand-off.
+  // Allow reply for assignee/SA unless closed.
+  if (auth.isSuperAdmin) return ticket.value.stage !== 'closed'
+  if (!ticket.value.assignedAdminId) return false
+  return ticket.value.assignedAdminId === auth.admin?.id
+})
+
+const canHandOff = computed(() => canAct.value && !isFrozen.value)
+
+const canResolve = computed(() => canAct.value && !isFrozen.value)
+
+const canForceClose = computed(() => {
+  if (!ticket.value) return false
+  if (ticket.value.stage === 'closed') return false
+  if (ticket.value.rating != null) return false
   if (auth.isSuperAdmin) return true
   return ticket.value.assignedAdminId === auth.admin?.id
 })
@@ -57,6 +89,32 @@ function stageLabel(stage: string) {
     closed: 'Closed',
   }
   return map[stage] ?? stage
+}
+
+function ticketErrorMessage(err: unknown, fallback: string) {
+  if (!axios.isAxiosError(err)) return fallback
+  const code = (err.response?.data as { code?: string; message?: string } | undefined)?.code
+  const message = (err.response?.data as { message?: string } | undefined)?.message
+  switch (code) {
+    case 'TICKET_NOT_ASSIGNED_TO_YOU':
+      return 'Ticket is not assigned to you'
+    case 'TICKET_CLOSED':
+      return 'Ticket is already closed'
+    case 'ALREADY_ASSIGNED':
+      return 'Ticket is already assigned'
+    case 'TICKET_ALREADY_PENDING_REVIEW':
+      return 'Ticket is already pending user review'
+    case 'TICKET_PENDING_REVIEW_FROZEN':
+      return 'Ticket is frozen during pending review — no hand-off'
+    case 'TICKET_RATED_FROZEN':
+      return 'Ticket was rated and is frozen to the assignee'
+    case 'TICKET_ALREADY_RATED':
+      return 'Ticket already has a rating'
+    case 'INVALID_REQUEST':
+      return message || 'Invalid request (note may be required)'
+    default:
+      return message || fallback
+  }
 }
 
 async function loadTicket() {
@@ -92,8 +150,8 @@ async function sendReply() {
     replyFile.value = null
     showToast('Reply sent', 'success')
     await loadTicket()
-  } catch {
-    showToast('Reply failed', 'error')
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Reply failed'), 'error')
   } finally {
     acting.value = false
   }
@@ -105,39 +163,44 @@ async function claim() {
     await customerSupportApi.claim(ticketId.value)
     showToast('Ticket claimed', 'success')
     await loadTicket()
-  } catch {
-    showToast('Claim failed', 'error')
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Claim failed'), 'error')
   } finally {
     acting.value = false
   }
 }
 
 async function submitResolve() {
+  const note = resolveNote.value.trim()
+  if (!note) {
+    showToast('A public reason note is required', 'error')
+    return
+  }
   acting.value = true
   try {
     await customerSupportApi.resolve(ticketId.value, {
       resolution: resolveType.value,
-      note: resolveNote.value.trim() || undefined,
+      note,
     })
     resolveOpen.value = false
-    showToast('Resolution offered — pending user review', 'success')
+    showToast('Resolution offered — pending user review (24h)', 'success')
     await loadTicket()
-  } catch {
-    showToast('Resolve failed', 'error')
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Resolve failed'), 'error')
   } finally {
     acting.value = false
   }
 }
 
 async function forceClose() {
-  if (!confirm('Force-close this ticket without the 72h review window?')) return
+  if (!confirm('Force-close this ticket immediately (no 24h review window)?')) return
   acting.value = true
   try {
     await customerSupportApi.close(ticketId.value)
     showToast('Ticket closed', 'success')
     await loadTicket()
-  } catch {
-    showToast('Close failed', 'error')
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Close failed'), 'error')
   } finally {
     acting.value = false
   }
@@ -149,8 +212,8 @@ async function setPriority(priority: SupportTicketPriority) {
     await customerSupportApi.setPriority(ticketId.value, priority)
     showToast('Priority updated', 'success')
     await loadTicket()
-  } catch {
-    showToast('Priority update failed', 'error')
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Priority update failed'), 'error')
   } finally {
     acting.value = false
   }
@@ -173,6 +236,10 @@ async function addNote() {
 }
 
 async function openAssign() {
+  if (!canHandOff.value) {
+    showToast('Hand-off is blocked while pending review or rated', 'error')
+    return
+  }
   assignOpen.value = true
   assignAdminId.value = ''
   if (auth.isSuperAdmin) {
@@ -196,8 +263,8 @@ async function submitAssign() {
     assignOpen.value = false
     showToast('Ticket handed off', 'success')
     await loadTicket()
-  } catch {
-    showToast('Assign failed', 'error')
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Assign failed'), 'error')
   } finally {
     acting.value = false
   }
@@ -235,9 +302,27 @@ onMounted(loadTicket)
               <span class="rounded bg-admin-bg px-2 py-0.5 text-xs font-semibold text-admin-subtext">
                 {{ ticket.priority }}
               </span>
+              <span
+                v-if="ticket.resolution"
+                class="rounded bg-admin-bg px-2 py-0.5 text-xs text-admin-subtext"
+              >
+                {{ ticket.resolution }}
+              </span>
+              <span
+                v-if="ticket.rating != null"
+                class="rounded bg-amber-500/15 px-2 py-0.5 text-xs font-semibold text-amber-400"
+              >
+                ★ {{ ticket.rating }}/5
+              </span>
             </div>
             <p class="mt-1 text-sm text-admin-subtext">
               {{ ticket.type }}{{ ticket.subType ? ' / ' + ticket.subType : '' }}
+            </p>
+            <p v-if="ticket.ratedAt" class="mt-1 text-xs text-admin-muted">
+              Rated {{ format(new Date(ticket.ratedAt), 'dd MMM yyyy HH:mm') }}
+            </p>
+            <p v-if="isFrozen && ticket.stage !== 'closed'" class="mt-2 text-xs text-admin-warn">
+              Frozen to assignee during pending review / after rating — hand-off disabled.
             </p>
             <div
               v-if="ticket.refType && ticket.refId"
@@ -248,7 +333,7 @@ onMounted(loadTicket)
           </div>
           <div class="flex flex-wrap gap-1">
             <button
-              v-if="isUnassigned"
+              v-if="isUnassigned && ticket.stage === 'open'"
               type="button"
               class="admin-btn-primary text-xs"
               :disabled="acting"
@@ -257,7 +342,7 @@ onMounted(loadTicket)
               Claim
             </button>
             <button
-              v-if="canAct"
+              v-if="canResolve"
               type="button"
               class="admin-btn-secondary text-xs"
               :disabled="acting"
@@ -266,7 +351,7 @@ onMounted(loadTicket)
               Resolve
             </button>
             <button
-              v-if="canAct"
+              v-if="canResolve"
               type="button"
               class="admin-btn-secondary text-xs"
               :disabled="acting"
@@ -275,7 +360,7 @@ onMounted(loadTicket)
               Reject
             </button>
             <button
-              v-if="canAct"
+              v-if="canHandOff"
               type="button"
               class="admin-btn-secondary text-xs"
               @click="openAssign"
@@ -283,7 +368,7 @@ onMounted(loadTicket)
               Hand off
             </button>
             <button
-              v-if="canAct"
+              v-if="canForceClose"
               type="button"
               class="admin-btn-danger text-xs"
               :disabled="acting"
@@ -375,12 +460,13 @@ onMounted(loadTicket)
             <p v-if="!messages.length" class="py-8 text-center text-admin-muted">No messages</p>
           </div>
 
-          <div v-if="canAct || isUnassigned" class="space-y-2">
+          <div v-if="canReply || isUnassigned" class="space-y-2">
             <textarea
               v-model="replyText"
               rows="3"
               class="admin-input resize-none"
               placeholder="Write a reply to the user…"
+              :disabled="isUnassigned && !canReply"
             />
             <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <input type="file" accept="image/*" class="min-w-0 text-xs text-admin-subtext" @change="onFileChange" />
@@ -388,7 +474,7 @@ onMounted(loadTicket)
               <button
                 type="button"
                 class="admin-btn-primary w-full sm:ml-auto sm:w-auto"
-                :disabled="acting"
+                :disabled="acting || (isUnassigned && !canReply)"
                 @click="sendReply"
               >
                 {{ acting ? 'Sending…' : 'Send reply' }}
@@ -415,7 +501,7 @@ onMounted(loadTicket)
             </div>
             <p v-if="!notes.length" class="py-6 text-center text-admin-muted">No internal notes</p>
           </div>
-          <div v-if="canAct || auth.isSuperAdmin" class="admin-search-row">
+          <div v-if="canReply || auth.isSuperAdmin" class="admin-search-row">
             <input v-model="noteText" class="admin-input min-w-0 flex-1" placeholder="Add internal note…" />
             <button type="button" class="admin-btn-secondary w-full sm:w-auto" :disabled="acting" @click="addNote">
               Add
@@ -428,18 +514,25 @@ onMounted(loadTicket)
     <BaseDialog :open="resolveOpen" :title="resolveType === 'RESOLVED' ? 'Resolve ticket' : 'Reject ticket'" @close="resolveOpen = false">
       <template #body>
         <p class="mb-3 text-sm text-admin-subtext">
-          Moves the ticket to pending review. The user has 72 hours to confirm or contest.
+          Posts your reason into the user chat and moves the ticket to pending review.
+          The user has <strong class="text-admin-text">24 hours</strong> to confirm-close or reply to contest.
         </p>
         <textarea
           v-model="resolveNote"
           rows="3"
           class="admin-input resize-none"
-          placeholder="Optional note shown to the user…"
+          placeholder="Required public reason shown to the user…"
         />
+        <p v-if="!resolveNote.trim()" class="mt-1 text-xs text-admin-warn">Note is required</p>
       </template>
       <template #footer>
         <button type="button" class="admin-btn-secondary" @click="resolveOpen = false">Cancel</button>
-        <button type="button" class="admin-btn-primary" :disabled="acting" @click="submitResolve">
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="acting || !resolveNote.trim()"
+          @click="submitResolve"
+        >
           Confirm
         </button>
       </template>
