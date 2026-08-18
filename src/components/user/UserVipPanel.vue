@@ -133,7 +133,12 @@ watch(() => props.userId, () => load())
           <div>
             <h2 class="text-base font-semibold">VIP Membership</h2>
             <p class="mt-0.5 text-xs text-admin-subtext">
-              Rich tier: {{ dossier.richTier.displayName }} ({{ dossier.richTier.tier }})
+              Rich tier:
+              {{
+                dossier.richTier.displayName?.trim() ||
+                (dossier.richTier.tier > 0 ? `Tier ${dossier.richTier.tier}` : 'None')
+              }}
+              <template v-if="dossier.richTier.tier > 0"> ({{ dossier.richTier.tier }})</template>
             </p>
           </div>
           <div class="flex flex-wrap items-center gap-2">

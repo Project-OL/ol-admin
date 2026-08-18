@@ -61,6 +61,7 @@ export interface GalleryGiftItem {
   displayImageUrl: string
   coinCost: number
   sortOrder: number
+  isActive?: boolean
 }
 
 export interface GalleryCategoryAdmin {
@@ -71,6 +72,15 @@ export interface GalleryCategoryAdmin {
   enabledAt: string | null
   giftCount: number
   gifts: GalleryGiftItem[]
+}
+
+export interface GalleryAdminListResponse {
+  galleryId: string
+  year: number
+  month: number
+  totalSections: number
+  totalGifts: number
+  categories: GalleryCategoryAdmin[]
 }
 
 export interface GiftListQuery {

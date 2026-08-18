@@ -17,6 +17,9 @@ const config = computed(() => {
     warn: { bg: 'bg-admin-warn/20', text: 'text-admin-warn', label: 'Warning' },
     failed: { bg: 'bg-admin-danger/20', text: 'text-admin-danger', label: 'Failed' },
     verified: { bg: 'bg-admin-success/20', text: 'text-admin-success', label: 'Verified' },
+    duplicate: { bg: 'bg-admin-warn/20', text: 'text-admin-warn', label: 'Duplicate' },
+    revoked: { bg: 'bg-admin-muted/20', text: 'text-admin-muted', label: 'Revoked' },
+    rejected: { bg: 'bg-admin-danger/20', text: 'text-admin-danger', label: 'Rejected' },
     none: { bg: 'bg-admin-muted/20', text: 'text-admin-muted', label: 'Not Verified' },
   }
   return map[props.status] ?? {

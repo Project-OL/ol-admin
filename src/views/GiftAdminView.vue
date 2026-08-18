@@ -46,6 +46,8 @@ const categories = ref<GiftCategoryAdmin[]>([])
 const loadingCategories = ref(false)
 
 const gallery = ref<GalleryCategoryAdmin[]>([])
+const galleryYear = ref<number | null>(null)
+const galleryMonth = ref<number | null>(null)
 const loadingGallery = ref(false)
 
 const createGiftOpen = ref(false)
@@ -96,6 +98,32 @@ const galleryGiftPickerId = ref('')
 const galleryFormError = ref('')
 
 const mostSent = computed(() => analytics.value?.mostSentGifts?.slice(0, 5) ?? [])
+
+const gallerySlotCount = computed(() =>
+  gallery.value.reduce((n, s) => n + (s.gifts?.length ?? s.giftCount ?? 0), 0),
+)
+
+const allGallerySlots = computed(() =>
+  gallery.value.flatMap((section) =>
+    (section.gifts ?? []).map((g) => ({
+      ...g,
+      sectionId: section.id,
+      sectionName: section.name,
+      sectionStatus: section.status,
+    })),
+  ),
+)
+
+const deleteGallerySection = computed(
+  () => gallery.value.find((s) => s.id === deleteGalleryId.value) ?? null,
+)
+
+const deleteGalleryMessage = computed(() => {
+  const section = deleteGallerySection.value
+  if (!section) return 'This removes the gallery section and its gift slots.'
+  const n = section.gifts?.length ?? section.giftCount ?? 0
+  return `This permanently removes “${section.name}” and ${n} gallery slot(s) from this UTC month’s template. Host progress for those slots is deleted. Catalog gifts are not deleted. Hide keeps the slots in the template.`
+})
 
 const galleryGiftMap = computed(() => {
   const map = new Map<string, GiftAdminListItem>()
@@ -288,9 +316,17 @@ async function loadGallery() {
   try {
     const { data } = await giftAdminApi.listGalleryCategories()
     gallery.value = data.categories ?? []
+    galleryYear.value = data.year ?? null
+    galleryMonth.value = data.month ?? null
   } finally {
     loadingGallery.value = false
   }
+}
+
+function galleryPeriodLabel() {
+  if (galleryYear.value == null || galleryMonth.value == null) return 'current UTC month'
+  const d = new Date(Date.UTC(galleryYear.value, galleryMonth.value - 1, 1))
+  return `${format(d, 'MMMM yyyy')} UTC`
 }
 
 function openCreateGift() {
@@ -534,21 +570,23 @@ async function submitManageGalleryGifts() {
   const toAdd = [...selectedIds].filter((id) => !existingIds.has(id))
   const toRemove = [...existingIds].filter((id) => !selectedIds.has(id))
 
-  if (toRemove.length) {
-    galleryFormError.value =
-      'Removing gifts from a gallery section is not supported by the API yet. Restore removed gifts before saving.'
-    showToast('Cannot remove gifts — API only supports adding', 'error')
-    return
-  }
-  if (!toAdd.length) {
+  if (!toAdd.length && !toRemove.length) {
     manageGalleryOpen.value = null
     return
   }
 
   acting.value = true
   try {
-    await giftAdminApi.addGiftsToGallery(manageGalleryOpen.value.id, toAdd)
-    showToast(`Added ${toAdd.length} gift(s) to gallery`, 'success')
+    if (toRemove.length) {
+      await giftAdminApi.removeGiftsFromGallery(manageGalleryOpen.value.id, toRemove)
+    }
+    if (toAdd.length) {
+      await giftAdminApi.addGiftsToGallery(manageGalleryOpen.value.id, toAdd)
+    }
+    const parts: string[] = []
+    if (toAdd.length) parts.push(`added ${toAdd.length}`)
+    if (toRemove.length) parts.push(`removed ${toRemove.length}`)
+    showToast(`Gallery gifts ${parts.join(', ')}`, 'success')
     manageGalleryOpen.value = null
     await loadGallery()
   } finally {
@@ -848,6 +886,58 @@ onMounted(async () => {
 
       <!-- Gallery -->
       <div v-show="tab === 'gallery'" class="space-y-4">
+        <div class="rounded-md border border-admin-border bg-admin-bg/30 p-3 text-sm">
+          <p class="font-medium">
+            {{ galleryPeriodLabel() }}
+            · {{ gallery.length }} section{{ gallery.length === 1 ? '' : 's' }}
+            · {{ gallerySlotCount }} gift slot{{ gallerySlotCount === 1 ? '' : 's' }}
+          </p>
+          <p class="mt-1 text-xs text-admin-muted">
+            This is the live monthly template the app uses. Hide only conceals a section in the app;
+            Delete removes its slots (and host progress for those slots). Catalog gifts stay.
+          </p>
+        </div>
+
+        <div v-if="allGallerySlots.length" class="rounded-md border border-admin-border p-4">
+          <p class="mb-3 text-xs font-medium uppercase tracking-wide text-admin-subtext">
+            All gifts in this month ({{ allGallerySlots.length }})
+          </p>
+          <div class="overflow-x-auto">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Gift</th>
+                  <th>Code</th>
+                  <th>Section</th>
+                  <th>Cost</th>
+                  <th>Catalog</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="g in allGallerySlots" :key="g.itemId">
+                  <td>
+                    <div class="flex items-center gap-2">
+                      <img :src="g.displayImageUrl" :alt="g.name" class="h-8 w-8 rounded object-cover" />
+                      <span class="font-medium">{{ g.name }}</span>
+                    </div>
+                  </td>
+                  <td class="font-mono text-xs">{{ g.code }}</td>
+                  <td>
+                    {{ g.sectionName }}
+                    <span v-if="g.sectionStatus === 'hidden'" class="ml-1 text-[10px] uppercase text-admin-warn">
+                      hidden
+                    </span>
+                  </td>
+                  <td class="tabular-nums">{{ formatCoins(g.coinCost) }}</td>
+                  <td>
+                    <StatusBadge :status="g.isActive === false ? 'inactive' : 'active'" />
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
         <div
           v-for="section in gallery"
           :key="section.id"
@@ -860,7 +950,13 @@ onMounted(async () => {
                 <StatusBadge :status="section.status === 'active' ? 'active' : 'inactive'" />
               </div>
               <p class="text-xs text-admin-subtext">
-                {{ section.giftCount }} gifts · order {{ section.displayOrder }}
+                {{ section.gifts?.length ?? section.giftCount }} gift slot{{
+                  (section.gifts?.length ?? section.giftCount) === 1 ? '' : 's'
+                }}
+                · order {{ section.displayOrder }}
+                <span v-if="section.status === 'hidden'" class="text-admin-warn">
+                  · hidden from app, slots still count until deleted
+                </span>
               </p>
             </div>
             <div class="flex flex-wrap gap-1">
@@ -868,7 +964,7 @@ onMounted(async () => {
                 Manage Gifts
               </button>
               <button type="button" class="admin-btn-secondary py-1 text-xs" @click="toggleGallery(section)">
-                {{ section.status === 'active' ? 'Hide' : 'Show' }}
+                {{ section.status === 'active' ? 'Hide from app' : 'Show in app' }}
               </button>
               <button type="button" class="admin-btn-danger py-1 text-xs" @click="deleteGalleryId = section.id">
                 Delete
@@ -884,7 +980,7 @@ onMounted(async () => {
               <img :src="g.displayImageUrl" :alt="g.name" class="h-8 w-8 rounded object-cover" />
               <div>
                 <p class="text-xs font-medium">{{ g.name }}</p>
-                <p class="text-[10px] text-admin-muted">{{ formatCoins(g.coinCost) }}</p>
+                <p class="font-mono text-[10px] text-admin-muted">{{ g.code }} · {{ formatCoins(g.coinCost) }}</p>
               </div>
             </div>
             <p v-if="!section.gifts?.length" class="text-xs text-admin-muted">No gifts in this section</p>
@@ -1097,6 +1193,10 @@ onMounted(async () => {
         <p class="mb-3 text-sm text-admin-subtext">
           Section: <strong>{{ manageGalleryOpen?.name }}</strong>
         </p>
+        <p class="mb-3 text-xs text-admin-muted">
+          Removing a gift unlinks it from this month’s gallery template. Host progress for that
+          slot is deleted. The catalog gift itself is not deleted.
+        </p>
 
         <div v-if="loadingCatalogGifts" class="mb-3 text-sm text-admin-muted">Loading gifts…</div>
 
@@ -1169,7 +1269,7 @@ onMounted(async () => {
     <ConfirmActionDialog
       :open="!!deleteGalleryId"
       title="Delete Gallery Section"
-      message="This removes the gallery section and its gift links."
+      :message="deleteGalleryMessage"
       confirm-label="Delete"
       variant="danger"
       :require-confirm-text="true"

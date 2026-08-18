@@ -66,6 +66,16 @@ const router = createRouter({
           meta: { title: 'Payroll', roles: ['SUPER_ADMIN'], viewName: 'AgencyPayrollView' },
         },
         {
+          path: 'admin/agency-payroll/w/:withdrawalId',
+          name: 'agency-payroll-withdrawal',
+          component: () => import('../views/AgencyPayrollWithdrawalDetailView.vue'),
+          meta: {
+            title: 'Platform Withdrawal',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'AgencyPayrollWithdrawalDetailView',
+          },
+        },
+        {
           path: 'admin/agency-payroll/:assignmentId',
           name: 'agency-payroll-detail',
           component: () => import('../views/AgencyPayrollAssignmentDetailView.vue'),
@@ -136,6 +146,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/live-moderation',
+          name: 'live-moderation',
+          component: () => import('../views/LiveModerationView.vue'),
+          meta: {
+            title: 'Live Moderation',
+            roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'MODERATOR'],
+            viewName: 'LiveModerationView',
+          },
+        },
+        {
           path: 'admin/otp-audit',
           name: 'otp-audit-logs',
           component: () => import('../views/OtpAuditLogsView.vue'),
@@ -169,6 +189,26 @@ const router = createRouter({
             title: 'Transactions',
             roles: ['SUPER_ADMIN'],
             viewName: 'TransactionsView',
+          },
+        },
+        {
+          path: 'admin/currency',
+          name: 'currency',
+          component: () => import('../views/CurrencyView.vue'),
+          meta: {
+            title: 'Currency',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'CurrencyView',
+          },
+        },
+        {
+          path: 'admin/activity',
+          name: 'admin-activity',
+          component: () => import('../views/AdminActivityView.vue'),
+          meta: {
+            title: 'Admin Activity',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'AdminActivityView',
           },
         },
         {

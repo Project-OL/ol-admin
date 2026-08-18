@@ -15,6 +15,8 @@ import RecentReports from '@/components/user/RecentReports.vue'
 import RecentLiveSummary from '@/components/user/RecentLiveSummary.vue'
 import UserLevelControls from '@/components/user/UserLevelControls.vue'
 import UserRestrictions from '@/components/user/UserRestrictions.vue'
+import UserActiveLiveStreams from '@/components/user/UserActiveLiveStreams.vue'
+import UserLiveModeration from '@/components/user/UserLiveModeration.vue'
 import UserVipPanel from '@/components/user/UserVipPanel.vue'
 import UserGuardianPanel from '@/components/user/UserGuardianPanel.vue'
 import UserLocationsPanel from '@/components/user/UserLocationsPanel.vue'
@@ -128,6 +130,7 @@ function setTab(tab: string) {
           <RecentReports :user-id="store.user.id" :summary="store.reportsSummary" />
           <UserLevelControls :user="store.user" />
           <UserRestrictions :user-id="store.user.id" />
+          <UserActiveLiveStreams :user-id="store.user.id" />
           <QuickActions :user="store.user" />
           <ModerationControls :user="store.user" />
         </div>
@@ -162,6 +165,9 @@ function setTab(tab: string) {
           </div>
           <div v-show="store.activeTab === 'live'">
             <RecentLiveSummary :summary="store.liveSummary" />
+            <div class="mt-4">
+              <UserActiveLiveStreams :user-id="store.user.id" />
+            </div>
           </div>
           <div v-show="store.activeTab === 'transactions'">
             <TransactionTabs :user-id="store.user.id" />
@@ -169,8 +175,10 @@ function setTab(tab: string) {
           <div v-show="store.activeTab === 'devices'">
             <DeviceList :user-id="store.user.id" :devices="store.devices" />
           </div>
-          <div v-show="store.activeTab === 'reports'">
-            <RecentReports :user-id="store.user.id" :summary="store.reportsSummary" />
+          <div v-show="store.activeTab === 'reports'" class="space-y-4">
+            <UserLiveModeration :user-id="store.user.id" />
+            <UserRestrictions :user-id="store.user.id" />
+            <UserActiveLiveStreams :user-id="store.user.id" />
           </div>
         </div>
       </div>

@@ -18,12 +18,25 @@ const matchedBy = ref('')
 const recent = ref<UserSearchResult[]>([])
 const loadingHistory = ref(false)
 
+/** Chip / list primary label: prefer composed legal `name`, else username. */
+function chipLabel(user: UserSearchResult) {
+  const legal = (user.name ?? '').trim()
+  if (legal) return legal
+  return user.username || user.id.slice(0, 8)
+}
+
+function chipInitial(user: UserSearchResult) {
+  return chipLabel(user).charAt(0).toUpperCase() || '?'
+}
+
 async function loadHistory() {
   if (useMock) {
     recent.value = [
       {
         id: mockUser.id,
         name: mockUser.name,
+        firstName: mockUser.firstName,
+        lastName: mockUser.lastName,
         username: mockUser.username,
         publicId: mockUser.publicId,
         avatar: mockUser.avatar,
@@ -48,11 +61,32 @@ async function search() {
   const q = query.value.trim()
   if (!q) return
 
+  if ((searchType.value === 'name' || searchType.value === 'auto') && q.length < 2) {
+    // Name resolution requires min 2 chars; auto may still resolve UUID/email/phone with shorter q.
+    // Only block when explicitly searching by name.
+    if (searchType.value === 'name') {
+      showToast('Name search requires at least 2 characters', 'error')
+      return
+    }
+  }
+
   loading.value = true
   results.value = []
   try {
     if (useMock) {
-      results.value = [{ id: mockUser.id, name: mockUser.name, email: mockUser.email }]
+      results.value = [
+        {
+          id: mockUser.id,
+          name: mockUser.name,
+          firstName: mockUser.firstName,
+          lastName: mockUser.lastName,
+          username: mockUser.username,
+          email: mockUser.email,
+          publicId: mockUser.publicId,
+          avatar: mockUser.avatar,
+          status: mockUser.status,
+        },
+      ]
       matchedBy.value = 'mock'
       return
     }
@@ -61,6 +95,7 @@ async function search() {
     results.value = data.users.map(mapSearchUser)
     if (!results.value.length) showToast('No users found', 'error')
     // Exact single-match search updates history server-side; refresh chips.
+    // Name multi-match dumps are not written to history.
     if (results.value.length === 1) void loadHistory()
   } catch {
     /* interceptor handles toast */
@@ -83,7 +118,7 @@ onMounted(() => {
     <div class="admin-card">
     <h1 class="text-xl font-semibold">User Search</h1>
       <p class="mt-1 text-sm text-admin-subtext">
-        Search by email, phone, user ID, public ID, device ID, or name
+        Search by email, phone, user ID, public ID, device ID, or name (first name, last name, or both)
       </p>
 
       <div class="admin-search-row mt-6">
@@ -91,7 +126,7 @@ onMounted(() => {
           v-model="query"
           type="text"
           class="admin-input min-w-0 flex-1"
-          placeholder="user@example.com, +919876543210, UUID..."
+          placeholder="Jane, Jane Doe, user@example.com, +919876543210, UUID..."
           @keydown.enter="search"
         />
         <select v-model="searchType" class="admin-input w-full sm:w-36">
@@ -122,16 +157,19 @@ onMounted(() => {
             <img
               v-if="user.avatar"
               :src="user.avatar"
-              :alt="user.name"
+              :alt="chipLabel(user)"
               class="h-6 w-6 shrink-0 rounded-full object-cover"
             />
             <span
               v-else
               class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-admin-accent/20 text-[10px] font-bold text-admin-accent"
             >
-              {{ user.name.charAt(0) }}
+              {{ chipInitial(user) }}
             </span>
-            <span class="min-w-0 truncate font-medium">{{ user.name }}</span>
+            <span class="min-w-0 truncate font-medium">{{ chipLabel(user) }}</span>
+            <span v-if="user.username && chipLabel(user) !== user.username" class="shrink-0 text-xs text-admin-muted">
+              @{{ user.username }}
+            </span>
             <span class="shrink-0 font-mono text-xs text-admin-muted">
               {{ user.publicId ?? user.id.slice(0, 8) }}
             </span>
@@ -141,6 +179,7 @@ onMounted(() => {
 
       <p v-if="matchedBy && results.length" class="mt-4 text-xs text-admin-muted">
         Matched by: {{ matchedBy }}
+        <span v-if="results.length > 1" class="ml-1">({{ results.length }} matches — select one)</span>
       </p>
 
       <div v-if="results.length" class="admin-table-wrap mt-4">
@@ -148,6 +187,7 @@ onMounted(() => {
           <thead>
             <tr>
               <th>User</th>
+              <th>Name</th>
               <th>Contact</th>
               <th>Status</th>
               <th />
@@ -160,20 +200,26 @@ onMounted(() => {
                   <img
                     v-if="user.avatar"
                     :src="user.avatar"
-                    :alt="user.name"
+                    :alt="chipLabel(user)"
                     class="h-9 w-9 rounded-full object-cover"
                   />
                   <div
                     v-else
                     class="flex h-9 w-9 items-center justify-center rounded-full bg-admin-accent/20 text-xs font-bold text-admin-accent"
                   >
-                    {{ user.name.charAt(0) }}
+                    {{ chipInitial(user) }}
                   </div>
                   <div>
-                    <p class="font-medium">{{ user.name }}</p>
+                    <p class="font-medium">{{ user.username || chipLabel(user) }}</p>
                     <p class="font-mono text-xs text-admin-subtext">{{ user.publicId ?? user.id.slice(0, 8) }}</p>
                   </div>
                 </div>
+              </td>
+              <td class="text-xs">
+                <p class="font-medium text-admin-text">{{ chipLabel(user) }}</p>
+                <p class="text-admin-subtext">
+                  {{ [user.firstName, user.lastName].filter(Boolean).join(' ') || '—' }}
+                </p>
               </td>
               <td class="text-xs">
                 <p>{{ user.email ?? '—' }}</p>

@@ -61,6 +61,20 @@ export type LevelThreshold = {
   iconKey: string | null
 }
 
+export type RichTierConfig = {
+  tier: number
+  minRechargeCoins: string
+  displayName: string
+}
+
+export type RichTierConfigBody = {
+  tiers: Array<{
+    tier: number
+    minRechargeCoins: string
+    displayName: string
+  }>
+}
+
 export type WalletLevelConfigsBody = {
   wealth?: Array<{
     level: number
@@ -134,10 +148,43 @@ export type CommissionWindowUpdateResponse = CommissionWindowSnapshot & {
   recomputeEnqueued: boolean
 }
 
+export type PayrollFeeTier = {
+  minPoints: string
+  maxPoints: string | null
+  minUsd: number
+  maxUsd: number | null
+  platformFeeRateBp: number
+  agentRewardRateBp: number
+  sortOrder: number
+}
+
+export type PayrollFeeTierDraft = {
+  minUsd: number | null
+  maxUsd: number | null
+  platformFeeRatePercent: number | null
+  agentRewardRatePercent: number | null
+}
+
+export type PayrollCountryFxRate = {
+  country: string
+  countryCode: string | null
+  currencyCode: string
+  ratePerUsd: number
+  sortOrder: number
+}
+
+export type PayrollCountryFxDraft = {
+  country: string
+  countryCode: string
+  currencyCode: string
+  ratePerUsd: number | null
+}
+
 export type PayrollConfigSnapshot = {
   id: number
   platformFeeRateBp: number
   agentRewardRateBp: number
+  feeTiers?: PayrollFeeTier[]
   serviceFeeUsd: number
   minWithdrawalUsd: number
   maxWithdrawalUsd: number
@@ -145,11 +192,111 @@ export type PayrollConfigSnapshot = {
   waitingHours: number
   maxAssignmentAttempts: number
   inrPerUsd: number
+  nprPerUsd?: number
+  countryRates?: PayrollCountryFxRate[]
 }
 
 export type PayrollConfigUpdate = Partial<
-  Omit<PayrollConfigSnapshot, 'id'>
->
+  Omit<PayrollConfigSnapshot, 'id' | 'feeTiers' | 'countryRates'>
+> & {
+  feeTiers?: Array<{
+    minUsd: number
+    maxUsd?: number | null
+    platformFeeRateBp: number
+    agentRewardRateBp: number
+  }>
+  countryRates?: Array<{
+    country: string
+    countryCode?: string | null
+    currencyCode: string
+    ratePerUsd: number
+  }>
+}
+
+export type PayoutRailDto = {
+  feeRateBp: number
+  feePercent: number
+  arrivalTime: string
+  enabled: boolean
+}
+
+export type PayoutRailsConfig = {
+  epay: PayoutRailDto
+  bank: PayoutRailDto
+  updatedAt: string
+}
+
+export type PayoutRailUpdate = {
+  feeRateBp?: number
+  arrivalTime?: string
+  enabled?: boolean
+}
+
+export type PayoutRailsConfigUpdate = {
+  epay?: PayoutRailUpdate
+  bank?: PayoutRailUpdate
+}
+
+export type PayoutRailDraft = {
+  enabled: boolean
+  feePercent: number
+  arrivalTime: string
+}
+
+export type MessagingActionUnit = 'seconds' | 'minutes' | 'hours'
+
+export type MessagingConfigDto = {
+  amount: number
+  unit: MessagingActionUnit
+  windowMs: number
+  /** Floor of windowMs / 60_000; may be 0 for sub-minute windows. */
+  windowMinutes: number
+  windowSeconds: number
+  updatedAt: string
+}
+
+export type MessagingConfigUpdate = {
+  amount: number
+  unit: MessagingActionUnit
+}
+
+/** PENDING_REVIEW contest window before auto-close (same shape as messaging window). */
+export type SupportReviewWindowConfigDto = MessagingConfigDto
+
+export type SupportReviewWindowConfigUpdate = MessagingConfigUpdate
+
+export type AdminAuthLockoutUnit = 'minutes' | 'hours'
+
+export type AdminAuthConfigDto = {
+  failedLoginThreshold: number
+  amount: number
+  unit: AdminAuthLockoutUnit
+  lockoutMinutes: number
+  lockoutMs: number
+  updatedAt: string
+}
+
+export type AdminAuthConfigUpdate = {
+  failedLoginThreshold?: number
+  amount?: number
+  unit?: AdminAuthLockoutUnit
+}
+
+export type AgencyHostCooldownUnit = 'hours' | 'days'
+
+export type AgencyHostConfigDto = {
+  amount: number
+  unit: AgencyHostCooldownUnit
+  rejoinCooldownHours: number
+  rejoinCooldownMs: number
+  updatedAt: string
+}
+
+export type AgencyHostConfigUpdate = {
+  amount?: number
+  unit?: AgencyHostCooldownUnit
+  rejoinCooldownHours?: number
+}
 
 export type VideoCallPriceCapTier = {
   minLevel: number
@@ -177,6 +324,7 @@ export type SystemRatesAggregate = {
   personalExchangeRates: { tiers: RateTier[] }
   coinPackages: { packages: CoinPackage[] }
   walletLevelConfigs: { wealth: LevelThreshold[]; livestream: LevelThreshold[] }
+  richTierConfigs?: { tiers: RichTierConfig[] }
   tradingTopupRates: { tiers: RateTier[] }
   agentExchangeRates: { tiers: RateTier[] }
   tradingTopupPackages: { packages: TradingPackage[] }
@@ -184,6 +332,7 @@ export type SystemRatesAggregate = {
   commissionWindow: CommissionWindowSnapshot
   payroll: PayrollConfigSnapshot
   videoCallPriceCaps?: VideoCallPriceCapsSnapshot
+  agencyHost?: AgencyHostConfigDto
 }
 
 /** Editable row for tier tables (maxUsd blank = open-ended). */

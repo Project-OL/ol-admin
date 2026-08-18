@@ -3,6 +3,7 @@ import type {
   CreateGalleryCategoryPayload,
   CreateGiftCategoryPayload,
   CreateGiftPayload,
+  GalleryAdminListResponse,
   GalleryCategoryAdmin,
   GiftAnalytics,
   GiftCategoryAdmin,
@@ -54,7 +55,7 @@ export const giftAdminApi = {
   },
 
   listGalleryCategories(params?: { year?: number; month?: number }) {
-    return api.get<{ categories: GalleryCategoryAdmin[] }>('/admin/gift-gallery/categories', {
+    return api.get<GalleryAdminListResponse>('/admin/gift-gallery/categories', {
       params,
     })
   },
@@ -72,6 +73,10 @@ export const giftAdminApi = {
 
   addGiftsToGallery(sectionId: string, giftIds: string[]) {
     return api.post(`/admin/gift-gallery/categories/${sectionId}/gifts`, { giftIds })
+  },
+
+  removeGiftsFromGallery(sectionId: string, giftIds: string[]) {
+    return api.delete(`/admin/gift-gallery/categories/${sectionId}/gifts`, { data: { giftIds } })
   },
 
   reorderGalleryCategories(orderedIds: string[]) {

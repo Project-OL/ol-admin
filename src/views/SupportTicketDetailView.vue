@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { format } from 'date-fns'
 import { useRoute, useRouter } from 'vue-router'
 import axios from 'axios'
@@ -17,19 +17,28 @@ import type {
 } from '@/types/customerSupport'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SupportTicketInitialSubmissionPanel from '@/components/support/SupportTicketInitialSubmissionPanel.vue'
+import { ticketCategoryBreadcrumb } from '@/utils/supportTicket'
 import { showToast } from '@/utils/toast'
+import { useAdminWebSocket } from '@/composables/useAdminWebSocket'
+import { useCsaDirectory } from '@/composables/useCsaDirectory'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const adminWs = useAdminWebSocket()
 
 const ticketId = computed(() => String(route.params.ticketId))
 const ticket = ref<SupportTicketDetail | null>(null)
 const messages = ref<SupportMessage[]>([])
 const notes = ref<SupportNote[]>([])
+const messagesHasMore = ref(false)
+const messagesCursor = ref<string | null>(null)
+const loadingMoreMessages = ref(false)
 const loading = ref(true)
 const acting = ref(false)
 const detailTab = ref<'messages' | 'notes'>('messages')
+const messagesEl = ref<HTMLElement | null>(null)
 
 const replyText = ref('')
 const replyFile = ref<File | null>(null)
@@ -39,7 +48,12 @@ const resolveNote = ref('')
 const resolveType = ref<SupportTicketResolution>('RESOLVED')
 const assignOpen = ref(false)
 const assignAdminId = ref('')
-const csaOptions = ref<Array<{ id: string; name: string }>>([])
+const { csas: csaOptions, loading: loadingCsas, load: loadCsaDirectory, csaLabel } = useCsaDirectory()
+
+const assignChoices = computed(() => {
+  const current = ticket.value?.assignedAdminId
+  return csaOptions.value.filter((c) => c.id !== current)
+})
 
 const isFrozen = computed(() => {
   if (!ticket.value) return false
@@ -59,16 +73,12 @@ const canAct = computed(() => {
 const canReply = computed(() => {
   if (!ticket.value) return false
   if (ticket.value.stage === 'closed') return false
-  // Pending review: user may contest by messaging; CSA can continue after reopen.
-  // While still pending_review, assignee may still reply if needed? Doc says frozen for hand-off.
-  // Allow reply for assignee/SA unless closed.
-  if (auth.isSuperAdmin) return ticket.value.stage !== 'closed'
+  if (auth.isSuperAdmin) return true
   if (!ticket.value.assignedAdminId) return false
   return ticket.value.assignedAdminId === auth.admin?.id
 })
 
 const canHandOff = computed(() => canAct.value && !isFrozen.value)
-
 const canResolve = computed(() => canAct.value && !isFrozen.value)
 
 const canForceClose = computed(() => {
@@ -96,38 +106,56 @@ function ticketErrorMessage(err: unknown, fallback: string) {
   const code = (err.response?.data as { code?: string; message?: string } | undefined)?.code
   const message = (err.response?.data as { message?: string } | undefined)?.message
   switch (code) {
-    case 'TICKET_NOT_ASSIGNED_TO_YOU':
-      return 'Ticket is not assigned to you'
-    case 'TICKET_CLOSED':
-      return 'Ticket is already closed'
-    case 'ALREADY_ASSIGNED':
-      return 'Ticket is already assigned'
-    case 'TICKET_ALREADY_PENDING_REVIEW':
-      return 'Ticket is already pending user review'
-    case 'TICKET_PENDING_REVIEW_FROZEN':
-      return 'Ticket is frozen during pending review — no hand-off'
-    case 'TICKET_RATED_FROZEN':
-      return 'Ticket was rated and is frozen to the assignee'
-    case 'TICKET_ALREADY_RATED':
-      return 'Ticket already has a rating'
-    case 'INVALID_REQUEST':
-      return message || 'Invalid request (note may be required)'
-    default:
-      return message || fallback
+    case 'TICKET_NOT_ASSIGNED_TO_YOU': return 'Ticket is not assigned to you'
+    case 'TICKET_CLOSED': return 'Ticket is already closed'
+    case 'ALREADY_ASSIGNED': return 'Ticket is already assigned'
+    case 'TICKET_ALREADY_PENDING_REVIEW': return 'Ticket is already pending user review'
+    case 'TICKET_PENDING_REVIEW_FROZEN': return 'Ticket is frozen during pending review — no hand-off'
+    case 'TICKET_RATED_FROZEN': return 'Ticket was rated and is frozen to the assignee'
+    case 'TICKET_ALREADY_RATED': return 'Ticket already has a rating'
+    case 'INVALID_REQUEST': return message || 'Invalid request (note may be required)'
+    default: return message || fallback
   }
 }
 
-async function loadTicket() {
-  loading.value = true
+function upsertMessage(msg: SupportMessage) {
+  if (messages.value.some((m) => m.id === msg.id || (msg.publicId && m.publicId === msg.publicId))) return
+  messages.value = [...messages.value, msg]
+  void nextTick(() => {
+    if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
+}
+
+async function loadTicket(appendMessages = false, silent = false) {
+  if (!appendMessages && !silent) loading.value = true
   try {
-    const { data } = await customerSupportApi.getTicket(ticketId.value)
+    const { data } = await customerSupportApi.getTicket(ticketId.value, {
+      cursor: appendMessages ? messagesCursor.value ?? undefined : undefined,
+      limit: 30,
+    })
     ticket.value = data.ticket
-    messages.value = data.messages ?? []
-    notes.value = data.notes ?? []
+    if (appendMessages) {
+      messages.value = [...(data.messages ?? []), ...messages.value]
+    } else {
+      messages.value = data.messages ?? []
+      notes.value = data.notes ?? []
+    }
+    messagesHasMore.value = Boolean(data.hasMore)
+    messagesCursor.value = data.nextCursor ?? null
   } catch {
-    showToast('Failed to load ticket', 'error')
+    if (!appendMessages) showToast('Failed to load ticket', 'error')
   } finally {
-    loading.value = false
+    if (!appendMessages && !silent) loading.value = false
+  }
+}
+
+async function loadOlderMessages() {
+  if (!messagesHasMore.value || !messagesCursor.value || loadingMoreMessages.value) return
+  loadingMoreMessages.value = true
+  try {
+    await loadTicket(true)
+  } finally {
+    loadingMoreMessages.value = false
   }
 }
 
@@ -137,20 +165,38 @@ async function sendReply() {
     return
   }
   acting.value = true
+  const optimisticContent = replyText.value.trim() || '(image)'
+  const optimisticId = `optimistic-${Date.now()}`
+  // Optimistic insert
+  const optimistic: SupportMessage = {
+    id: optimisticId,
+    senderType: 'SUPPORT',
+    content: optimisticContent,
+    imageUrl: null,
+    createdAt: new Date().toISOString(),
+  }
+  messages.value = [...messages.value, optimistic]
+  void nextTick(() => {
+    if (messagesEl.value) messagesEl.value.scrollTop = messagesEl.value.scrollHeight
+  })
+  replyText.value = ''
+  replyFile.value = null
   try {
     let imageUrl: string | undefined
     if (replyFile.value) {
       imageUrl = await uploadSupportReplyImage(ticketId.value, replyFile.value)
     }
-    await customerSupportApi.reply(ticketId.value, {
-      content: replyText.value.trim() || '(image)',
+    const { data: msg } = await customerSupportApi.reply(ticketId.value, {
+      content: optimisticContent,
       imageUrl,
-    })
-    replyText.value = ''
-    replyFile.value = null
+    }) as unknown as { data: SupportMessage }
+    // Replace optimistic with real
+    messages.value = messages.value.map((m) => m.id === optimisticId ? (msg ?? m) : m)
     showToast('Reply sent', 'success')
-    await loadTicket()
   } catch (err) {
+    // Remove optimistic on failure
+    messages.value = messages.value.filter((m) => m.id !== optimisticId)
+    replyText.value = optimisticContent
     showToast(ticketErrorMessage(err, 'Reply failed'), 'error')
   } finally {
     acting.value = false
@@ -162,7 +208,7 @@ async function claim() {
   try {
     await customerSupportApi.claim(ticketId.value)
     showToast('Ticket claimed', 'success')
-    await loadTicket()
+    await loadTicket(false, true)
   } catch (err) {
     showToast(ticketErrorMessage(err, 'Claim failed'), 'error')
   } finally {
@@ -183,8 +229,8 @@ async function submitResolve() {
       note,
     })
     resolveOpen.value = false
-    showToast('Resolution offered — pending user review (24h)', 'success')
-    await loadTicket()
+    showToast('Resolution offered — pending user review', 'success')
+    await loadTicket(false, true)
   } catch (err) {
     showToast(ticketErrorMessage(err, 'Resolve failed'), 'error')
   } finally {
@@ -193,12 +239,12 @@ async function submitResolve() {
 }
 
 async function forceClose() {
-  if (!confirm('Force-close this ticket immediately (no 24h review window)?')) return
+  if (!confirm('Force-close this ticket immediately (no review window)?')) return
   acting.value = true
   try {
     await customerSupportApi.close(ticketId.value)
     showToast('Ticket closed', 'success')
-    await loadTicket()
+    await loadTicket(false, true)
   } catch (err) {
     showToast(ticketErrorMessage(err, 'Close failed'), 'error')
   } finally {
@@ -211,12 +257,17 @@ async function setPriority(priority: SupportTicketPriority) {
   try {
     await customerSupportApi.setPriority(ticketId.value, priority)
     showToast('Priority updated', 'success')
-    await loadTicket()
+    await loadTicket(false, true)
   } catch (err) {
     showToast(ticketErrorMessage(err, 'Priority update failed'), 'error')
   } finally {
     acting.value = false
   }
+}
+
+function onPriorityChange(e: Event) {
+  const value = (e.target as HTMLSelectElement).value as SupportTicketPriority
+  void setPriority(value)
 }
 
 async function addNote() {
@@ -226,7 +277,7 @@ async function addNote() {
     await customerSupportApi.addNote(ticketId.value, noteText.value.trim())
     noteText.value = ''
     showToast('Note added', 'success')
-    await loadTicket()
+    await loadTicket(false, true)
     detailTab.value = 'notes'
   } catch {
     showToast('Failed to add note', 'error')
@@ -242,14 +293,7 @@ async function openAssign() {
   }
   assignOpen.value = true
   assignAdminId.value = ''
-  if (auth.isSuperAdmin) {
-    try {
-      const { data } = await customerSupportApi.listCsas({ status: 'ACTIVE', limit: 100 })
-      csaOptions.value = (data.csas ?? []).map((c) => ({ id: c.id, name: c.name }))
-    } catch {
-      csaOptions.value = []
-    }
-  }
+  await loadCsaDirectory()
 }
 
 async function submitAssign() {
@@ -262,7 +306,7 @@ async function submitAssign() {
     await customerSupportApi.assign(ticketId.value, assignAdminId.value)
     assignOpen.value = false
     showToast('Ticket handed off', 'success')
-    await loadTicket()
+    await loadTicket(false, true)
   } catch (err) {
     showToast(ticketErrorMessage(err, 'Assign failed'), 'error')
   } finally {
@@ -275,7 +319,50 @@ function onFileChange(e: Event) {
   replyFile.value = input.files?.[0] ?? null
 }
 
-onMounted(loadTicket)
+// --- WebSocket live subscription ---
+let unsubWs: (() => void) | null = null
+
+function bindWs(tid: string) {
+  void adminWs.connect()
+  adminWs.joinSupportTicket(tid)
+  unsubWs = adminWs.onFrame((frame) => {
+    if (frame.t === 'SUPPORT_TICKET_MESSAGE') {
+      if (frame.ticketId !== tid) return
+      upsertMessage({
+        id: frame.message.id,
+        publicId: frame.message.publicId,
+        senderType: frame.message.senderType as 'USER' | 'SUPPORT' | 'SYSTEM',
+        content: frame.message.content,
+        imageUrl: frame.message.imageUrl,
+        isAutoReply: frame.message.isAutoReply,
+        createdAt: frame.message.createdAt,
+      })
+    }
+    if (frame.t === 'SUPPORT_TICKET_STATUS_CHANGED') {
+      if (frame.ticketId !== tid) return
+      // Refresh full ticket to pick up new stage/status/pendingReviewUntil
+      void loadTicket(false, true)
+      const statusMsg = frame.status === 'CLOSED'
+        ? `Ticket closed (${frame.resolution ?? 'force-closed'})`
+        : `Ticket moved to pending review (${frame.resolution})`
+      showToast(statusMsg, 'info' as never)
+    }
+  })
+}
+
+function unbindWs(tid: string) {
+  adminWs.leaveSupportTicket(tid)
+  if (unsubWs) { unsubWs(); unsubWs = null }
+}
+
+onMounted(() => {
+  void loadTicket()
+  bindWs(ticketId.value)
+})
+
+onUnmounted(() => {
+  unbindWs(ticketId.value)
+})
 </script>
 
 <template>
@@ -316,7 +403,16 @@ onMounted(loadTicket)
               </span>
             </div>
             <p class="mt-1 text-sm text-admin-subtext">
-              {{ ticket.type }}{{ ticket.subType ? ' / ' + ticket.subType : '' }}
+              {{ ticketCategoryBreadcrumb(ticket) }}
+            </p>
+            <p
+              v-if="ticket.stage === 'pending_review' || ticket.status === 'PENDING_REVIEW'"
+              class="mt-2 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1.5 text-xs text-amber-200"
+            >
+              Resolution offered — user has until
+              <strong>{{ ticket.pendingReviewUntil ? format(new Date(String(ticket.pendingReviewUntil)), 'dd MMM HH:mm') : '(contest window)' }}</strong>
+              to confirm-close or reply to contest.
+              Hand-off is frozen until closed or reopened.
             </p>
             <p v-if="ticket.ratedAt" class="mt-1 text-xs text-admin-muted">
               Rated {{ format(new Date(ticket.ratedAt), 'dd MMM yyyy HH:mm') }}
@@ -324,12 +420,6 @@ onMounted(loadTicket)
             <p v-if="isFrozen && ticket.stage !== 'closed'" class="mt-2 text-xs text-admin-warn">
               Frozen to assignee during pending review / after rating — hand-off disabled.
             </p>
-            <div
-              v-if="ticket.refType && ticket.refId"
-              class="mt-2 inline-flex rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1 text-xs text-amber-300"
-            >
-              Linked {{ ticket.refType }}: {{ ticket.refId }}
-            </div>
           </div>
           <div class="flex flex-wrap gap-1">
             <button
@@ -398,7 +488,7 @@ onMounted(loadTicket)
               class="admin-input mt-1"
               :value="ticket.priority"
               :disabled="!canAct || acting"
-              @change="setPriority(($event.target as HTMLSelectElement).value as SupportTicketPriority)"
+              @change="onPriorityChange"
             >
               <option value="LOW">LOW</option>
               <option value="NORMAL">NORMAL</option>
@@ -407,6 +497,8 @@ onMounted(loadTicket)
             </select>
           </div>
         </div>
+
+        <SupportTicketInitialSubmissionPanel :ticket="ticket" />
 
         <div class="flex gap-1 rounded-lg bg-admin-bg p-1 w-fit">
           <button
@@ -432,7 +524,17 @@ onMounted(loadTicket)
         </div>
 
         <div v-show="detailTab === 'messages'" class="space-y-3">
-          <div class="max-h-[420px] space-y-2 overflow-y-auto rounded border border-admin-border p-3">
+          <div ref="messagesEl" class="max-h-[420px] space-y-2 overflow-y-auto rounded border border-admin-border p-3">
+            <div v-if="messagesHasMore" class="pb-2 text-center">
+              <button
+                type="button"
+                class="admin-btn-secondary py-1 text-xs"
+                :disabled="loadingMoreMessages"
+                @click="loadOlderMessages"
+              >
+                {{ loadingMoreMessages ? 'Loading…' : 'Load older messages' }}
+              </button>
+            </div>
             <div
               v-for="m in messages"
               :key="m.id"
@@ -460,13 +562,13 @@ onMounted(loadTicket)
             <p v-if="!messages.length" class="py-8 text-center text-admin-muted">No messages</p>
           </div>
 
-          <div v-if="canReply || isUnassigned" class="space-y-2">
+          <div v-if="canReply" class="space-y-2">
             <textarea
               v-model="replyText"
               rows="3"
               class="admin-input resize-none"
               placeholder="Write a reply to the user…"
-              :disabled="isUnassigned && !canReply"
+              :disabled="acting"
             />
             <div class="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
               <input type="file" accept="image/*" class="min-w-0 text-xs text-admin-subtext" @change="onFileChange" />
@@ -474,13 +576,16 @@ onMounted(loadTicket)
               <button
                 type="button"
                 class="admin-btn-primary w-full sm:ml-auto sm:w-auto"
-                :disabled="acting || (isUnassigned && !canReply)"
+                :disabled="acting"
                 @click="sendReply"
               >
                 {{ acting ? 'Sending…' : 'Send reply' }}
               </button>
             </div>
           </div>
+          <p v-else-if="isUnassigned && ticket.stage === 'open'" class="text-xs text-admin-warn">
+            Claim this ticket before replying.
+          </p>
           <p v-else-if="ticket.stage !== 'closed'" class="text-xs text-admin-warn">
             This ticket is assigned to another agent — actions are disabled.
           </p>
@@ -515,7 +620,7 @@ onMounted(loadTicket)
       <template #body>
         <p class="mb-3 text-sm text-admin-subtext">
           Posts your reason into the user chat and moves the ticket to pending review.
-          The user has <strong class="text-admin-text">24 hours</strong> to confirm-close or reply to contest.
+          The user will have the configured contest window to confirm-close or reply to contest.
         </p>
         <textarea
           v-model="resolveNote"
@@ -540,21 +645,25 @@ onMounted(loadTicket)
 
     <BaseDialog :open="assignOpen" title="Hand off ticket" @close="assignOpen = false">
       <template #body>
-        <div v-if="auth.isSuperAdmin" class="space-y-2">
+        <div class="space-y-2">
           <label class="text-xs text-admin-subtext">Assign to CSA</label>
-          <select v-model="assignAdminId" class="admin-input">
-            <option value="">Select…</option>
-            <option v-for="c in csaOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
+          <select v-model="assignAdminId" class="admin-input" :disabled="loadingCsas">
+            <option value="">{{ loadingCsas ? 'Loading CSAs…' : 'Select…' }}</option>
+            <option v-for="c in assignChoices" :key="c.id" :value="c.id">{{ csaLabel(c) }}</option>
           </select>
-        </div>
-        <div v-else class="space-y-2">
-          <label class="text-xs text-admin-subtext">Target CSA admin ID</label>
-          <input v-model="assignAdminId" class="admin-input font-mono" placeholder="admin uuid" />
+          <p v-if="!loadingCsas && assignChoices.length === 0" class="text-xs text-admin-muted">
+            No other active CSAs to hand off to.
+          </p>
         </div>
       </template>
       <template #footer>
         <button type="button" class="admin-btn-secondary" @click="assignOpen = false">Cancel</button>
-        <button type="button" class="admin-btn-primary" :disabled="acting" @click="submitAssign">
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="acting || loadingCsas || !assignAdminId"
+          @click="submitAssign"
+        >
           Assign
         </button>
       </template>

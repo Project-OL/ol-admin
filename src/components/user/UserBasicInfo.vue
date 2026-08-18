@@ -5,6 +5,7 @@ import { format } from 'date-fns'
 import type { UpdateUserPayload, UserProfile } from '@/types/user'
 import { getInitials } from '@/utils/format'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
+import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useUserDetailStore } from '@/stores/userDetail'
 import { showToast } from '@/utils/toast'
 
@@ -13,9 +14,13 @@ const store = useUserDetailStore()
 
 const editing = ref(false)
 const saving = ref(false)
+const showRevokeFace = ref(false)
+const revokingFace = ref(false)
 
 const form = reactive({
   username: '',
+  firstName: '',
+  lastName: '',
   mobile: '',
   email: '',
   gender: '',
@@ -30,6 +35,18 @@ const tagsInput = computed({
   },
 })
 
+/** Live header-style join while editing; prefer API `name` when not dirty. */
+const displayLegalName = computed(() => {
+  if (editing.value) {
+    const composed = [form.firstName, form.lastName]
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .join(' ')
+    if (composed) return composed
+  }
+  return props.user.name || props.user.username || 'Unknown'
+})
+
 const genderLocked = computed(() => props.user.genderEditable === false)
 
 function tagsEqual(a: string[], b: string[]) {
@@ -40,7 +57,9 @@ function tagsEqual(a: string[], b: string[]) {
 }
 
 function startEdit() {
-  form.username = props.user.username ?? props.user.name
+  form.username = props.user.username ?? ''
+  form.firstName = props.user.firstName ?? ''
+  form.lastName = props.user.lastName ?? ''
   form.mobile = props.user.mobile ?? ''
   form.email = props.user.email ?? ''
   form.gender = (props.user.gender ?? '').toLowerCase()
@@ -53,20 +72,110 @@ function cancelEdit() {
   editing.value = false
 }
 
+/** Map API / network failures to a user-facing toast. */
+function userUpdateErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err)) return 'Failed to update user'
+  const body = err.response?.data as
+    | { code?: string; message?: string; error?: string }
+    | undefined
+  switch (body?.code) {
+    case 'FACE_VERIFIED_GENDER_LOCKED':
+      return 'Revoke face verification first to change gender'
+    case 'EMAIL_TAKEN':
+      return 'Email is already in use'
+    case 'PHONE_TAKEN':
+      return 'Phone is already in use'
+    case 'INVALID_PHONE':
+      return body.message || 'Invalid phone format (E.164, e.g. +919876543210)'
+    case 'USER_NOT_FOUND':
+      return 'User not found'
+    case 'INVALID_REQUEST':
+      return body.message || 'Invalid update request'
+    case 'IDENTIFIER_VERSION_CONFLICT':
+      return 'Contact info was updated elsewhere — please retry'
+    case 'ADMIN_VIEW_FORBIDDEN':
+      return 'You do not have permission to update this user'
+    case 'ADMIN_TOKEN_INVALID':
+    case 'ADMIN_TOKEN_EXPIRED':
+      return 'Admin session expired — please sign in again'
+  }
+  if (body?.message) return body.message
+  if (typeof body?.error === 'string' && body.error) return body.error
+  if (err.code === 'ERR_NETWORK') return 'Network error — could not reach the server'
+  return 'Failed to update user'
+}
+
+/**
+ * Build a partial PATCH body with only changed fields.
+ * Empty email/phone/country are allowed only when already empty (not cleared).
+ * Never sends null/undefined keys (backend treats omitted fields as unchanged).
+ */
 function buildDirtyPayload(): UpdateUserPayload | null {
   const payload: UpdateUserPayload = {}
-  const currentUsername = props.user.username ?? props.user.name
+  const currentUsername = props.user.username ?? ''
   const username = form.username.trim()
-  if (username && username !== currentUsername) payload.username = username
+  if (username !== currentUsername.trim()) {
+    if (username.length < 2) {
+      showToast('Username must be at least 2 characters', 'error')
+      return null
+    }
+    payload.username = username
+  }
+
+  const firstName = form.firstName.trim()
+  const currentFirst = (props.user.firstName ?? '').trim()
+  if (firstName !== currentFirst) {
+    if (!firstName) {
+      showToast('First name cannot be cleared', 'error')
+      return null
+    }
+    if (firstName.length > 50) {
+      showToast('First name must be at most 50 characters', 'error')
+      return null
+    }
+    payload.firstName = firstName
+  }
+
+  // Empty string clears lastName on the API; omit when unchanged.
+  const lastName = form.lastName.trim()
+  const currentLast = (props.user.lastName ?? '').trim()
+  if (lastName !== currentLast) {
+    if (lastName.length > 50) {
+      showToast('Last name must be at most 50 characters', 'error')
+      return null
+    }
+    payload.lastName = lastName
+  }
 
   const phone = form.mobile.trim()
-  if (phone !== (props.user.mobile ?? '')) payload.phone = phone || undefined
+  const currentPhone = (props.user.mobile ?? '').trim()
+  if (phone !== currentPhone) {
+    if (!phone) {
+      showToast('Phone cannot be cleared', 'error')
+      return null
+    }
+    payload.phone = phone
+  }
 
   const email = form.email.trim()
-  if (email !== (props.user.email ?? '')) payload.email = email || undefined
+  const currentEmail = (props.user.email ?? '').trim()
+  if (email !== currentEmail) {
+    if (!email) {
+      showToast('Email cannot be cleared', 'error')
+      return null
+    }
+    payload.email = email
+  }
 
   const country = form.country.trim()
-  if (country !== (props.user.country ?? '')) payload.country = country || undefined
+  const currentCountry = (props.user.country ?? '').trim()
+  if (country !== currentCountry) {
+    if (!country) {
+      showToast('Country cannot be cleared', 'error')
+      return null
+    }
+    payload.country = country
+  }
 
   if (!tagsEqual(form.tags, props.user.tags)) payload.tags = [...form.tags]
 
@@ -74,8 +183,12 @@ function buildDirtyPayload(): UpdateUserPayload | null {
   const currentGender = (props.user.gender ?? '').toLowerCase()
   if (gender !== currentGender) {
     if (genderLocked.value) {
+      // Don't block other dirty fields — skip gender and warn.
       showToast('Revoke face verification first to change gender', 'error')
-    } else if (gender) {
+    } else if (!gender) {
+      showToast('Select a gender', 'error')
+      return null
+    } else {
       payload.gender = gender
     }
   }
@@ -86,7 +199,19 @@ function buildDirtyPayload(): UpdateUserPayload | null {
 async function saveEdit() {
   const payload = buildDirtyPayload()
   if (!payload) {
-    // No dirty fields (or only a blocked gender change) — stay in edit mode.
+    // Stay in edit mode (validation toast may already be shown).
+    if (
+      form.firstName.trim() === (props.user.firstName ?? '').trim() &&
+      form.lastName.trim() === (props.user.lastName ?? '').trim() &&
+      form.username.trim() === (props.user.username ?? '').trim() &&
+      form.mobile.trim() === (props.user.mobile ?? '').trim() &&
+      form.email.trim() === (props.user.email ?? '').trim() &&
+      form.country.trim() === (props.user.country ?? '').trim() &&
+      form.gender.trim().toLowerCase() === (props.user.gender ?? '').toLowerCase() &&
+      tagsEqual(form.tags, props.user.tags)
+    ) {
+      showToast('No changes to save', 'info')
+    }
     return
   }
 
@@ -95,22 +220,7 @@ async function saveEdit() {
     await store.updateUser(props.user.id, payload)
     editing.value = false
   } catch (err) {
-    if (axios.isAxiosError(err)) {
-      const code = (err.response?.data as { code?: string } | undefined)?.code
-      if (code === 'FACE_VERIFIED_GENDER_LOCKED') {
-        showToast('Revoke face verification first to change gender', 'error')
-        return
-      }
-      if (code === 'EMAIL_TAKEN') {
-        showToast('Email is already in use', 'error')
-        return
-      }
-      if (code === 'PHONE_TAKEN') {
-        showToast('Phone is already in use', 'error')
-        return
-      }
-    }
-    /* store / interceptor may also toast */
+    showToast(userUpdateErrorMessage(err), 'error')
   } finally {
     saving.value = false
   }
@@ -118,6 +228,19 @@ async function saveEdit() {
 
 function formatDate(date: string) {
   return format(new Date(date), 'dd MMM yyyy, HH:mm')
+}
+
+async function confirmRevokeFace(payload: { reason?: string }) {
+  if (revokingFace.value) return
+  revokingFace.value = true
+  try {
+    await store.revokeFaceVerification(props.user.id, { reason: payload.reason })
+    showRevokeFace.value = false
+  } catch (err) {
+    showToast(userUpdateErrorMessage(err), 'error')
+  } finally {
+    revokingFace.value = false
+  }
 }
 </script>
 
@@ -140,22 +263,48 @@ function formatDate(date: string) {
       <img
         v-if="user.avatar"
         :src="user.avatar"
-        :alt="user.name"
+        :alt="displayLegalName"
         class="h-20 w-20 rounded-full object-cover ring-2 ring-admin-border"
       />
       <div
         v-else
         class="flex h-20 w-20 items-center justify-center rounded-full bg-admin-accent/20 text-xl font-bold text-admin-accent"
       >
-        {{ getInitials(user.name) }}
+        {{ getInitials(displayLegalName) }}
       </div>
-      <div v-if="user.vip" class="mt-2 rounded bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400">
-        VIP
+      <p class="mt-2 text-center text-sm font-medium">{{ displayLegalName }}</p>
+      <p v-if="user.username" class="text-center text-xs text-admin-subtext">@{{ user.username }}</p>
+      <div class="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+        <div v-if="user.vip" class="rounded bg-amber-500/20 px-2 py-0.5 text-xs font-semibold text-amber-400">
+          VIP
+        </div>
+        <div
+          v-if="(user.richTier?.tier ?? 0) > 0"
+          class="rounded bg-violet-500/20 px-2 py-0.5 text-xs font-semibold text-violet-300"
+        >
+          {{ user.richTier?.displayName?.trim() || `Tier ${user.richTier?.tier}` }}
+        </div>
       </div>
     </div>
 
     <div class="space-y-3 text-sm">
       <template v-if="editing">
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">First name</label>
+            <input v-model="form.firstName" class="admin-input" maxlength="50" autocomplete="off" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Last name</label>
+            <input
+              v-model="form.lastName"
+              class="admin-input"
+              maxlength="50"
+              placeholder="Optional — clear to remove"
+              autocomplete="off"
+            />
+          </div>
+        </div>
         <div>
           <label class="mb-1 block text-xs text-admin-subtext">Username</label>
           <input v-model="form.username" class="admin-input" />
@@ -178,6 +327,14 @@ function formatDate(date: string) {
           </select>
           <p v-if="genderLocked" class="mt-1 text-xs text-admin-warn">
             Revoke face verification first
+            <button
+              type="button"
+              class="ml-1 underline hover:text-admin-accent"
+              :disabled="revokingFace"
+              @click="showRevokeFace = true"
+            >
+              Revoke now
+            </button>
           </p>
         </div>
         <div>
@@ -210,8 +367,26 @@ function formatDate(date: string) {
           </span>
         </div>
         <div class="admin-kv-row">
+          <span class="admin-kv-label">First name</span>
+          <span class="admin-kv-value">{{ user.firstName || '—' }}</span>
+        </div>
+        <div class="admin-kv-row">
+          <span class="admin-kv-label">Last name</span>
+          <span class="admin-kv-value">{{ user.lastName || '—' }}</span>
+        </div>
+        <div class="admin-kv-row">
           <span class="admin-kv-label">Username</span>
-          <span class="admin-kv-value">{{ user.username ?? user.name }}</span>
+          <span class="admin-kv-value">{{ user.username || '—' }}</span>
+        </div>
+        <div class="admin-kv-row">
+          <span class="admin-kv-label">Rich tier</span>
+          <span class="admin-kv-value">
+            <template v-if="(user.richTier?.tier ?? 0) > 0">
+              {{ user.richTier?.displayName?.trim() || `Tier ${user.richTier?.tier}` }}
+              <span class="ml-1 font-mono text-xs text-admin-muted">({{ user.richTier?.tier }})</span>
+            </template>
+            <template v-else>None</template>
+          </span>
         </div>
         <div class="admin-kv-row">
           <span class="admin-kv-label">Mobile</span>
@@ -229,6 +404,15 @@ function formatDate(date: string) {
               v-if="user.faceVerified"
               class="ml-1 text-xs text-admin-muted"
             >(face locked)</span>
+            <button
+              v-if="genderLocked"
+              type="button"
+              class="ml-2 text-xs text-admin-warn underline hover:text-admin-accent"
+              :disabled="revokingFace"
+              @click="showRevokeFace = true"
+            >
+              Revoke to edit gender
+            </button>
           </span>
         </div>
         <div class="admin-kv-row">
@@ -258,7 +442,16 @@ function formatDate(date: string) {
         </div>
         <div class="admin-kv-row">
           <span class="admin-kv-label">In Agency</span>
-          <span class="admin-kv-value">{{ user.inAgency ? (user.agencyName ?? 'Yes') : 'No' }}</span>
+          <span class="admin-kv-value">
+            <template v-if="user.inAgency">
+              {{ user.agencyName ?? 'Yes' }}
+              <span
+                v-if="user.agencyPublicId"
+                class="ml-1 font-mono text-xs text-admin-muted"
+              >#{{ user.agencyPublicId }}</span>
+            </template>
+            <template v-else>No</template>
+          </span>
         </div>
         <div class="admin-kv-row">
           <span class="admin-kv-label">IP Address</span>
@@ -278,5 +471,16 @@ function formatDate(date: string) {
         </div>
       </template>
     </div>
+
+    <ConfirmActionDialog
+      :open="showRevokeFace"
+      title="Revoke Face Verification"
+      message="This unlocks gender edits. The user will need to re-verify their face."
+      confirm-label="Revoke"
+      variant="danger"
+      require-reason
+      @close="showRevokeFace = false"
+      @confirm="confirmRevokeFace"
+    />
   </div>
 </template>

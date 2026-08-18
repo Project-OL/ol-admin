@@ -46,7 +46,7 @@ export type AdminUserVipDossier = {
     vipPublicIdExpiresAt: string | null
     active: boolean
   }
-  richTier: { tier: number; displayName: string }
+  richTier: { tier: number; displayName: string | null }
   config: {
     tiers: Array<{ tier: string; periodDays: number; coinCost: string }>
     dailyGrantCoins: string

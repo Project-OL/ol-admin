@@ -57,6 +57,8 @@ export type AdminLocationsPage = {
 
 export type AdminLocationsQuery = {
   userId?: string
+  /** Numeric public or display ID — resolved by the API. */
+  publicId?: string
   from?: string
   to?: string
   limit?: number

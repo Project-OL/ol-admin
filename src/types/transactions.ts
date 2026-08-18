@@ -2,6 +2,7 @@ export type TransactionsTab =
   | 'coins'
   | 'points'
   | 'trading-coins'
+  /** @deprecated Explorer alias — mapped to `trading-coins`. Revert POST path still uses this key. */
   | 'coin-trading-transfers'
   | 'gifts'
   | 'subscriptions'
@@ -13,11 +14,27 @@ export type LedgerDirection = 'credit' | 'debit' | 'CREDIT' | 'DEBIT'
 export type AdminUserBrief = {
   userId: string
   username: string
+  /** Legal name (first + last); may be empty. */
+  name?: string
   displayName: string
   publicId: string
   displayPublicId: string
   avatarUrl: string | null
 }
+
+/** Wallet-history-shaped peer / catalog extras on ledger rows. */
+export type CounterpartyDetails = {
+  userId?: string
+  name?: string
+  publicId?: string
+  avatarUrl?: string | null
+  storeItemName?: string
+  price?: string
+  rarePublicId?: string
+  membershipType?: string
+  addedByAdmin?: { adminUserId: string; name?: string; publicId?: string }
+  transactionId?: string
+} | null
 
 export type AdminTransactionsListQuery = {
   id?: string
@@ -76,6 +93,19 @@ export type AdminCoinTradingTransferBrief = {
   tradingCoinsDebited: string
   coinsCredited: string
   recipientWalletType: string
+  reversedAt?: string | null
+}
+
+/** Present on coin / trading-coin / points ledger rows — which POST to call when canRevert. */
+export type AdminCoinRevertVia = {
+  endpoint: 'coin_ledger' | 'coin_trading_transfer' | 'withdrawal'
+  id: string
+} | null
+
+export type PlatformProfitBuckets = {
+  coins: string
+  points: string
+  tradingCoins: string
 }
 
 export type AdminLedgerEntry = {
@@ -92,11 +122,16 @@ export type AdminLedgerEntry = {
   currencyType?: string
   user: AdminUserBrief
   counterparty: AdminUserBrief | null
+  /** Wallet-history shape; always has user fields when a peer exists. */
+  counterpartyDetails?: CounterpartyDetails
   gift: AdminGiftLink | null
   storeItem?: AdminStoreItemBrief | null
   vipPurchase?: AdminVipPurchaseBrief | null
   coinTradingTransfer?: AdminCoinTradingTransferBrief | null
   canRevert: boolean
+  /** Additive: exact revert route for personal/trading coin ledger. */
+  revertVia?: AdminCoinRevertVia
+  platformProfit?: PlatformProfitBuckets
 }
 
 export type AdminCoinTradingTransfer = {
@@ -133,6 +168,7 @@ export type AdminGiftTransaction = {
   context: string | null
   createdAt: string
   canRevert: boolean
+  platformProfit?: PlatformProfitBuckets
 }
 
 export type AdminSubscription = {
@@ -164,6 +200,7 @@ export type AdminVipPurchase = {
   expiresAtBefore: string | null
   expiresAtAfter: string
   createdAt: string
+  platformProfit?: PlatformProfitBuckets
 }
 
 export type AdminStorePurchase = {
@@ -179,6 +216,7 @@ export type AdminStorePurchase = {
   expiredAt: string | null
   revokedAt: string | null
   createdAt: string
+  platformProfit?: PlatformProfitBuckets
 }
 
 export type AdminTransactionEntry =
@@ -193,6 +231,10 @@ export type AdminTransactionsListResponse<T = AdminTransactionEntry> = {
   entries: T[]
   nextCursor: string | null
   hasMore: boolean
+}
+
+export type PlatformProfitSummaryResponse = {
+  platformProfitTotals: PlatformProfitBuckets
 }
 
 export type AdminTransactionRevertBody = {

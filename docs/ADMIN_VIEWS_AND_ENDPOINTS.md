@@ -58,6 +58,12 @@ GET /admin/users/search/history
 
 Route: `/admin/users/:id` · Sidebar: no (companion of UserListView)
 
+Wallet history, prefer-transfer revert, and freeze: [`ADMIN_TRANSACTIONS_CONTROLS_AND_REVERT.md`](./ADMIN_TRANSACTIONS_CONTROLS_AND_REVERT.md). Create / return adjustments live on Currency.
+
+**Feature restrictions:** mute live chat / live audio / messaging (optional `targetUserIds`) / ban starting live. **Active live:** `GET/POST …/live-streams/active|stop`. **Live moderation dossier:** `GET /admin/users/:id/live-moderation`.
+
+**Face verification:** `GET /admin/users/:id/face-verification` includes `statusLabel` / `statusDetail` / `notIndexedReason` (why a saved image is not indexed) and matched/duplicate user (`publicId`, `displayPublicId`) when another face matches.
+
 ```
 GET /admin/users/search
 GET /admin/users/search/history
@@ -72,6 +78,10 @@ GET /admin/users/:id/restrictions
 POST /admin/users/:id/restrictions
 DELETE /admin/users/:id/restrictions/:restrictionId
 POST /admin/users/:id/restrictions/:type/clear
+GET /admin/users/:id/live-streams/active
+POST /admin/users/:id/live-streams/:streamRef/stop
+GET /admin/users/:id/live-moderation
+POST /admin/users/:id/host-stream-suspension/clear
 GET /admin/users/:id/vip
 GET /admin/users/:id/guardians
 GET /admin/users/:id/locations
@@ -79,24 +89,10 @@ GET /admin/users/transactions/filter-types
 GET /admin/users/:id/transactions/coins
 GET /admin/users/:id/transactions/points
 GET /admin/users/:id/transactions/trading-coins
-GET /admin/transactions/coins
-GET /admin/transactions/points
-GET /admin/transactions/trading-coins
-GET /admin/transactions/coin-trading-transfers
-GET /admin/transactions/gifts
-GET /admin/transactions/subscriptions
-GET /admin/transactions/vip-purchases
-GET /admin/transactions/store-purchases
-POST /admin/transactions/coins/:ledgerEntryId/revert
 POST /admin/transactions/points/:ledgerEntryId/revert
+POST /admin/transactions/coins/:ledgerEntryId/revert
 POST /admin/transactions/coin-trading-transfers/:transferId/revert
 POST /admin/transactions/gifts/:giftTransactionId/revert
-POST /admin/users/:id/wallet/personal-coins/add
-POST /admin/users/:id/wallet/personal-coins/deduct
-POST /admin/users/:id/wallet/trading-coins/add
-POST /admin/users/:id/wallet/trading-coins/deduct
-POST /admin/users/:id/wallet/points/add
-POST /admin/users/:id/wallet/points/deduct
 POST /admin/users/:id/wallet/personal-coins/freeze
 POST /admin/users/:id/wallet/personal-coins/unfreeze
 POST /admin/users/:id/wallet/trading-coins/freeze
@@ -123,7 +119,7 @@ DELETE /admin/devices/:deviceId/ban
 
 ## UserLocationsView
 
-Route: `/admin/locations` · Sidebar: Locations
+Route: `/admin/locations` · Sidebar: hidden (view kept; not shown in nav)
 
 ```
 GET /admin/locations
@@ -200,7 +196,7 @@ POST /admin/users/:userId/messages/system
 
 Route: `/admin/system-settings` · Sidebar: Settings
 
-Platform + agency coin/point rate catalogues (including Call Price caps). Hydrate once via aggregate GET; each section saves with its own PUT.
+Platform + agency coin/point rate catalogues (including Call Price caps, Elite/Rich recharge thresholds, payout rails, and messaging edit/delete window in seconds/minutes/hours). Hydrate rates via aggregate GET (+ dedicated payout-rails / messaging / rich-tier GETs); each section saves with its own PUT.
 
 ```
 GET /admin/system-settings/rates
@@ -212,6 +208,8 @@ GET /admin/system-settings/coin-packages
 PUT /admin/system-settings/coin-packages
 GET /admin/system-settings/wallet-level-configs
 PUT /admin/system-settings/wallet-level-configs
+GET /admin/system-settings/rich-tier
+PUT /admin/system-settings/rich-tier
 GET /admin/system-settings/video-call-price-caps
 PUT /admin/system-settings/video-call-price-caps
 GET /admin/agency/coin-trading/topup-rates
@@ -226,6 +224,10 @@ GET /admin/agency/commission/config
 PUT /admin/agency/commission/config
 GET /admin/agency/payroll/config
 PUT /admin/agency/payroll/config
+GET /admin/agency/withdrawal/payout-rails
+PUT /admin/agency/withdrawal/payout-rails
+GET /admin/system-settings/messaging
+PUT /admin/system-settings/messaging
 ```
 
 ## PlatformMessagesView
@@ -267,6 +269,8 @@ GET /admin/users/search
 
 Route: `/admin/transactions` · Sidebar: Transactions
 
+Operator + developer guide (tabs, when Revert shows, routes): [`ADMIN_TRANSACTIONS_CONTROLS_AND_REVERT.md`](./ADMIN_TRANSACTIONS_CONTROLS_AND_REVERT.md).
+
 ```
 GET /admin/transactions/coins
 GET /admin/transactions/points
@@ -280,7 +284,6 @@ POST /admin/transactions/coins/:ledgerEntryId/revert
 POST /admin/transactions/points/:ledgerEntryId/revert
 POST /admin/transactions/coin-trading-transfers/:transferId/revert
 POST /admin/transactions/gifts/:giftTransactionId/revert
-GET /admin/users/search
 ```
 
 ## GiftAdminView
@@ -302,6 +305,7 @@ GET /admin/gift-gallery/categories
 POST /admin/gift-gallery/categories
 PATCH /admin/gift-gallery/categories/:sectionId
 POST /admin/gift-gallery/categories/:sectionId/gifts
+DELETE /admin/gift-gallery/categories/:sectionId/gifts
 POST /admin/gift-gallery/categories/reorder
 DELETE /admin/gift-gallery/categories/:sectionId
 ```
@@ -351,6 +355,8 @@ GET /admin/gifts
 
 Route: `/admin/support` · Sidebar: Support
 
+CSA workbench queues show `typeLabel` / `subTypeLabel` and `initialSubmission` preview on each ticket row. See `ol-node-rest/docs/CUSTOMER_SUPPORT_ADMIN_CLIENT_INTEGRATION.md`.
+
 ```
 GET /admin/support/csas/overview
 GET /admin/support/csas
@@ -387,6 +393,8 @@ POST /admin/support/reports/:reportId/escalate
 
 Route: `/admin/support/tickets/:ticketId` · Sidebar: no (companion of CustomerSupportView)
 
+Ticket detail renders the user’s opening form from `ticket.initialSubmission` (category labels, description, screenshot, payment ref) plus message thread, resolve/reject (24h pending review), force-close, claim, hand-off, and internal notes. See `ol-node-rest/docs/CUSTOMER_SUPPORT_ADMIN_CLIENT_INTEGRATION.md` §6–7.
+
 ```
 GET /admin/support/tickets/:ticketId
 POST /admin/support/tickets/:ticketId/reply
@@ -398,6 +406,32 @@ PATCH /admin/support/tickets/:ticketId/priority
 POST /admin/support/tickets/:ticketId/notes
 POST /admin/support/upload-url
 GET /admin/support/csas
+```
+
+## LiveModerationView
+
+Route: `/admin/live-moderation` · Sidebar: Live Moderation
+
+Global live/video-call nudity detections, host stream bans, and live user reports. Per-user dossier also lives on User Detail → Reports.
+
+```
+GET /admin/live-moderation
+GET /admin/users/:id/live-moderation
+POST /admin/users/:id/host-stream-suspension/clear
+GET /admin/live-streams/active
+POST /admin/live-streams/:streamRef/stop
+GET /admin/users/:id/live-streams/active
+POST /admin/users/:id/live-streams/:streamRef/stop
+GET /admin/restrictions
+GET /admin/users/:id/restrictions
+POST /admin/users/:id/restrictions
+DELETE /admin/users/:id/restrictions/:restrictionId
+POST /admin/users/:id/restrictions/:type/clear
+GET /admin/support/reports
+GET /admin/support/reports/:reportId
+PATCH /admin/support/reports/:reportId/status
+POST /admin/support/reports/:reportId/escalate
+GET /admin/users/:id
 ```
 
 ## OtpAuditLogsView

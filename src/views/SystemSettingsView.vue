@@ -14,27 +14,64 @@ import type {
   HostRevenueShares,
   LevelThreshold,
   LevelThresholdDraft,
+  MessagingActionUnit,
+  MessagingConfigDto,
   PayrollConfigSnapshot,
+  PayrollCountryFxDraft,
+  PayrollFeeTierDraft,
+  PayoutRailDraft,
+  PayoutRailsConfig,
   RateTier,
   RateTierDraft,
+  SupportReviewWindowConfigDto,
   TradingPackage,
   TradingPackageDraft,
   VideoCallPriceCapTier,
+  RichTierConfig,
+  AdminAuthConfigDto,
+  AdminAuthLockoutUnit,
+  AgencyHostConfigDto,
+  AgencyHostCooldownUnit,
 } from '@/types/systemRates'
 import { showToast } from '@/utils/toast'
 
-type SettingsTab = 'host' | 'callPrice' | 'personal' | 'trading' | 'commission' | 'payroll'
+type SettingsTab =
+  | 'host'
+  | 'callPrice'
+  | 'personal'
+  | 'elite'
+  | 'trading'
+  | 'commission'
+  | 'messaging'
+  | 'support'
+  | 'adminLogin'
+  | 'agency'
+  | 'payroll'
+
+const PAYOUT_RAIL_KEYS = ['epay', 'bank'] as const
 
 const TABS: { value: SettingsTab; label: string; short: string }[] = [
   { value: 'host', label: 'Host shares', short: 'Host' },
   { value: 'callPrice', label: 'Call Price', short: 'Call' },
   { value: 'personal', label: 'Personal', short: 'Personal' },
+  { value: 'elite', label: 'Elite tier', short: 'Elite' },
   { value: 'trading', label: 'Trading', short: 'Trading' },
   { value: 'commission', label: 'Commission', short: 'Comm' },
+  { value: 'messaging', label: 'Messaging', short: 'Msg' },
+  { value: 'support', label: 'Support tickets', short: 'Support' },
+  { value: 'adminLogin', label: 'Admin login', short: 'Login' },
+  { value: 'agency', label: 'Agency', short: 'Agency' },
   { value: 'payroll', label: 'Payroll / FX', short: 'Payroll' },
 ]
 
 const MAX_WINDOW_MINUTES = 365 * 24 * 60
+const MAX_MESSAGING_WINDOW_SECONDS = 7 * 24 * 60 * 60
+const MAX_ADMIN_LOCKOUT_SECONDS = 30 * 24 * 60 * 60
+const MAX_AGENCY_REJOIN_SECONDS = 365 * 24 * 60 * 60
+const AGENCY_REJOIN_UNITS: AgencyHostCooldownUnit[] = ['hours', 'days']
+const NEAR_MAX_MESSAGING_SECONDS = 6 * 24 * 60 * 60
+const MESSAGING_UNITS: MessagingActionUnit[] = ['seconds', 'minutes', 'hours']
+const ADMIN_LOCK_UNITS: AdminAuthLockoutUnit[] = ['minutes', 'hours']
 
 const activeTab = ref<SettingsTab>('host')
 const loading = ref(false)
@@ -45,24 +82,36 @@ const savingCallPrice = ref(false)
 const savingPersonalExchange = ref(false)
 const savingCoinPackages = ref(false)
 const savingWalletLevels = ref(false)
+const savingRichTier = ref(false)
 const savingTradingTopup = ref(false)
 const savingAgentExchange = ref(false)
 const savingTradingPackages = ref(false)
 const savingCommissionLevels = ref(false)
 const savingCommissionWindow = ref(false)
 const savingPayroll = ref(false)
+const savingPayoutRails = ref(false)
+const savingMessaging = ref(false)
+const savingSupport = ref(false)
+const savingAdminAuth = ref(false)
+const savingAgencyHost = ref(false)
 
 const hostError = ref('')
 const callPriceError = ref('')
 const personalExchangeError = ref('')
 const coinPackagesError = ref('')
 const walletLevelsError = ref('')
+const richTierError = ref('')
 const tradingTopupError = ref('')
 const agentExchangeError = ref('')
 const tradingPackagesError = ref('')
 const commissionLevelsError = ref('')
 const commissionWindowError = ref('')
 const payrollError = ref('')
+const payoutRailsError = ref('')
+const messagingError = ref('')
+const supportError = ref('')
+const adminAuthError = ref('')
+const agencyHostError = ref('')
 
 const hostSaved = ref<HostRevenueShares | null>(null)
 const hostForm = reactive({
@@ -76,6 +125,7 @@ const personalExchangeTiers = ref<RateTierDraft[]>([])
 const coinPackageDrafts = ref<CoinPackageDraft[]>([])
 const wealthDrafts = ref<LevelThresholdDraft[]>([])
 const livestreamDrafts = ref<LevelThresholdDraft[]>([])
+const richTierDrafts = ref<RichTierConfig[]>([])
 
 const tradingTopupTiers = ref<RateTierDraft[]>([])
 const agentExchangeTiers = ref<RateTierDraft[]>([])
@@ -91,8 +141,6 @@ const commissionWindowForm = reactive({
 
 const payrollSaved = ref<PayrollConfigSnapshot | null>(null)
 const payrollForm = reactive({
-  platformFeeRatePercent: 0,
-  agentRewardRatePercent: 0,
   serviceFeeUsd: 0,
   minWithdrawalUsd: 0,
   maxWithdrawalUsd: 0,
@@ -100,6 +148,40 @@ const payrollForm = reactive({
   waitingHours: 0,
   maxAssignmentAttempts: 0,
   inrPerUsd: 0,
+  nprPerUsd: 0,
+})
+const payrollFeeTiers = ref<PayrollFeeTierDraft[]>([])
+const payrollCountryRates = ref<PayrollCountryFxDraft[]>([])
+
+const payoutRailsSaved = ref<PayoutRailsConfig | null>(null)
+const payoutRailsForm = reactive({
+  epay: { enabled: true, feePercent: 6, arrivalTime: 'Within 24 hours' } as PayoutRailDraft,
+  bank: { enabled: true, feePercent: 6, arrivalTime: '3-5 business days' } as PayoutRailDraft,
+})
+
+const messagingSaved = ref<MessagingConfigDto | null>(null)
+const messagingForm = reactive({
+  amount: 1 as number | null,
+  unit: 'hours' as MessagingActionUnit,
+})
+
+const supportSaved = ref<SupportReviewWindowConfigDto | null>(null)
+const supportForm = reactive({
+  amount: 24 as number | null,
+  unit: 'hours' as MessagingActionUnit,
+})
+
+const adminAuthSaved = ref<AdminAuthConfigDto | null>(null)
+const adminAuthForm = reactive({
+  failedLoginThreshold: 5 as number | null,
+  amount: 24 as number | null,
+  unit: 'hours' as AdminAuthLockoutUnit,
+})
+
+const agencyHostSaved = ref<AgencyHostConfigDto | null>(null)
+const agencyHostForm = reactive({
+  amount: 1 as number | null,
+  unit: 'days' as AgencyHostCooldownUnit,
 })
 
 const callPriceBands = ref<CallPriceBandDraft[]>([])
@@ -110,6 +192,51 @@ const windowTotalMinutes = computed(
     commissionWindowForm.windowHours * 60 +
     commissionWindowForm.windowMinutes,
 )
+
+const messagingPreviewSeconds = computed(() => {
+  const amount = messagingForm.amount
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return 0
+  const n = Math.trunc(amount)
+  if (messagingForm.unit === 'hours') return n * 3600
+  if (messagingForm.unit === 'minutes') return n * 60
+  return n
+})
+
+const messagingNearMax = computed(
+  () =>
+    messagingPreviewSeconds.value >= NEAR_MAX_MESSAGING_SECONDS &&
+    messagingPreviewSeconds.value <= MAX_MESSAGING_WINDOW_SECONDS,
+)
+
+const supportPreviewSeconds = computed(() => {
+  const amount = supportForm.amount
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return 0
+  const n = Math.trunc(amount)
+  if (supportForm.unit === 'hours') return n * 3600
+  if (supportForm.unit === 'minutes') return n * 60
+  return n
+})
+
+const supportNearMax = computed(
+  () =>
+    supportPreviewSeconds.value >= NEAR_MAX_MESSAGING_SECONDS &&
+    supportPreviewSeconds.value <= MAX_MESSAGING_WINDOW_SECONDS,
+)
+
+const adminAuthPreviewSeconds = computed(() => {
+  const amount = adminAuthForm.amount
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return 0
+  const n = Math.trunc(amount)
+  if (adminAuthForm.unit === 'hours') return n * 3600
+  return n * 60
+})
+
+const agencyHostPreviewSeconds = computed(() => {
+  const amount = agencyHostForm.amount
+  if (amount == null || !Number.isFinite(amount) || amount <= 0) return 0
+  const n = Math.trunc(amount)
+  return agencyHostForm.unit === 'days' ? n * 86400 : n * 3600
+})
 
 function bpToPercent(bp: number) {
   return bp / 100
@@ -139,6 +266,19 @@ function formatDuration(minutes: number) {
   return parts.join(' ')
 }
 
+function formatDurationFromSeconds(totalSeconds: number) {
+  const d = Math.floor(totalSeconds / 86400)
+  const h = Math.floor((totalSeconds % 86400) / 3600)
+  const m = Math.floor((totalSeconds % 3600) / 60)
+  const s = totalSeconds % 60
+  const parts: string[] = []
+  if (d) parts.push(`${d}d`)
+  if (h) parts.push(`${h}h`)
+  if (m) parts.push(`${m}m`)
+  if (s || !parts.length) parts.push(`${s}s`)
+  return parts.join(' ')
+}
+
 function apiErrorMessage(err: unknown, fallback: string) {
   if (!axios.isAxiosError(err)) return fallback
   const body = err.response?.data as
@@ -152,6 +292,9 @@ function apiErrorMessage(err: unknown, fallback: string) {
     return 'Basis points must be between 1 and 10000.'
   }
   if (body?.code === 'INVALID_FEE_CONFIG') return 'Invalid fee or payroll configuration value.'
+  if (body?.code === 'INVALID_ACTION_WINDOW') {
+    return body.message || 'Messaging window must be between 1 second and 7 days.'
+  }
   if (body?.code === 'VALIDATION_ERROR') return body.message || 'Validation failed.'
   return fallback
 }
@@ -206,6 +349,16 @@ function toLevelDrafts(levels: LevelThreshold[]): LevelThresholdDraft[] {
   }))
 }
 
+function applyRichTiers(tiers: RichTierConfig[]) {
+  richTierDrafts.value = [...tiers]
+    .sort((a, b) => a.tier - b.tier)
+    .map((t) => ({
+      tier: t.tier,
+      minRechargeCoins: t.minRechargeCoins,
+      displayName: t.displayName,
+    }))
+}
+
 function toCommissionDrafts(levels: CommissionLevel[]): CommissionLevelDraft[] {
   if (!levels.length) {
     return [
@@ -242,10 +395,41 @@ function applyCommissionWindow(cfg: CommissionWindowSnapshot) {
   commissionWindowForm.windowMinutes = cfg.windowMinutes
 }
 
+function defaultPayrollFeeTiers(): PayrollFeeTierDraft[] {
+  return [
+    { minUsd: 0, maxUsd: 20, platformFeeRatePercent: 5, agentRewardRatePercent: 60 },
+    { minUsd: 20, maxUsd: 100, platformFeeRatePercent: 3, agentRewardRatePercent: 60 },
+    { minUsd: 100, maxUsd: null, platformFeeRatePercent: 2, agentRewardRatePercent: 60 },
+  ]
+}
+
+function defaultPayrollCountryRates(cfg?: PayrollConfigSnapshot | null): PayrollCountryFxDraft[] {
+  if (cfg?.countryRates?.length) {
+    return cfg.countryRates.map((row) => ({
+      country: row.country,
+      countryCode: row.countryCode ?? '',
+      currencyCode: row.currencyCode,
+      ratePerUsd: row.ratePerUsd,
+    }))
+  }
+  return [
+    {
+      country: 'India',
+      countryCode: 'IN',
+      currencyCode: 'INR',
+      ratePerUsd: cfg?.inrPerUsd && cfg.inrPerUsd > 0 ? cfg.inrPerUsd : 94,
+    },
+    {
+      country: 'Nepal',
+      countryCode: 'NP',
+      currencyCode: 'NPR',
+      ratePerUsd: cfg?.nprPerUsd && cfg.nprPerUsd > 0 ? cfg.nprPerUsd : 150,
+    },
+  ]
+}
+
 function applyPayroll(cfg: PayrollConfigSnapshot) {
   payrollSaved.value = cfg
-  payrollForm.platformFeeRatePercent = bpToPercent(cfg.platformFeeRateBp)
-  payrollForm.agentRewardRatePercent = bpToPercent(cfg.agentRewardRateBp)
   payrollForm.serviceFeeUsd = cfg.serviceFeeUsd
   payrollForm.minWithdrawalUsd = cfg.minWithdrawalUsd
   payrollForm.maxWithdrawalUsd = cfg.maxWithdrawalUsd
@@ -253,6 +437,91 @@ function applyPayroll(cfg: PayrollConfigSnapshot) {
   payrollForm.waitingHours = cfg.waitingHours
   payrollForm.maxAssignmentAttempts = cfg.maxAssignmentAttempts
   payrollForm.inrPerUsd = cfg.inrPerUsd
+  payrollForm.nprPerUsd = cfg.nprPerUsd ?? 150
+  payrollFeeTiers.value = cfg.feeTiers?.length
+    ? cfg.feeTiers.map((t) => ({
+        minUsd: t.minUsd,
+        maxUsd: t.maxUsd,
+        platformFeeRatePercent: bpToPercent(t.platformFeeRateBp),
+        agentRewardRatePercent: bpToPercent(t.agentRewardRateBp),
+      }))
+    : defaultPayrollFeeTiers()
+  payrollCountryRates.value = defaultPayrollCountryRates(cfg)
+}
+
+function addPayrollCountryRate() {
+  payrollCountryRates.value.push({
+    country: '',
+    countryCode: '',
+    currencyCode: '',
+    ratePerUsd: null,
+  })
+}
+
+function removePayrollCountryRate(index: number) {
+  if (payrollCountryRates.value.length <= 1) return
+  payrollCountryRates.value.splice(index, 1)
+}
+
+function addPayrollFeeTier() {
+  const rows = payrollFeeTiers.value
+  const last = rows[rows.length - 1]
+  const minUsd = last?.maxUsd ?? (last?.minUsd != null ? last.minUsd + 1 : 0)
+  if (last && last.maxUsd == null) last.maxUsd = minUsd
+  rows.push({
+    minUsd,
+    maxUsd: null,
+    platformFeeRatePercent: last?.platformFeeRatePercent ?? 2,
+    agentRewardRatePercent: last?.agentRewardRatePercent ?? 60,
+  })
+}
+
+function removePayrollFeeTier(index: number) {
+  if (payrollFeeTiers.value.length <= 1) return
+  payrollFeeTiers.value.splice(index, 1)
+  const last = payrollFeeTiers.value[payrollFeeTiers.value.length - 1]
+  if (last) last.maxUsd = null
+}
+
+function usdToPointsLabel(usd: number | null | undefined) {
+  if (usd == null || !Number.isFinite(usd)) return ''
+  const pts = Math.round(usd * 10_000)
+  return `${pts.toLocaleString()} pts`
+}
+
+function applyPayoutRails(cfg: PayoutRailsConfig) {
+  payoutRailsSaved.value = cfg
+  payoutRailsForm.epay.enabled = cfg.epay.enabled
+  payoutRailsForm.epay.feePercent = cfg.epay.feePercent
+  payoutRailsForm.epay.arrivalTime = cfg.epay.arrivalTime
+  payoutRailsForm.bank.enabled = cfg.bank.enabled
+  payoutRailsForm.bank.feePercent = cfg.bank.feePercent
+  payoutRailsForm.bank.arrivalTime = cfg.bank.arrivalTime
+}
+
+function applyMessaging(cfg: MessagingConfigDto) {
+  messagingSaved.value = cfg
+  messagingForm.amount = cfg.amount
+  messagingForm.unit = cfg.unit
+}
+
+function applySupport(cfg: SupportReviewWindowConfigDto) {
+  supportSaved.value = cfg
+  supportForm.amount = cfg.amount
+  supportForm.unit = cfg.unit
+}
+
+function applyAdminAuth(cfg: AdminAuthConfigDto) {
+  adminAuthSaved.value = cfg
+  adminAuthForm.failedLoginThreshold = cfg.failedLoginThreshold
+  adminAuthForm.amount = cfg.amount
+  adminAuthForm.unit = cfg.unit
+}
+
+function applyAgencyHost(cfg: AgencyHostConfigDto) {
+  agencyHostSaved.value = cfg
+  agencyHostForm.amount = cfg.amount
+  agencyHostForm.unit = cfg.unit
 }
 
 function defaultCallPriceBands(): CallPriceBandDraft[] {
@@ -301,12 +570,18 @@ function applyAggregate(data: Awaited<ReturnType<typeof systemSettingsApi.getRat
   coinPackageDrafts.value = toCoinDrafts(data.coinPackages.packages)
   wealthDrafts.value = toLevelDrafts(data.walletLevelConfigs.wealth)
   livestreamDrafts.value = toLevelDrafts(data.walletLevelConfigs.livestream)
+  if (data.richTierConfigs?.tiers) {
+    applyRichTiers(data.richTierConfigs.tiers)
+  }
   tradingTopupTiers.value = toTierDrafts(data.tradingTopupRates.tiers)
   agentExchangeTiers.value = toTierDrafts(data.agentExchangeRates.tiers)
   tradingPackageDrafts.value = toTradingDrafts(data.tradingTopupPackages.packages)
   commissionLevelDrafts.value = toCommissionDrafts(data.commissionLevels.levels)
   applyCommissionWindow(data.commissionWindow)
   applyPayroll(data.payroll)
+  if (data.agencyHost) {
+    applyAgencyHost(data.agencyHost)
+  }
   if (data.videoCallPriceCaps) {
     applyCallPriceTiers(data.videoCallPriceCaps.tiers)
   }
@@ -315,6 +590,12 @@ function applyAggregate(data: Awaited<ReturnType<typeof systemSettingsApi.getRat
 async function loadAll() {
   loading.value = true
   loadError.value = ''
+  payoutRailsError.value = ''
+  messagingError.value = ''
+  supportError.value = ''
+  adminAuthError.value = ''
+  agencyHostError.value = ''
+  richTierError.value = ''
   try {
     const { data } = await systemSettingsApi.getRatesAggregate()
     applyAggregate(data)
@@ -324,6 +605,44 @@ async function loadAll() {
         applyCallPriceTiers(caps.data.tiers)
       } catch {
         applyCallPriceTiers([])
+      }
+    }
+    try {
+      const rails = await systemSettingsApi.getPayoutRailsConfig()
+      applyPayoutRails(rails.data)
+    } catch (err) {
+      payoutRailsError.value = apiErrorMessage(err, 'Failed to load payout rails.')
+    }
+    try {
+      const messaging = await systemSettingsApi.getMessagingConfig()
+      applyMessaging(messaging.data)
+    } catch (err) {
+      messagingError.value = apiErrorMessage(err, 'Failed to load messaging config.')
+    }
+    try {
+      const support = await systemSettingsApi.getSupportReviewWindowConfig()
+      applySupport(support.data)
+    } catch (err) {
+      supportError.value = apiErrorMessage(err, 'Failed to load support review window.')
+    }
+    try {
+      const adminAuth = await systemSettingsApi.getAdminAuthConfig()
+      applyAdminAuth(adminAuth.data)
+    } catch (err) {
+      adminAuthError.value = apiErrorMessage(err, 'Failed to load admin login lock settings.')
+    }
+    try {
+      const agencyHost = await systemSettingsApi.getAgencyHostConfig()
+      applyAgencyHost(agencyHost.data)
+    } catch (err) {
+      agencyHostError.value = apiErrorMessage(err, 'Failed to load agency rejoin cooldown.')
+    }
+    if (!richTierDrafts.value.length) {
+      try {
+        const rich = await systemSettingsApi.getRichTierConfig()
+        applyRichTiers(rich.data.tiers)
+      } catch (err) {
+        richTierError.value = apiErrorMessage(err, 'Failed to load elite tier thresholds.')
       }
     }
   } catch (err) {
@@ -669,6 +988,51 @@ async function saveWalletLevels() {
   }
 }
 
+async function saveRichTier() {
+  richTierError.value = ''
+  if (richTierDrafts.value.length !== 10) {
+    richTierError.value = 'Exactly 10 elite tiers (RICH I–X) are required.'
+    return
+  }
+  for (let i = 0; i < richTierDrafts.value.length; i++) {
+    const row = richTierDrafts.value[i]!
+    const n = i + 1
+    if (row.tier !== n) {
+      richTierError.value = `Row ${n}: tier must be ${n}.`
+      return
+    }
+    if (!/^\d+$/.test(row.minRechargeCoins.trim()) || BigInt(row.minRechargeCoins.trim()) <= 0n) {
+      richTierError.value = `Row ${n}: coins recharged must be a positive integer.`
+      return
+    }
+    if (!row.displayName.trim()) {
+      richTierError.value = `Row ${n}: elite level name is required.`
+      return
+    }
+    if (i > 0 && BigInt(row.minRechargeCoins.trim()) <= BigInt(richTierDrafts.value[i - 1]!.minRechargeCoins.trim())) {
+      richTierError.value = `Row ${n}: coins recharged must be greater than the previous tier.`
+      return
+    }
+  }
+  savingRichTier.value = true
+  try {
+    const { data } = await systemSettingsApi.updateRichTierConfig({
+      tiers: richTierDrafts.value.map((r) => ({
+        tier: r.tier,
+        minRechargeCoins: r.minRechargeCoins.trim(),
+        displayName: r.displayName.trim(),
+      })),
+    })
+    applyRichTiers(data.tiers)
+    showToast('Elite tier thresholds saved.', 'success')
+  } catch (e) {
+    richTierError.value = apiErrorMessage(e, 'Failed to save elite tier thresholds.')
+    showToast(richTierError.value, 'error')
+  } finally {
+    savingRichTier.value = false
+  }
+}
+
 async function saveTradingTopupRates() {
   tradingTopupError.value = ''
   const err = validateTierRows(tradingTopupTiers.value, 'Trading topup rates')
@@ -897,24 +1261,68 @@ function validatePercent0to100(label: string, percent: number): string | null {
 
 async function savePayroll() {
   payrollError.value = ''
-  const agentErr = validatePercent0to100('Agent reward rate', payrollForm.agentRewardRatePercent)
-  if (agentErr) {
-    payrollError.value = agentErr
+  if (!payrollFeeTiers.value.length) {
+    payrollError.value = 'At least one withdrawal fee band is required.'
     return
   }
-  const platformErr = validatePercent0to100(
-    'Platform fee rate',
-    payrollForm.platformFeeRatePercent,
-  )
-  if (platformErr) {
-    payrollError.value = platformErr
+  for (let i = 0; i < payrollFeeTiers.value.length; i++) {
+    const row = payrollFeeTiers.value[i]!
+    const n = i + 1
+    if (row.minUsd == null || !Number.isFinite(row.minUsd) || row.minUsd < 0) {
+      payrollError.value = `Band ${n}: min USD is required.`
+      return
+    }
+    if (i < payrollFeeTiers.value.length - 1) {
+      if (row.maxUsd == null || !Number.isFinite(row.maxUsd) || row.maxUsd <= row.minUsd) {
+        payrollError.value = `Band ${n}: max USD must be greater than min.`
+        return
+      }
+    }
+    const platformErr = validatePercent0to100(
+      `Band ${n} platform fee`,
+      row.platformFeeRatePercent ?? Number.NaN,
+    )
+    if (platformErr) {
+      payrollError.value = platformErr
+      return
+    }
+    const agentErr = validatePercent0to100(
+      `Band ${n} agent reward`,
+      row.agentRewardRatePercent ?? Number.NaN,
+    )
+    if (agentErr) {
+      payrollError.value = agentErr
+      return
+    }
+  }
+  if (!payrollCountryRates.value.length) {
+    payrollError.value = 'At least one country FX rate is required.'
     return
+  }
+  for (let i = 0; i < payrollCountryRates.value.length; i++) {
+    const row = payrollCountryRates.value[i]!
+    const n = i + 1
+    if (!row.country.trim()) {
+      payrollError.value = `Country ${n}: name is required.`
+      return
+    }
+    if (!row.currencyCode.trim() || !/^[A-Za-z]{3,8}$/.test(row.currencyCode.trim())) {
+      payrollError.value = `Country ${n}: currency code must be 3–8 letters.`
+      return
+    }
+    if (row.countryCode.trim() && !/^[A-Za-z]{2,3}$/.test(row.countryCode.trim())) {
+      payrollError.value = `Country ${n}: country code must be 2–3 letters.`
+      return
+    }
+    if (row.ratePerUsd == null || !Number.isFinite(row.ratePerUsd) || row.ratePerUsd <= 0) {
+      payrollError.value = `Country ${n}: rate per USD must be a positive number.`
+      return
+    }
   }
   for (const [label, value] of [
     ['Service fee USD', payrollForm.serviceFeeUsd],
     ['Min withdrawal USD', payrollForm.minWithdrawalUsd],
     ['Max withdrawal USD', payrollForm.maxWithdrawalUsd],
-    ['INR per USD', payrollForm.inrPerUsd],
   ] as const) {
     if (!Number.isFinite(value) || value < 0) {
       payrollError.value = `${label} must be a non-negative number.`
@@ -939,15 +1347,24 @@ async function savePayroll() {
   savingPayroll.value = true
   try {
     const { data } = await systemSettingsApi.updatePayrollConfig({
-      platformFeeRateBp: percentToBp(payrollForm.platformFeeRatePercent),
-      agentRewardRateBp: percentToBp(payrollForm.agentRewardRatePercent),
+      feeTiers: payrollFeeTiers.value.map((row, i) => ({
+        minUsd: row.minUsd!,
+        maxUsd: i === payrollFeeTiers.value.length - 1 ? null : row.maxUsd,
+        platformFeeRateBp: percentToBp(row.platformFeeRatePercent!),
+        agentRewardRateBp: percentToBp(row.agentRewardRatePercent!),
+      })),
       serviceFeeUsd: payrollForm.serviceFeeUsd,
       minWithdrawalUsd: payrollForm.minWithdrawalUsd,
       maxWithdrawalUsd: payrollForm.maxWithdrawalUsd,
       slaHours: payrollForm.slaHours,
       waitingHours: payrollForm.waitingHours,
       maxAssignmentAttempts: payrollForm.maxAssignmentAttempts,
-      inrPerUsd: payrollForm.inrPerUsd,
+      countryRates: payrollCountryRates.value.map((row) => ({
+        country: row.country.trim(),
+        countryCode: row.countryCode.trim() || null,
+        currencyCode: row.currencyCode.trim().toUpperCase(),
+        ratePerUsd: row.ratePerUsd!,
+      })),
     })
     applyPayroll(data)
     showToast('Payroll / FX config saved.', 'success')
@@ -956,6 +1373,251 @@ async function savePayroll() {
     showToast(payrollError.value, 'error')
   } finally {
     savingPayroll.value = false
+  }
+}
+
+function validatePayoutRail(rail: PayoutRailDraft, label: string): string | null {
+  const feeErr = validatePercent0to100(`${label} display fee`, rail.feePercent)
+  if (feeErr) return feeErr
+  if (!rail.arrivalTime.trim()) return `${label}: arrival copy is required.`
+  return null
+}
+
+async function savePayoutRails() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  payoutRailsError.value = ''
+  for (const [label, rail] of [
+    ['EPAY', payoutRailsForm.epay],
+    ['BANK', payoutRailsForm.bank],
+  ] as const) {
+    const err = validatePayoutRail(rail, label)
+    if (err) {
+      payoutRailsError.value = err
+      return
+    }
+  }
+
+  const bothOff = !payoutRailsForm.epay.enabled && !payoutRailsForm.bank.enabled
+  const disablingEpay = Boolean(payoutRailsSaved.value?.epay.enabled && !payoutRailsForm.epay.enabled)
+  const disablingBank = Boolean(payoutRailsSaved.value?.bank.enabled && !payoutRailsForm.bank.enabled)
+
+  if (bothOff) {
+    const ok = window.confirm(
+      'Both EPAY and BANK will be disabled. Hosts cannot withdraw by any method until you re-enable at least one. Continue?',
+    )
+    if (!ok) return
+  } else if (disablingEpay || disablingBank) {
+    const names = [disablingEpay ? 'EPAY' : null, disablingBank ? 'BANK' : null]
+      .filter(Boolean)
+      .join(' and ')
+    const ok = window.confirm(
+      `${names} will be disabled. Hosts cannot bind or start new withdrawals with this method until re-enabled. Continue?`,
+    )
+    if (!ok) return
+  }
+
+  savingPayoutRails.value = true
+  try {
+    const toRailBody = (rail: PayoutRailDraft) => ({
+      enabled: rail.enabled,
+      feeRateBp: percentToBp(rail.feePercent),
+      arrivalTime: rail.arrivalTime.trim(),
+    })
+    const { data } = await systemSettingsApi.updatePayoutRailsConfig({
+      epay: toRailBody(payoutRailsForm.epay),
+      bank: toRailBody(payoutRailsForm.bank),
+    })
+    applyPayoutRails(data)
+    showToast('Payout methods saved.', 'success')
+  } catch (e) {
+    payoutRailsError.value = apiErrorMessage(e, 'Failed to save payout rails.')
+    showToast(payoutRailsError.value, 'error')
+  } finally {
+    savingPayoutRails.value = false
+  }
+}
+
+function validateMessagingForm(): string | null {
+  const amount = messagingForm.amount
+  if (amount == null || !Number.isInteger(amount) || amount < 1) {
+    return 'Amount must be a positive integer.'
+  }
+  if (!MESSAGING_UNITS.includes(messagingForm.unit)) {
+    return 'Unit must be seconds, minutes, or hours.'
+  }
+  const seconds = messagingPreviewSeconds.value
+  if (seconds < 1) return 'Window must be at least 1 second.'
+  if (seconds > MAX_MESSAGING_WINDOW_SECONDS) return 'Window cannot exceed 7 days.'
+  return null
+}
+
+async function saveMessaging() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  messagingError.value = ''
+  const validationError = validateMessagingForm()
+  if (validationError) {
+    messagingError.value = validationError
+    return
+  }
+
+  savingMessaging.value = true
+  try {
+    const payload = {
+      amount: Math.trunc(Number(messagingForm.amount)),
+      unit: messagingForm.unit,
+    }
+    const { data } = await systemSettingsApi.updateMessagingConfig(payload)
+    applyMessaging(data)
+    showToast('Messaging edit/delete window saved.', 'success')
+  } catch (e) {
+    messagingError.value = apiErrorMessage(e, 'Failed to save messaging config.')
+    showToast(messagingError.value, 'error')
+  } finally {
+    savingMessaging.value = false
+  }
+}
+
+function validateSupportForm(): string | null {
+  const amount = supportForm.amount
+  if (amount == null || !Number.isInteger(amount) || amount < 1) {
+    return 'Amount must be a positive integer.'
+  }
+  if (!MESSAGING_UNITS.includes(supportForm.unit)) {
+    return 'Unit must be seconds, minutes, or hours.'
+  }
+  const seconds = supportPreviewSeconds.value
+  if (seconds < 1) return 'Window must be at least 1 second.'
+  if (seconds > MAX_MESSAGING_WINDOW_SECONDS) return 'Window cannot exceed 7 days.'
+  return null
+}
+
+async function saveSupport() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  supportError.value = ''
+  const validationError = validateSupportForm()
+  if (validationError) {
+    supportError.value = validationError
+    return
+  }
+
+  savingSupport.value = true
+  try {
+    const payload = {
+      amount: Math.trunc(Number(supportForm.amount)),
+      unit: supportForm.unit,
+    }
+    const { data } = await systemSettingsApi.updateSupportReviewWindowConfig(payload)
+    applySupport(data)
+    showToast('Support contest window saved.', 'success')
+  } catch (e) {
+    supportError.value = apiErrorMessage(e, 'Failed to save support review window.')
+    showToast(supportError.value, 'error')
+  } finally {
+    savingSupport.value = false
+  }
+}
+
+function validateAdminAuthForm(): string | null {
+  const threshold = adminAuthForm.failedLoginThreshold
+  if (threshold == null || !Number.isInteger(threshold) || threshold < 1 || threshold > 50) {
+    return 'Failed attempts must be an integer between 1 and 50.'
+  }
+  const amount = adminAuthForm.amount
+  if (amount == null || !Number.isInteger(amount) || amount < 1) {
+    return 'Lock duration amount must be a positive integer.'
+  }
+  if (!ADMIN_LOCK_UNITS.includes(adminAuthForm.unit)) {
+    return 'Unit must be minutes or hours.'
+  }
+  const seconds = adminAuthPreviewSeconds.value
+  if (seconds < 60) return 'Lock duration must be at least 1 minute.'
+  if (seconds > MAX_ADMIN_LOCKOUT_SECONDS) return 'Lock duration cannot exceed 30 days.'
+  return null
+}
+
+async function saveAdminAuth() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  adminAuthError.value = ''
+  const validationError = validateAdminAuthForm()
+  if (validationError) {
+    adminAuthError.value = validationError
+    return
+  }
+
+  savingAdminAuth.value = true
+  try {
+    const payload = {
+      failedLoginThreshold: Math.trunc(Number(adminAuthForm.failedLoginThreshold)),
+      amount: Math.trunc(Number(adminAuthForm.amount)),
+      unit: adminAuthForm.unit,
+    }
+    const { data } = await systemSettingsApi.updateAdminAuthConfig(payload)
+    applyAdminAuth(data)
+    showToast('Admin login lock settings saved.', 'success')
+  } catch (e) {
+    adminAuthError.value = apiErrorMessage(e, 'Failed to save admin login lock settings.')
+    showToast(adminAuthError.value, 'error')
+  } finally {
+    savingAdminAuth.value = false
+  }
+}
+
+function validateAgencyHostForm(): string | null {
+  const amount = agencyHostForm.amount
+  if (amount == null || !Number.isInteger(amount) || amount < 1) {
+    return 'Cooldown amount must be a positive integer.'
+  }
+  if (!AGENCY_REJOIN_UNITS.includes(agencyHostForm.unit)) {
+    return 'Unit must be hours or days.'
+  }
+  const seconds = agencyHostPreviewSeconds.value
+  if (seconds < 3600) return 'Rejoin cooldown must be at least 1 hour.'
+  if (seconds > MAX_AGENCY_REJOIN_SECONDS) return 'Rejoin cooldown cannot exceed 365 days.'
+  return null
+}
+
+async function saveAgencyHost() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  agencyHostError.value = ''
+  const validationError = validateAgencyHostForm()
+  if (validationError) {
+    agencyHostError.value = validationError
+    return
+  }
+
+  savingAgencyHost.value = true
+  try {
+    const { data } = await systemSettingsApi.updateAgencyHostConfig({
+      amount: Math.trunc(Number(agencyHostForm.amount)),
+      unit: agencyHostForm.unit,
+    })
+    applyAgencyHost(data)
+    showToast('Agency rejoin cooldown saved.', 'success')
+  } catch (e) {
+    agencyHostError.value = apiErrorMessage(e, 'Failed to save agency rejoin cooldown.')
+    showToast(agencyHostError.value, 'error')
+  } finally {
+    savingAgencyHost.value = false
   }
 }
 
@@ -969,9 +1631,9 @@ onMounted(() => {
       <div>
         <h1 class="text-lg font-semibold sm:text-xl">System Settings</h1>
         <p class="mt-0.5 text-xs text-admin-subtext">
-          Coin &amp; point-level rates: host shares, call price caps, exchange, packages, commission,
-          and payroll FX. Changes take effect immediately for new transactions. Click a value to
-          edit.
+          Coin &amp; point-level rates: host shares, call price, exchange, packages, commission,
+          messaging window, support contest window, admin login lock, agency rejoin cooldown, and payroll FX. Changes take
+          effect immediately for new traffic. Click a value to edit.
         </p>
       </div>
       <button
@@ -1585,6 +2247,60 @@ onMounted(() => {
         </section>
       </div>
 
+      <!-- Elite / Rich tier -->
+      <section v-else-if="activeTab === 'elite'" class="admin-card max-w-3xl space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-admin-text">Elite tier (coins recharged)</h2>
+          <p class="mt-0.5 text-xs text-admin-subtext">
+            Monthly recharge thresholds for RICH I–X. Used for the live badge, rollover carryover,
+            and the derived <code>adminTags</code> label on user profiles. New recharges pick up
+            the ladder immediately; existing badges stay until the next recharge or month rollover.
+          </p>
+        </div>
+
+        <div class="admin-table-wrap">
+          <table class="admin-table min-w-[480px]">
+            <thead>
+              <tr>
+                <th>Elite level</th>
+                <th>Coins recharged</th>
+                <th>Display name</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in richTierDrafts" :key="'rt-' + row.tier">
+                <td class="text-xs text-admin-subtext">RICH {{ row.tier }}</td>
+                <td>
+                  <InlineEditField
+                    v-model="row.minRechargeCoins"
+                    mono
+                    inputmode="numeric"
+                    :disabled="savingRichTier"
+                  />
+                </td>
+                <td>
+                  <InlineEditField
+                    v-model="row.displayName"
+                    empty-label="—"
+                    :disabled="savingRichTier"
+                  />
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <p v-if="richTierError" class="text-xs text-admin-danger">{{ richTierError }}</p>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="savingRichTier || !richTierDrafts.length"
+          @click="saveRichTier"
+        >
+          {{ savingRichTier ? 'Saving…' : 'Save elite thresholds' }}
+        </button>
+      </section>
+
       <!-- Trading -->
       <div v-else-if="activeTab === 'trading'" class="space-y-2">
         <section class="admin-card space-y-2">
@@ -2073,122 +2789,675 @@ onMounted(() => {
         </section>
       </div>
 
-      <!-- Payroll -->
-      <section v-else class="admin-card max-w-3xl space-y-3">
+      <!-- Messaging -->
+      <section v-else-if="activeTab === 'messaging'" class="admin-card max-w-xl space-y-3">
         <div>
-          <h2 class="text-sm font-semibold text-admin-text">Payroll / FX</h2>
+          <h2 class="text-sm font-semibold text-admin-text">Message edit / delete window</h2>
           <p class="mt-0.5 text-xs text-admin-subtext">
-            Withdrawal limits, SLA, agent reward share, and INR display FX.
-            <code class="text-xs">platformFeeRateBp</code> is stored for admin display; runtime host
-            fee tiers are code-based.
+            How long a sender may edit or soft-delete their own message after sending. Edit and
+            delete share one window (default 1 hour). Range: 1 second – 7 days.
           </p>
         </div>
 
-        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="savePayroll">
+        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="saveMessaging">
           <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Platform fee (display)</label>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Amount</label>
             <InlineEditField
-              v-model="payrollForm.platformFeeRatePercent"
+              v-model="messagingForm.amount"
               type="number"
-              :min="0"
-              :max="100"
-              step="0.01"
-              suffix="%"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Agent reward share</label>
-            <InlineEditField
-              v-model="payrollForm.agentRewardRatePercent"
-              type="number"
-              :min="0"
-              :max="100"
-              step="0.01"
-              suffix="%"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Service fee (USD)</label>
-            <InlineEditField
-              v-model="payrollForm.serviceFeeUsd"
-              type="number"
-              :min="0"
-              step="0.01"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">INR per USD</label>
-            <InlineEditField
-              v-model="payrollForm.inrPerUsd"
-              type="number"
-              :min="0"
-              step="0.01"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Min withdrawal (USD)</label>
-            <InlineEditField
-              v-model="payrollForm.minWithdrawalUsd"
-              type="number"
-              :min="0"
-              step="0.01"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Max withdrawal (USD)</label>
-            <InlineEditField
-              v-model="payrollForm.maxWithdrawalUsd"
-              type="number"
-              :min="0"
-              step="0.01"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">SLA hours</label>
-            <InlineEditField
-              v-model="payrollForm.slaHours"
-              type="number"
-              :min="0"
+              :min="1"
               step="1"
-              :disabled="savingPayroll"
+              :disabled="savingMessaging"
             />
           </div>
           <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Waiting hours</label>
-            <InlineEditField
-              v-model="payrollForm.waitingHours"
-              type="number"
-              :min="0"
-              step="1"
-              :disabled="savingPayroll"
-            />
-          </div>
-          <div class="sm:col-span-2 max-w-xs">
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Max assignment attempts</label>
-            <InlineEditField
-              v-model="payrollForm.maxAssignmentAttempts"
-              type="number"
-              :min="0"
-              step="1"
-              :disabled="savingPayroll"
-            />
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Unit</label>
+            <select
+              v-model="messagingForm.unit"
+              class="admin-input"
+              :disabled="savingMessaging"
+            >
+              <option value="seconds">Seconds</option>
+              <option value="minutes">Minutes</option>
+              <option value="hours">Hours</option>
+            </select>
           </div>
 
-          <p v-if="payrollError" class="sm:col-span-2 text-xs text-admin-danger">{{ payrollError }}</p>
+          <dl
+            class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+          >
+            <div>
+              <dt class="text-xs text-admin-subtext">Preview</dt>
+              <dd class="font-medium text-admin-text">
+                {{
+                  messagingPreviewSeconds > 0
+                    ? formatDurationFromSeconds(messagingPreviewSeconds)
+                    : '—'
+                }}
+                <span
+                  v-if="messagingPreviewSeconds > 0"
+                  class="ml-1 text-xs font-normal text-admin-subtext"
+                >
+                  ({{ messagingPreviewSeconds }}s)
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-admin-subtext">Last updated</dt>
+              <dd class="font-medium text-admin-text">
+                {{ formatDt(messagingSaved?.updatedAt ?? null) }}
+              </dd>
+            </div>
+          </dl>
+
+          <p
+            v-if="messagingNearMax"
+            class="sm:col-span-2 text-xs text-admin-warn"
+          >
+            Window is near the 7-day maximum.
+          </p>
+
+          <p v-if="messagingError" class="sm:col-span-2 text-xs text-admin-danger">
+            {{ messagingError }}
+          </p>
 
           <div class="sm:col-span-2">
-            <button type="submit" class="admin-btn-primary" :disabled="savingPayroll">
-              {{ savingPayroll ? 'Saving…' : 'Save payroll config' }}
+            <button
+              type="button"
+              class="admin-btn-primary"
+              :disabled="savingMessaging"
+              @mousedown.prevent="saveMessaging"
+            >
+              {{ savingMessaging ? 'Saving…' : 'Save messaging window' }}
             </button>
           </div>
         </form>
       </section>
+
+      <!-- Support tickets -->
+      <section v-else-if="activeTab === 'support'" class="admin-card max-w-xl space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-admin-text">Support contest / revert window</h2>
+          <p class="mt-0.5 text-xs text-admin-subtext">
+            How long a user may contest or revert after a ticket is resolved or rejected
+            (<code class="text-[10px]">PENDING_REVIEW</code>). After this window the ticket
+            auto-closes. Default 24 hours. Range: 1 second – 7 days. Applies to new resolve/reject
+            actions only.
+          </p>
+        </div>
+
+        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="saveSupport">
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Amount</label>
+            <InlineEditField
+              v-model="supportForm.amount"
+              type="number"
+              :min="1"
+              step="1"
+              :disabled="savingSupport"
+            />
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Unit</label>
+            <select
+              v-model="supportForm.unit"
+              class="admin-input"
+              :disabled="savingSupport"
+            >
+              <option value="seconds">Seconds</option>
+              <option value="minutes">Minutes</option>
+              <option value="hours">Hours</option>
+            </select>
+          </div>
+
+          <dl
+            class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+          >
+            <div>
+              <dt class="text-xs text-admin-subtext">Preview</dt>
+              <dd class="font-medium text-admin-text">
+                {{
+                  supportPreviewSeconds > 0
+                    ? formatDurationFromSeconds(supportPreviewSeconds)
+                    : '—'
+                }}
+                <span
+                  v-if="supportPreviewSeconds > 0"
+                  class="ml-1 text-xs font-normal text-admin-subtext"
+                >
+                  ({{ supportPreviewSeconds }}s)
+                </span>
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-admin-subtext">Last updated</dt>
+              <dd class="font-medium text-admin-text">
+                {{ formatDt(supportSaved?.updatedAt ?? null) }}
+              </dd>
+            </div>
+          </dl>
+
+          <p
+            v-if="supportNearMax"
+            class="sm:col-span-2 text-xs text-admin-warn"
+          >
+            Window is near the 7-day maximum.
+          </p>
+
+          <p v-if="supportError" class="sm:col-span-2 text-xs text-admin-danger">
+            {{ supportError }}
+          </p>
+
+          <div class="sm:col-span-2">
+            <button
+              type="button"
+              class="admin-btn-primary"
+              :disabled="savingSupport"
+              @mousedown.prevent="saveSupport"
+            >
+              {{ savingSupport ? 'Saving…' : 'Save support window' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Admin login lock -->
+      <section v-else-if="activeTab === 'adminLogin'" class="admin-card max-w-xl space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-admin-text">Admin / CSA login lock</h2>
+          <p class="mt-0.5 text-xs text-admin-subtext">
+            After this many consecutive wrong passwords, the account is locked for the duration
+            below. Login then returns
+            <code class="text-[10px]">423 ADMIN_ACCOUNT_LOCKED</code>. Default 5 attempts and 24
+            hours. Range: 1–50 attempts, 1 minute – 30 days. Applies to the next lock only (already
+            locked accounts keep their existing
+            <code class="text-[10px]">lockedUntil</code>).
+          </p>
+        </div>
+
+        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="saveAdminAuth">
+          <div class="sm:col-span-2">
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Failed attempts before lock</label>
+            <InlineEditField
+              v-model="adminAuthForm.failedLoginThreshold"
+              type="number"
+              :min="1"
+              :max="50"
+              step="1"
+              :disabled="savingAdminAuth"
+            />
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Lock duration</label>
+            <InlineEditField
+              v-model="adminAuthForm.amount"
+              type="number"
+              :min="1"
+              step="1"
+              :disabled="savingAdminAuth"
+            />
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Unit</label>
+            <select
+              v-model="adminAuthForm.unit"
+              class="admin-input"
+              :disabled="savingAdminAuth"
+            >
+              <option value="minutes">Minutes</option>
+              <option value="hours">Hours</option>
+            </select>
+          </div>
+
+          <dl
+            class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+          >
+            <div>
+              <dt class="text-xs text-admin-subtext">Preview</dt>
+              <dd class="font-medium text-admin-text">
+                {{
+                  adminAuthPreviewSeconds > 0
+                    ? formatDurationFromSeconds(adminAuthPreviewSeconds)
+                    : '—'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-admin-subtext">Last updated</dt>
+              <dd class="font-medium text-admin-text">
+                {{ formatDt(adminAuthSaved?.updatedAt ?? null) }}
+              </dd>
+            </div>
+          </dl>
+
+          <p v-if="adminAuthError" class="sm:col-span-2 text-xs text-admin-danger">
+            {{ adminAuthError }}
+          </p>
+
+          <div class="sm:col-span-2">
+            <button
+              type="button"
+              class="admin-btn-primary"
+              :disabled="savingAdminAuth"
+              @mousedown.prevent="saveAdminAuth"
+            >
+              {{ savingAdminAuth ? 'Saving…' : 'Save login lock' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Agency rejoin cooldown -->
+      <section v-else-if="activeTab === 'agency'" class="admin-card max-w-xl space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-admin-text">Agency rejoin cooldown</h2>
+          <p class="mt-0.5 text-xs text-admin-subtext">
+            After a host leaves an agency or a join application is rejected, they must wait this
+            long before applying to any agency again. Returns
+            <code class="text-[10px]">429 AGENCY_APPLICATION_COOLDOWN</code> with
+            <code class="text-[10px]">nextAllowedAt</code>. Default 24 hours. Range: 1 hour – 365
+            days. Admin add-host bypasses this gate.
+          </p>
+        </div>
+
+        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="saveAgencyHost">
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Cooldown</label>
+            <InlineEditField
+              v-model="agencyHostForm.amount"
+              type="number"
+              :min="1"
+              step="1"
+              :disabled="savingAgencyHost"
+            />
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Unit</label>
+            <select
+              v-model="agencyHostForm.unit"
+              class="admin-input"
+              :disabled="savingAgencyHost"
+            >
+              <option value="hours">Hours</option>
+              <option value="days">Days</option>
+            </select>
+          </div>
+
+          <dl
+            class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+          >
+            <div>
+              <dt class="text-xs text-admin-subtext">Preview</dt>
+              <dd class="font-medium text-admin-text">
+                {{
+                  agencyHostPreviewSeconds > 0
+                    ? formatDurationFromSeconds(agencyHostPreviewSeconds)
+                    : '—'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-admin-subtext">Last updated</dt>
+              <dd class="font-medium text-admin-text">
+                {{ formatDt(agencyHostSaved?.updatedAt ?? null) }}
+              </dd>
+            </div>
+          </dl>
+
+          <p v-if="agencyHostError" class="sm:col-span-2 text-xs text-admin-danger">
+            {{ agencyHostError }}
+          </p>
+
+          <div class="sm:col-span-2">
+            <button
+              type="button"
+              class="admin-btn-primary"
+              :disabled="savingAgencyHost"
+              @mousedown.prevent="saveAgencyHost"
+            >
+              {{ savingAgencyHost ? 'Saving…' : 'Save rejoin cooldown' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Payroll -->
+      <div v-else-if="activeTab === 'payroll'" class="max-w-5xl space-y-2">
+        <section class="admin-card space-y-3">
+          <div>
+            <h2 class="text-sm font-semibold text-admin-text">Payroll / FX</h2>
+            <p class="mt-0.5 text-xs text-admin-subtext">
+              Withdrawal limits, SLA, country FX, and BANK fee bands by requested amount.
+              EPAY takes the service fee only (no tiers, paid by super admin). BANK has no
+              service fee; platform fee and agent reward apply to full gross. Agent reward is
+              a percent of the platform fee. Last fee-band max empty = open-ended.
+              10,000 points = $1. Unknown user country falls back to INR.
+            </p>
+          </div>
+
+          <div class="admin-table-wrap">
+            <table class="admin-table min-w-[720px]">
+              <thead>
+                <tr>
+                  <th>Min USD</th>
+                  <th>Max USD</th>
+                  <th>Platform fee</th>
+                  <th>Agent reward</th>
+                  <th class="w-20" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in payrollFeeTiers" :key="'pf-' + idx">
+                  <td>
+                    <InlineEditField
+                      v-model="row.minUsd"
+                      type="number"
+                      :min="0"
+                      step="any"
+                      :disabled="savingPayroll"
+                    />
+                    <p v-if="row.minUsd != null" class="mt-0.5 text-[10px] text-admin-muted">
+                      {{ usdToPointsLabel(row.minUsd) }}
+                    </p>
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.maxUsd"
+                      type="number"
+                      :min="0"
+                      step="any"
+                      nullable
+                      empty-label="∞"
+                      placeholder="Open-ended"
+                      :disabled="savingPayroll"
+                    />
+                    <p v-if="row.maxUsd != null" class="mt-0.5 text-[10px] text-admin-muted">
+                      {{ usdToPointsLabel(row.maxUsd) }}
+                    </p>
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.platformFeeRatePercent"
+                      type="number"
+                      :min="0"
+                      :max="100"
+                      step="0.01"
+                      suffix="%"
+                      :disabled="savingPayroll"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.agentRewardRatePercent"
+                      type="number"
+                      :min="0"
+                      :max="100"
+                      step="0.01"
+                      suffix="%"
+                      :disabled="savingPayroll"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="text-xs text-admin-danger disabled:opacity-40"
+                      :disabled="savingPayroll || payrollFeeTiers.length <= 1"
+                      @click="removePayrollFeeTier(idx)"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            class="admin-btn-secondary text-xs"
+            :disabled="savingPayroll"
+            @click="addPayrollFeeTier"
+          >
+            Add fee band
+          </button>
+
+          <div>
+            <h3 class="text-xs font-semibold text-admin-text">Country FX rates</h3>
+            <p class="mt-0.5 text-[11px] text-admin-muted">
+              Shown on withdraw requests, withdraw history, and agency point transfers. Match
+              the user’s country name or ISO code.
+            </p>
+          </div>
+          <div class="admin-table-wrap">
+            <table class="admin-table min-w-[720px]">
+              <thead>
+                <tr>
+                  <th>Country</th>
+                  <th>Code</th>
+                  <th>Currency</th>
+                  <th>Rate / USD</th>
+                  <th class="w-20" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in payrollCountryRates" :key="'px-' + idx">
+                  <td>
+                    <InlineEditField
+                      v-model="row.country"
+                      placeholder="India"
+                      :disabled="savingPayroll"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.countryCode"
+                      placeholder="IN"
+                      :disabled="savingPayroll"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.currencyCode"
+                      placeholder="INR"
+                      :disabled="savingPayroll"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.ratePerUsd"
+                      type="number"
+                      :min="0"
+                      step="0.0001"
+                      :disabled="savingPayroll"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="text-xs text-admin-danger disabled:opacity-40"
+                      :disabled="savingPayroll || payrollCountryRates.length <= 1"
+                      @click="removePayrollCountryRate(idx)"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            class="admin-btn-secondary text-xs"
+            :disabled="savingPayroll"
+            @click="addPayrollCountryRate"
+          >
+            Add country
+          </button>
+
+          <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="savePayroll">
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Service fee (USD)</label>
+              <InlineEditField
+                v-model="payrollForm.serviceFeeUsd"
+                type="number"
+                :min="0"
+                step="0.01"
+                :disabled="savingPayroll"
+              />
+              <p class="mt-0.5 text-[10px] text-admin-muted">
+                EPAY only. $10 request − $1 fee = $9 host fiat. BANK service fee is 0.
+              </p>
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Min withdrawal (USD)</label>
+              <InlineEditField
+                v-model="payrollForm.minWithdrawalUsd"
+                type="number"
+                :min="0"
+                step="0.01"
+                :disabled="savingPayroll"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Max withdrawal (USD)</label>
+              <InlineEditField
+                v-model="payrollForm.maxWithdrawalUsd"
+                type="number"
+                :min="0"
+                step="0.01"
+                :disabled="savingPayroll"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">SLA hours</label>
+              <InlineEditField
+                v-model="payrollForm.slaHours"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingPayroll"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Waiting hours</label>
+              <InlineEditField
+                v-model="payrollForm.waitingHours"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingPayroll"
+              />
+            </div>
+            <div class="sm:col-span-2 max-w-xs">
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Max assignment attempts</label>
+              <InlineEditField
+                v-model="payrollForm.maxAssignmentAttempts"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingPayroll"
+              />
+            </div>
+
+            <p v-if="payrollError" class="sm:col-span-2 text-xs text-admin-danger">{{ payrollError }}</p>
+
+            <div class="sm:col-span-2">
+              <button type="submit" class="admin-btn-primary" :disabled="savingPayroll">
+                {{ savingPayroll ? 'Saving…' : 'Save payroll config' }}
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="admin-card space-y-3">
+          <div>
+            <h2 class="text-sm font-semibold text-admin-text">Payout methods</h2>
+            <p class="mt-0.5 text-xs text-admin-subtext">
+              Enable or disable host withdraw rails (EPAY / BANK) and edit display fee % and arrival
+              copy. Display fee does not change payroll math. Disabling blocks new binds and
+              withdrawals; in-flight withdrawals are not cancelled.
+            </p>
+          </div>
+
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div
+              v-for="railKey in PAYOUT_RAIL_KEYS"
+              :key="railKey"
+              class="space-y-2 rounded-md border border-admin-border bg-admin-bg/40 p-2.5"
+            >
+              <div class="flex items-center justify-between gap-2">
+                <h3 class="text-xs font-semibold uppercase tracking-wide text-admin-text">
+                  {{ railKey === 'epay' ? 'EPAY' : 'BANK' }}
+                </h3>
+                <label class="flex items-center gap-1.5 text-xs text-admin-text">
+                  <input
+                    v-model="payoutRailsForm[railKey].enabled"
+                    type="checkbox"
+                    class="rounded border-admin-border"
+                    :disabled="savingPayoutRails"
+                  />
+                  Enabled
+                </label>
+              </div>
+
+              <div>
+                <label class="mb-0.5 block text-[11px] text-admin-subtext">Display fee</label>
+                <InlineEditField
+                  v-model="payoutRailsForm[railKey].feePercent"
+                  type="number"
+                  :min="0"
+                  :max="100"
+                  step="0.01"
+                  suffix="%"
+                  :disabled="savingPayoutRails"
+                />
+              </div>
+
+              <div>
+                <label class="mb-0.5 block text-[11px] text-admin-subtext">Arrival copy</label>
+                <InlineEditField
+                  v-model="payoutRailsForm[railKey].arrivalTime"
+                  empty-label="—"
+                  :disabled="savingPayoutRails"
+                />
+              </div>
+
+              <p
+                v-if="!payoutRailsForm[railKey].enabled"
+                class="text-[11px] text-admin-warn"
+              >
+                Hosts cannot bind or start new withdrawals with this method until re-enabled.
+              </p>
+            </div>
+          </div>
+
+          <dl class="grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2">
+            <div>
+              <dt class="text-xs text-admin-subtext">Last updated</dt>
+              <dd class="font-medium text-admin-text">
+                {{ formatDt(payoutRailsSaved?.updatedAt ?? null) }}
+              </dd>
+            </div>
+          </dl>
+
+          <p
+            v-if="!payoutRailsForm.epay.enabled && !payoutRailsForm.bank.enabled"
+            class="text-xs text-admin-danger"
+          >
+            Both rails are off — hosts cannot withdraw by any method.
+          </p>
+
+          <p v-if="payoutRailsError" class="text-xs text-admin-danger">{{ payoutRailsError }}</p>
+
+          <button
+            type="button"
+            class="admin-btn-primary"
+            :disabled="savingPayoutRails || !payoutRailsSaved"
+            @mousedown.prevent="savePayoutRails"
+          >
+            {{ savingPayoutRails ? 'Saving…' : 'Save payout methods' }}
+          </button>
+        </section>
+      </div>
     </template>
   </div>
 </template>

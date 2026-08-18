@@ -27,7 +27,7 @@ const props = withDefaults(
   },
 )
 
-const model = defineModel<string | number | null>({ required: true })
+const model = defineModel<string | number | null | undefined>({ required: true })
 
 const editing = ref(false)
 /** Always kept as a string — never bind as HTML number input v-model (Vue can coerce to number). */

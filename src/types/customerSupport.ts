@@ -41,6 +41,25 @@ export type ReportReason =
   | 'FAKE_ACCOUNT'
   | 'VIOLENCE'
   | 'OTHER'
+  | 'GIFT_FRAUD'
+  | 'MULTIPLE_ACCOUNT'
+  | 'TOP_UP_FRAUD'
+  | 'LIVE_BROADCAST_VIOLATION'
+  | 'CHILD_SAFETY_VIOLATION'
+
+export const REPORT_REASON_OPTIONS: ReportReason[] = [
+  'SPAM',
+  'HARASSMENT',
+  'INAPPROPRIATE_CONTENT',
+  'FAKE_ACCOUNT',
+  'VIOLENCE',
+  'OTHER',
+  'GIFT_FRAUD',
+  'MULTIPLE_ACCOUNT',
+  'TOP_UP_FRAUD',
+  'LIVE_BROADCAST_VIOLATION',
+  'CHILD_SAFETY_VIOLATION',
+]
 
 export interface CsaPerformance {
   openTickets: number
@@ -50,6 +69,12 @@ export interface CsaPerformance {
   avgRating: number | null
   ratingCount: number
   avgFirstResponseMs: number | null
+}
+
+export interface CsaDirectoryEntry {
+  id: string
+  name: string
+  username: string | null
 }
 
 export interface CsaAdmin {
@@ -65,13 +90,21 @@ export interface CsaAdmin {
   role: string
   createdAt: string
   lastLoginAt: string | null
+  /** Consecutive wrong-password streak (resets on success). */
   failedLoginCount: number
   lastFailedLoginAt?: string | null
   lockedUntil: string | null
   /** Convenience: lockedUntil is in the future (login lockout, not SUSPENDED/DISABLED). */
   isLocked?: boolean
   isOnline?: boolean
+  /** Append-only failed attempts in the last 24h (kept after a successful login). */
+  failedAttemptCount24h?: number
+  /** Append-only failed attempts in the roster `withinHours` window. */
+  failedAttemptCount?: number
   openTicketCount?: number
+  closedTicketCount?: number
+  avgRating?: number | null
+  ratingCount?: number
   performance?: CsaPerformance
   reassignment?: { reassigned: number; unassigned: number } | null
   ipWhitelist?: CsaIpWhitelistEntry[]
@@ -137,17 +170,41 @@ export interface SupportAdminCard {
   username?: string | null
 }
 
+export interface SupportTicketTransactionRef {
+  refType: SupportTicketRefType
+  refId: string
+}
+
+/** User's opening form — preferred source for category, description, screenshot. */
+export interface SupportTicketInitialSubmission {
+  type: SupportTicketType | string
+  subType?: string | null
+  typeLabel?: string | null
+  subTypeLabel?: string | null
+  description?: string | null
+  imageUrl?: string | null
+  transactionRef?: SupportTicketTransactionRef | null
+  submittedAt?: string | null
+}
+
 export interface SupportTicketListItem {
   id: string
   publicId?: string
   type: SupportTicketType
   subType?: string | null
+  /** Human-readable labels from API (prefer over raw enum keys). */
+  typeLabel?: string | null
+  subTypeLabel?: string | null
   status: SupportTicketStatus
   stage: SupportTicketStage
   priority: SupportTicketPriority
   resolution?: SupportTicketResolution | null
   refType?: SupportTicketRefType | null
   refId?: string | null
+  /** Legacy top-level fields — mirrored in `initialSubmission` when present. */
+  description?: string | null
+  imageUrl?: string | null
+  initialSubmission?: SupportTicketInitialSubmission | null
   assignedAdminId?: string | null
   assignedAdmin?: SupportAdminCard | null
   user?: SupportUserCard | null
@@ -159,6 +216,9 @@ export interface SupportTicketListItem {
   }>
   updatedAt: string
   createdAt: string
+  resolvedAt?: string | null
+  /** Full days since CSA resolve/reject (resolvedAt); omitted when not yet reviewed. */
+  daysSinceReviewed?: number | null
   hasUnread?: boolean
   rating?: number | null
   ratedAt?: string | null
@@ -166,10 +226,12 @@ export interface SupportTicketListItem {
 
 export interface SupportMessage {
   id: string
+  publicId?: string
   ticketId?: string
   senderType: 'USER' | 'SUPPORT' | 'SYSTEM' | string
   content: string | null
   imageUrl?: string | null
+  isAutoReply?: boolean
   createdAt: string
 }
 
@@ -182,10 +244,11 @@ export interface SupportNote {
 
 export interface SupportTicketDetail extends SupportTicketListItem {
   subject?: string | null
-  description?: string | null
   resolvedAt?: string | null
-  rating?: number | null
-  ratedAt?: string | null
+  /** ISO timestamp: when the PENDING_REVIEW contest window expires. */
+  pendingReviewUntil?: string | null
+  /** When true on CLOSED tickets, user may still submit a star rating (app-side). */
+  canRate?: boolean
 }
 
 export interface TicketDetailResponse {
@@ -204,9 +267,33 @@ export interface CsaTicketsResponse {
   pagination: { page: number; limit: number; total: number; hasMore: boolean }
 }
 
+export type AdminLoginFailureReason =
+  | 'INVALID_CREDENTIALS'
+  | 'ACCOUNT_LOCKED'
+  | 'ADMIN_IP_FORBIDDEN'
+
+export interface FailedLoginAttempt {
+  id: string
+  adminId: string
+  email: string
+  name: string
+  reason: AdminLoginFailureReason
+  ipAddress: string | null
+  createdAt: string
+}
+
 export interface FailedLoginsResponse {
   withinHours: number
   accounts: CsaAdmin[]
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+export interface FailedLoginAttemptsResponse {
+  withinHours: number
+  attempts: FailedLoginAttempt[]
   page: number
   limit: number
   total: number
@@ -218,6 +305,8 @@ export interface TicketListQuery {
   status?: SupportTicketStatus
   priority?: SupportTicketPriority
   type?: SupportTicketType
+  minDaysSinceReviewed?: number
+  maxDaysSinceReviewed?: number
   page?: number
   limit?: number
 }
@@ -266,6 +355,8 @@ export interface ReportListQuery {
   context?: ReportContext
   reason?: ReportReason
   reportedUserId?: string
+  hostUserId?: string
+  reporterId?: string
   page?: number
   limit?: number
 }

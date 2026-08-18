@@ -254,7 +254,7 @@ onMounted(() => {
               v-model="searchQuery"
               type="text"
               class="admin-input min-w-0 flex-1"
-              placeholder="Search by email, phone, public ID, name..."
+              placeholder="Search by email, phone, public ID, first name..."
               @keydown.enter="searchUsers"
             />
             <button

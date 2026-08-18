@@ -1,412 +1,191 @@
 <script setup lang="ts">
-
-import { ref } from 'vue'
-
+import { computed, reactive, ref } from 'vue'
+import { RouterLink } from 'vue-router'
+import axios from 'axios'
 import type { UserProfile } from '@/types/user'
-
+import { userAdminApi } from '@/api/userAdmin'
 import { formatCoins, formatPoints } from '@/utils/format'
-
+import { showToast } from '@/utils/toast'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
-
 import { useUserDetailStore } from '@/stores/userDetail'
 
-
-
 const props = defineProps<{ user: UserProfile }>()
-
 const store = useUserDetailStore()
-
-
-
-type WalletAction =
-
-  | 'addPersonalCoins'
-
-  | 'deductPersonalCoins'
-
-  | 'addTradingCoins'
-
-  | 'deductTradingCoins'
-
-  | 'addPoints'
-
-  | 'deductPoints'
-
-  | 'freezePersonalCoins'
-
-  | 'unfreezePersonalCoins'
-
-  | 'freezeTradingCoins'
-
-  | 'unfreezeTradingCoins'
-
-  | 'freezePoints'
-
-  | 'unfreezePoints'
-
-  | null
-
-
-
-const activeAction = ref<WalletAction>(null)
-
-
-
-const dialogConfig: Record<Exclude<WalletAction, null>, {
-
-  title: string
-
-  message: string
-
-  confirmLabel: string
-
-  variant: 'default' | 'danger' | 'warn'
-
-  amountInput?: boolean
-
-  requireReason?: boolean
-
-  requireConfirmText?: boolean
-
-}> = {
-
-  addPersonalCoins: {
-
-    title: 'Add Personal Coins',
-
-    message: 'Credit personal coins to this user\'s wallet.',
-
-    confirmLabel: 'Add Coins',
-
-    variant: 'default',
-
-    amountInput: true,
-
-    requireReason: true,
-
-  },
-
-  deductPersonalCoins: {
-
-    title: 'Deduct Personal Coins',
-
-    message: 'Deduct personal coins from this user\'s wallet.',
-
-    confirmLabel: 'Deduct Coins',
-
-    variant: 'danger',
-
-    amountInput: true,
-
-    requireReason: true,
-
-    requireConfirmText: true,
-
-  },
-
-  addTradingCoins: {
-
-    title: 'Add Trading Coins',
-
-    message: 'Credit trading coins to this user\'s wallet.',
-
-    confirmLabel: 'Add Trading Coins',
-
-    variant: 'default',
-
-    amountInput: true,
-
-    requireReason: true,
-
-  },
-
-  deductTradingCoins: {
-
-    title: 'Deduct Trading Coins',
-
-    message: 'Deduct trading coins from this user\'s wallet.',
-
-    confirmLabel: 'Deduct',
-
-    variant: 'danger',
-
-    amountInput: true,
-
-    requireReason: true,
-
-    requireConfirmText: true,
-
-  },
-
-  addPoints: {
-
-    title: 'Add Points',
-
-    message: 'Credit points to this user\'s wallet.',
-
-    confirmLabel: 'Add Points',
-
-    variant: 'default',
-
-    amountInput: true,
-
-    requireReason: true,
-
-  },
-
-  deductPoints: {
-
-    title: 'Deduct Points',
-
-    message: 'Deduct points from this user\'s wallet.',
-
-    confirmLabel: 'Deduct Points',
-
-    variant: 'danger',
-
-    amountInput: true,
-
-    requireReason: true,
-
-    requireConfirmText: true,
-
-  },
-
-  freezePersonalCoins: {
-
-    title: 'Freeze Personal Coins',
-
-    message: 'Blocks all personal coin debits.',
-
-    confirmLabel: 'Freeze',
-
-    variant: 'warn',
-
-  },
-
-  unfreezePersonalCoins: {
-
-    title: 'Unfreeze Personal Coins',
-
-    message: 'Allow personal coin spending again.',
-
-    confirmLabel: 'Unfreeze',
-
-    variant: 'default',
-
-  },
-
-  freezeTradingCoins: {
-
-    title: 'Freeze Trading Coins',
-
-    message: 'Blocks all trading coin debits.',
-
-    confirmLabel: 'Freeze',
-
-    variant: 'warn',
-
-  },
-
-  unfreezeTradingCoins: {
-
-    title: 'Unfreeze Trading Coins',
-
-    message: 'Allow trading coin spending again.',
-
-    confirmLabel: 'Unfreeze',
-
-    variant: 'default',
-
-  },
-
-  freezePoints: {
-
-    title: 'Freeze Points',
-
-    message: 'Blocks all point debits.',
-
-    confirmLabel: 'Freeze',
-
-    variant: 'warn',
-
-  },
-
-  unfreezePoints: {
-
-    title: 'Unfreeze Points',
-
-    message: 'Allow point spending again.',
-
-    confirmLabel: 'Unfreeze',
-
-    variant: 'default',
-
-  },
-
+const useMock = import.meta.env.VITE_USE_MOCK === 'true'
+
+type WalletKind = 'coins' | 'points' | 'trading'
+
+const WALLET_OPTIONS: { key: WalletKind; label: string }[] = [
+  { key: 'coins', label: 'Coins' },
+  { key: 'points', label: 'Points' },
+  { key: 'trading', label: 'Trading coins' },
+]
+
+const selected = reactive<Record<WalletKind, boolean>>({
+  coins: false,
+  points: false,
+  trading: false,
+})
+
+const pendingMode = ref<'freeze' | 'unfreeze' | null>(null)
+const submitting = ref(false)
+
+const selectedKinds = computed(() => WALLET_OPTIONS.filter((opt) => selected[opt.key]).map((opt) => opt.key))
+const selectedLabels = computed(() =>
+  WALLET_OPTIONS.filter((opt) => selected[opt.key]).map((opt) => opt.label),
+)
+
+const dialogTitle = computed(() =>
+  pendingMode.value === 'unfreeze' ? 'Unfreeze selected wallets' : 'Freeze selected wallets',
+)
+const dialogMessage = computed(() => {
+  const list = selectedLabels.value.join(', ')
+  return pendingMode.value === 'unfreeze'
+    ? `Allow spending again for: ${list}.`
+    : `Blocks all debits for: ${list}.`
+})
+
+function isFrozen(kind: WalletKind) {
+  if (kind === 'coins') return props.user.coinsFrozen
+  if (kind === 'points') return props.user.pointsFrozen
+  return !!props.user.tradingCoinsFrozen
 }
 
-
-
-async function handleConfirm(payload: { reason?: string; amount?: number }) {
-
-  if (!activeAction.value) return
-
-  await store.walletAction(
-
-    props.user.id,
-
-    activeAction.value,
-
-    payload.amount,
-
-    payload.reason,
-
-  )
-
-  activeAction.value = null
-
+function requestAction(mode: 'freeze' | 'unfreeze') {
+  if (!selectedKinds.value.length) {
+    showToast('Select coins, points, and/or trading coins', 'error')
+    return
+  }
+  pendingMode.value = mode
 }
 
+async function applyWalletAction(kind: WalletKind, mode: 'freeze' | 'unfreeze') {
+  const id = props.user.id
+  if (kind === 'coins') {
+    return mode === 'freeze' ? userAdminApi.freezePersonalCoins(id) : userAdminApi.unfreezePersonalCoins(id)
+  }
+  if (kind === 'points') {
+    return mode === 'freeze' ? userAdminApi.freezePoints(id) : userAdminApi.unfreezePoints(id)
+  }
+  return mode === 'freeze' ? userAdminApi.freezeTradingCoins(id) : userAdminApi.unfreezeTradingCoins(id)
+}
+
+async function handleConfirm() {
+  if (submitting.value || !pendingMode.value || !selectedKinds.value.length) return
+  const mode = pendingMode.value
+  submitting.value = true
+  try {
+    if (useMock) {
+      if (store.user) {
+        for (const kind of selectedKinds.value) {
+          const frozen = mode === 'freeze'
+          if (kind === 'coins') store.user.coinsFrozen = frozen
+          else if (kind === 'points') store.user.pointsFrozen = frozen
+          else store.user.tradingCoinsFrozen = frozen
+        }
+      }
+    } else {
+      for (const kind of selectedKinds.value) {
+        await applyWalletAction(kind, mode)
+      }
+      await store.fetchUser(props.user.id)
+    }
+    showToast(mode === 'freeze' ? 'Wallets frozen' : 'Wallets unfrozen', 'success')
+    pendingMode.value = null
+  } catch (err) {
+    showToast(
+      axios.isAxiosError(err) ? err.response?.data?.message || 'Wallet update failed' : 'Wallet update failed',
+      'error',
+    )
+  } finally {
+    submitting.value = false
+  }
+}
 </script>
 
-
-
 <template>
-
   <div class="admin-card">
+    <div class="mb-4 flex flex-wrap items-center justify-between gap-2">
+      <h2 class="text-sm font-semibold uppercase tracking-wide text-admin-subtext">Wallet Overview</h2>
+      <RouterLink class="text-xs text-admin-accent underline" to="/admin/currency">
+        Open Currency page
+      </RouterLink>
+    </div>
 
-    <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide text-admin-subtext">Wallet Overview</h2>
-
-
-
-    <div class="grid grid-cols-2 gap-3 sm:grid-cols-3">
-
-      <div class="rounded-md bg-admin-bg/60 p-3">
-
+    <div class="flex flex-wrap gap-3">
+      <div class="min-w-min basis-40 grow rounded-md bg-admin-bg/60 p-3">
         <div class="flex items-center gap-1 text-xs text-admin-subtext">
-
           Personal Coins
-
           <span v-if="user.coinsFrozen" title="Frozen">🔒</span>
-
         </div>
-
-        <p class="tabular-nums text-lg font-semibold">{{ formatCoins(user.walletCoins) }}</p>
-
+        <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatCoins(user.walletCoins) }}</p>
       </div>
-
-      <div class="rounded-md bg-admin-bg/60 p-3">
-
+      <div class="min-w-min basis-40 grow rounded-md bg-admin-bg/60 p-3">
         <div class="flex items-center gap-1 text-xs text-admin-subtext">
-
           Points
-
           <span v-if="user.pointsFrozen" title="Frozen">🔒</span>
-
         </div>
-
-        <p class="tabular-nums text-lg font-semibold">{{ formatPoints(user.points) }}</p>
-
+        <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatPoints(user.points) }}</p>
       </div>
-
-      <div class="rounded-md bg-admin-bg/60 p-3">
-
+      <div class="min-w-min basis-40 grow rounded-md bg-admin-bg/60 p-3">
         <div class="flex items-center gap-1 text-xs text-admin-subtext">
-
           Trading Coins
-
           <span v-if="user.tradingCoinsFrozen" title="Frozen">🔒</span>
-
         </div>
-
-        <p class="tabular-nums text-lg font-semibold">{{ formatCoins(user.coinsInTrading) }}</p>
-
+        <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatCoins(user.coinsInTrading) }}</p>
       </div>
-
-      <div class="rounded-md bg-admin-bg/60 p-3">
-
+      <div class="min-w-min basis-40 grow rounded-md bg-admin-bg/60 p-3">
         <p class="text-xs text-admin-subtext">Total Recharge</p>
-
-        <p class="tabular-nums text-lg font-semibold">{{ formatCoins(user.totalRechargeCoin) }}</p>
-
+        <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatCoins(user.totalRechargeCoin) }}</p>
       </div>
-
-      <div class="rounded-md bg-admin-bg/60 p-3 sm:col-span-2">
-
+      <div class="min-w-min basis-40 grow rounded-md bg-admin-bg/60 p-3">
         <p class="text-xs text-admin-subtext">Total Withdrawal (points processed)</p>
-
-        <p class="tabular-nums text-lg font-semibold">{{ formatPoints(user.totalWithdrawUsd) }}</p>
-
+        <p class="whitespace-nowrap tabular-nums text-lg font-semibold">{{ formatPoints(user.totalWithdrawUsd) }}</p>
       </div>
-
     </div>
 
-
-
-    <div class="mt-4 space-y-2">
-
-      <p class="text-xs font-medium text-admin-subtext">Personal Coins</p>
-
-      <div class="flex flex-wrap gap-2">
-
-        <button type="button" class="admin-btn-primary text-xs" @click="activeAction = 'addPersonalCoins'">Add</button>
-
-        <button type="button" class="admin-btn-danger text-xs" @click="activeAction = 'deductPersonalCoins'">Deduct</button>
-
-        <button type="button" class="admin-btn-warn text-xs" @click="activeAction = 'freezePersonalCoins'">Freeze</button>
-
-        <button type="button" class="admin-btn-secondary text-xs" @click="activeAction = 'unfreezePersonalCoins'">Unfreeze</button>
-
+    <div class="mt-4 space-y-3 border-t border-admin-border pt-4">
+      <p class="text-xs font-medium text-admin-subtext">Freeze controls</p>
+      <div class="flex flex-wrap gap-4">
+        <label
+          v-for="opt in WALLET_OPTIONS"
+          :key="opt.key"
+          class="flex items-center gap-1.5 text-xs text-admin-subtext"
+        >
+          <input v-model="selected[opt.key]" type="checkbox" class="accent-admin-accent" />
+          {{ opt.label }}
+          <span v-if="isFrozen(opt.key)" title="Frozen">🔒</span>
+        </label>
       </div>
-
-      <p class="text-xs font-medium text-admin-subtext">Trading Coins</p>
-
       <div class="flex flex-wrap gap-2">
-
-        <button type="button" class="admin-btn-primary text-xs" @click="activeAction = 'addTradingCoins'">Add</button>
-
-        <button type="button" class="admin-btn-danger text-xs" @click="activeAction = 'deductTradingCoins'">Deduct</button>
-
-        <button type="button" class="admin-btn-warn text-xs" @click="activeAction = 'freezeTradingCoins'">Freeze</button>
-
-        <button type="button" class="admin-btn-secondary text-xs" @click="activeAction = 'unfreezeTradingCoins'">Unfreeze</button>
-
+        <button
+          type="button"
+          class="admin-btn-warn text-xs"
+          :disabled="submitting || !selectedKinds.length"
+          @click="requestAction('freeze')"
+        >
+          Freeze
+        </button>
+        <button
+          type="button"
+          class="admin-btn-secondary text-xs"
+          :disabled="submitting || !selectedKinds.length"
+          @click="requestAction('unfreeze')"
+        >
+          Unfreeze
+        </button>
       </div>
-
-      <p class="text-xs font-medium text-admin-subtext">Points</p>
-
-      <div class="flex flex-wrap gap-2">
-
-        <button type="button" class="admin-btn-primary text-xs" @click="activeAction = 'addPoints'">Add</button>
-
-        <button type="button" class="admin-btn-danger text-xs" @click="activeAction = 'deductPoints'">Deduct</button>
-
-        <button type="button" class="admin-btn-warn text-xs" @click="activeAction = 'freezePoints'">Freeze</button>
-
-        <button type="button" class="admin-btn-secondary text-xs" @click="activeAction = 'unfreezePoints'">Unfreeze</button>
-
-      </div>
-
     </div>
-
-
 
     <ConfirmActionDialog
-
-      v-if="activeAction"
-
-      :open="!!activeAction"
-
-      v-bind="dialogConfig[activeAction]"
-
-      @close="activeAction = null"
-
+      v-if="pendingMode"
+      :open="!!pendingMode"
+      :title="dialogTitle"
+      :message="dialogMessage"
+      :confirm-label="pendingMode === 'unfreeze' ? 'Unfreeze' : 'Freeze'"
+      :variant="pendingMode === 'unfreeze' ? 'default' : 'warn'"
+      @close="pendingMode = null"
       @confirm="handleConfirm"
-
     />
-
   </div>
-
 </template>
-

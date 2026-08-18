@@ -5,6 +5,7 @@ import type {
   AdminPayrollAssignmentsPage,
   AdminPayrollAssignmentsQuery,
   AdminPendingPlatformPage,
+  AdminWithdrawalDetail,
   CursorPageQuery,
 } from '@/types/agencyPayroll'
 
@@ -27,10 +28,36 @@ export const agencyPayrollAdminApi = {
     return api.get<AdminPendingPlatformPage>('/admin/agency/payroll/pending-platform', { params })
   },
 
-  assignWithdrawal(withdrawalId: string, agencyUserId?: string) {
+  getWithdrawal(withdrawalId: string) {
+    return api.get<AdminWithdrawalDetail>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}`,
+    )
+  },
+
+  getProofUploadUrl(withdrawalId: string, mimeType: string) {
+    return api.post<{ uploadUrl: string; s3Key: string; s3Bucket: string }>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/proof-upload-url`,
+      { mimeType },
+    )
+  },
+
+  completePlatformPayout(withdrawalId: string, proofS3Key: string, proofS3Bucket: string) {
+    return api.post<{ ok: boolean; hostPayoutPoints: string; waitingExpiresAt: string }>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/complete`,
+      { proofS3Key, proofS3Bucket },
+    )
+  },
+
+  assignWithdrawal(
+    withdrawalId: string,
+    agency?: { agencyUserId?: string; agencyPublicId?: string },
+  ) {
+    const body: { agencyUserId?: string; agencyPublicId?: string } = {}
+    if (agency?.agencyUserId) body.agencyUserId = agency.agencyUserId
+    if (agency?.agencyPublicId) body.agencyPublicId = agency.agencyPublicId
     return api.post<{ ok: boolean }>(
       `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/assign`,
-      agencyUserId ? { agencyUserId } : {},
+      body,
     )
   },
 

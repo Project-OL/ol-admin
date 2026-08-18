@@ -3,11 +3,13 @@ import type {
   AdminStatus,
   CreateCsaPayload,
   CsaAdmin,
+  CsaDirectoryEntry,
   CsaIpWhitelistEntry,
   CsaIpWhitelistResponse,
   CsaOverview,
   CsaPerformance,
   CsaTicketsResponse,
+  FailedLoginAttemptsResponse,
   FailedLoginsResponse,
   NotificationBadge,
   ReportListQuery,
@@ -44,6 +46,11 @@ export const customerSupportApi = {
     }>('/admin/support/csas', { params })
   },
 
+  /** ACTIVE CSAs for pickers (CSA + SUPER_ADMIN). */
+  listCsaDirectory() {
+    return api.get<{ csas: CsaDirectoryEntry[] }>('/admin/support/csas/directory')
+  },
+
   createCsa(payload: CreateCsaPayload) {
     return api.post<{ csa: CsaAdmin }>('/admin/support/csas', payload)
   },
@@ -73,6 +80,17 @@ export const customerSupportApi = {
     limit?: number
   } = {}) {
     return api.get<FailedLoginsResponse>('/admin/support/csas/failed-logins', { params })
+  },
+
+  listFailedLoginAttempts(params: {
+    withinHours?: number
+    adminId?: string
+    page?: number
+    limit?: number
+  } = {}) {
+    return api.get<FailedLoginAttemptsResponse>('/admin/support/csas/failed-login-attempts', {
+      params,
+    })
   },
 
   listCsaTickets(

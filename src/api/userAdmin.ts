@@ -7,6 +7,7 @@ import type {
   ApiUserDetail,
   ApiWallet,
   FaceVerificationResponse,
+  LivePhotoResponse,
   PasswordResetResponse,
   PatchUserPayload,
   TagsResponse,
@@ -14,8 +15,16 @@ import type {
   UserSearchResponse,
   WalletAdjustPayload,
   ApplyUserRestrictionPayload,
+  ApiUserRestriction,
   ApiUserRestrictionsResponse,
   UserRestrictionType,
+  AdminActiveLiveStreamsResponse,
+  AdminGlobalActiveLiveStreamsResponse,
+  AdminGlobalRestrictionsResponse,
+  AdminStopLiveStreamResponse,
+  UserLiveModerationDossier,
+  LiveModerationListResponse,
+  LiveModerationListQuery,
 } from '@/types/api'
 import type {
   AdminUserGuardianDossier,
@@ -239,6 +248,16 @@ export const userAdminApi = {
     return api.get<FaceVerificationResponse>(`/admin/users/${id}/face-verification`)
   },
 
+  getLivePhoto(id: string) {
+    return api.get<LivePhotoResponse>(`/admin/users/${id}/live-photo`)
+  },
+
+  removeLivePhoto(id: string, reason?: string) {
+    return api.delete<{ ok: true; userId: string }>(`/admin/users/${id}/live-photo`, {
+      data: reason ? { reason } : {},
+    })
+  },
+
   revokeFaceVerification(id: string, reason?: string, revokeRelated = false) {
     return api.delete(`/admin/users/${id}/face-verification`, {
       data: { reason, revokeRelated },
@@ -293,7 +312,7 @@ export const userAdminApi = {
   },
 
   applyRestriction(id: string, payload: ApplyUserRestrictionPayload) {
-    return api.post(`/admin/users/${id}/restrictions`, payload)
+    return api.post<ApiUserRestriction>(`/admin/users/${id}/restrictions`, payload)
   },
 
   deleteRestriction(id: string, restrictionId: string) {
@@ -302,6 +321,53 @@ export const userAdminApi = {
 
   clearRestrictionByType(id: string, type: UserRestrictionType) {
     return api.post(`/admin/users/${id}/restrictions/${type}/clear`)
+  },
+
+  listActiveLiveStreams(id: string) {
+    return api.get<AdminActiveLiveStreamsResponse>(`/admin/users/${id}/live-streams/active`)
+  },
+
+  stopLiveStream(id: string, streamRef: string, reason?: string) {
+    return api.post<AdminStopLiveStreamResponse>(`/admin/users/${id}/live-streams/${streamRef}/stop`, {
+      reason,
+    })
+  },
+
+  getUserLiveModeration(
+    id: string,
+    params: { page?: number; limit?: number; action?: string; reason?: string; status?: string } = {},
+  ) {
+    return api.get<UserLiveModerationDossier>(`/admin/users/${id}/live-moderation`, { params })
+  },
+
+  clearHostStreamSuspension(id: string) {
+    return api.post<{ ok: true; userId: string; hostStreamSuspendedUntil: null }>(
+      `/admin/users/${id}/host-stream-suspension/clear`,
+    )
+  },
+
+  listLiveModeration(params: LiveModerationListQuery = {}) {
+    return api.get<LiveModerationListResponse>('/admin/live-moderation', { params })
+  },
+
+  listAllActiveLiveStreams(params: { page?: number; limit?: number; hostUserId?: string } = {}) {
+    return api.get<AdminGlobalActiveLiveStreamsResponse>('/admin/live-streams/active', { params })
+  },
+
+  stopLiveStreamGlobal(streamRef: string, reason?: string) {
+    return api.post<AdminStopLiveStreamResponse>(`/admin/live-streams/${encodeURIComponent(streamRef)}/stop`, {
+      reason,
+    })
+  },
+
+  listGlobalRestrictions(params: {
+    type?: UserRestrictionType
+    userId?: string
+    active?: boolean
+    page?: number
+    limit?: number
+  } = {}) {
+    return api.get<AdminGlobalRestrictionsResponse>('/admin/restrictions', { params })
   },
 
   getUserVip(id: string, params: VipDossierQuery = {}) {

@@ -46,7 +46,10 @@ export interface CreateAdminResponse {
 
 export interface UserSearchItem {
   userId: string
+  /** Derived trim(first)+' '+trim(last); empty string if both missing. */
   name: string
+  firstName?: string | null
+  lastName?: string | null
   username: string
   publicId: string
   displayPublicId: string
@@ -67,7 +70,10 @@ export interface UserSearchResponse {
 export interface ApiUserDetail {
   userId: string
   username: string
+  /** Read-only derived legal name — do not PATCH. */
   name?: string
+  firstName?: string | null
+  lastName?: string | null
   publicId?: string
   avatarUrl?: string | null
   vip?: {
@@ -78,7 +84,7 @@ export interface ApiUserDetail {
     membership?: { isActive?: boolean; tier?: number | null; expiresAt?: string | null; daysRemaining?: number }
     vipSubscriptionActive?: boolean
     vipSubscriptionExpiresAt?: string | null
-    richTier?: { tier?: number; displayName?: string }
+    richTier?: { tier?: number; displayName?: string | null }
   }
   email?: string | null
   phone?: string | null
@@ -155,6 +161,10 @@ export interface StatusActionPayload {
 
 export interface PatchUserPayload {
   username?: string
+  /** Trim, 1–50 chars; cannot clear (omit to leave unchanged). */
+  firstName?: string
+  /** Trim, 0–50 chars; `""` clears to null. */
+  lastName?: string
   email?: string
   phone?: string
   gender?: string
@@ -186,13 +196,62 @@ export interface ApiTransaction {
   createdAt?: string
   date?: string
   transactionName?: string
-  description?: string
+  description?: string | null
   amount?: string | number
+  balanceAfter?: string | number
   /** Ledger APIs use CREDIT/DEBIT; trading admin history uses credit/debit. */
   direction?: 'credit' | 'debit' | 'CREDIT' | 'DEBIT'
   txType?: string
   type?: string
   status?: string
+  counterpartyId?: string | null
+  counterpartyDetails?: {
+    userId?: string
+    name?: string
+    publicId?: string
+    avatarUrl?: string | null
+    storeItemName?: string
+    price?: string
+    rarePublicId?: string
+    membershipType?: string
+    addedByAdmin?: { adminUserId: string; name?: string; publicId?: string }
+    transactionId?: string
+  } | null
+  gift?: {
+    giftTransactionId?: string
+    giftId?: string
+    giftName?: string
+    displayImageUrl?: string | null
+    coinCost?: number
+    pointsAwarded?: number
+    quantity?: number
+  } | null
+  storeItem?: {
+    id?: string
+    name?: string
+    category?: string
+    coinCost?: number
+    displayImageUrl?: string | null
+  } | null
+  vipPurchase?: {
+    id?: string
+    tier?: string
+    periodDays?: number
+    coinCost?: string
+  } | null
+  coinTradingTransfer?: {
+    id?: string
+    tradingCoinsDebited?: string
+    coinsCredited?: string
+    recipientWalletType?: string
+    reversedAt?: string | null
+  } | null
+  canRevert?: boolean
+  transferId?: string | null
+  revertVia?: {
+    endpoint: 'coin_ledger' | 'coin_trading_transfer'
+    id: string
+  } | null
 }
 
 export interface ApiTransactionListResponse {
@@ -228,43 +287,76 @@ export interface ApiPostDetail extends ApiPost {
   thumbnailUrl?: string | null
 }
 
+export interface FaceMatchedUserResponse {
+  userId?: string
+  username?: string
+  name?: string
+  avatarUrl?: string | null
+  publicId?: string
+  displayPublicId?: string
+}
+
 export interface FaceVerificationResponse {
   userId?: string
   isFaceVerified: boolean
   kycFaceVerified?: boolean
+  hasReferenceImage?: boolean
+  statusLabel?: string
+  statusDetail?: string
+  notIndexedReason?: string | null
   profile?: {
     faceProfileId?: string
     status?: string
     rekognitionFaceId?: string | null
     collectionId?: string | null
     indexedAt?: string | null
+    lastVerifiedAt?: string | null
     revokedAt?: string | null
+    failureReason?: string | null
+    imageQualityScore?: number | null
+    livenessConfidence?: number | null
+    faceMatchSimilarity?: number | null
+    hasReferenceImage?: boolean
+    isIndexed?: boolean
+    statusLabel?: string
+    statusDetail?: string
+    notIndexedReason?: string | null
     duplicateOfUserId?: string | null
     matchedUserId?: string | null
     referenceImageUrl?: string | null
-    duplicateOfUser?: {
-      userId?: string
-      username?: string
-      name?: string
-      avatarUrl?: string | null
-    } | null
-    matchedUser?: {
-      userId?: string
-      username?: string
-      name?: string
-      avatarUrl?: string | null
-    } | null
+    duplicateOfUser?: FaceMatchedUserResponse | null
+    matchedUser?: FaceMatchedUserResponse | null
   } | null
   /** Legacy flat fields (older API shapes) */
-  duplicateOfUser?: {
-    username?: string
-    avatarUrl?: string | null
-  } | null
-  matchedUser?: {
-    username?: string
-    avatarUrl?: string | null
-  } | null
+  duplicateOfUser?: FaceMatchedUserResponse | null
+  matchedUser?: FaceMatchedUserResponse | null
   referenceImageUrl?: string | null
+}
+
+export interface LivePhotoResponse {
+  userId?: string
+  hasLivePhoto: boolean
+  isVerified: boolean
+  verificationState?: string
+  statusLabel?: string
+  statusDetail?: string
+  verdictReason?: string | null
+  failureReason?: string | null
+  failureReasonDetail?: string | null
+  replaceFailedReason?: string | null
+  replaceFailedReasonDetail?: string | null
+  replaceInProgress?: boolean
+  similarityScore?: number | null
+  verifiedAt?: string | null
+  imageUrl?: string | null
+  pendingImageUrl?: string | null
+  latestAttempt?: {
+    matched?: boolean
+    failureReason?: string | null
+    failureReasonDetail?: string | null
+    similarityScore?: number | null
+    createdAt?: string
+  } | null
 }
 
 export interface PasswordResetResponse {
@@ -289,6 +381,7 @@ export type UserRestrictionType =
 
 export interface ApiUserRestriction {
   id: string
+  userId?: string
   type: UserRestrictionType
   restrictedUntil: string
   reason?: string | null
@@ -299,6 +392,11 @@ export interface ApiUserRestriction {
   clearedByAdminId?: string | null
   createdAt?: string
   updatedAt?: string
+  /**
+   * MESSAGING_DISABLE only. Recipients this account cannot message.
+   * `null` / omitted = global send ban (cannot message anyone).
+   */
+  targetUserIds?: string[] | null
 }
 
 export interface ApiUserRestrictionsResponse {
@@ -312,4 +410,171 @@ export interface ApplyUserRestrictionPayload {
   restrictedUntil: string
   reason?: string
   reportId?: string
+  /** MESSAGING_DISABLE only. Omit for a global send ban. */
+  targetUserIds?: string[]
+  /**
+   * MESSAGING_DISABLE only. Union `targetUserIds` with the active ban and
+   * keep the later `restrictedUntil`.
+   */
+  extend?: boolean
+}
+
+export interface AdminLiveStreamRow {
+  source: 'host_live_session' | 'live_stream'
+  id: string
+  roomId: string
+  streamId: string | null
+  title: string | null
+  status: string
+  startedAt: string | null
+  isLive: boolean
+  hostUserId?: string
+  host?: LiveModerationUserBrief | null
+}
+
+export interface AdminActiveLiveStreamsResponse {
+  userId: string
+  streams: AdminLiveStreamRow[]
+}
+
+export interface AdminGlobalActiveLiveStreamsResponse {
+  items: AdminLiveStreamRow[]
+  pagination: LiveModerationPagination
+}
+
+export interface AdminStopLiveStreamResponse {
+  ok: true
+  status: 'STOP_REQUESTED'
+  roomId: string
+  pendingLiveBackend: boolean
+  livekitRoomDeleted?: boolean
+  liveBackendNotified?: boolean
+  message?: string
+}
+
+export type LiveModerationKind = 'nudity' | 'video_call' | 'user_report' | 'host_ban'
+export type LiveNudityAction = 'WARNING' | 'BLOCK'
+
+export interface LiveModerationListQuery {
+  kind?: LiveModerationKind
+  userId?: string
+  action?: LiveNudityAction
+  reason?: string
+  status?: string
+  page?: number
+  limit?: number
+}
+
+export interface LiveModerationUserBrief {
+  id: string
+  name?: string
+  username?: string | null
+  publicId?: string
+  avatarUrl?: string | null
+}
+
+export interface LiveNudityLogItem {
+  kind: 'nudity'
+  id: string
+  streamDbId: string
+  roomId: string | null
+  title: string | null
+  isLive: boolean
+  detectedLabel: string
+  confidence: number
+  action: LiveNudityAction | string
+  evidenceUrl: string | null
+  checkedAt: string
+  host: LiveModerationUserBrief | null
+  hostUserId: string | null
+}
+
+export interface VideoCallNudityLogItem {
+  kind: 'video_call'
+  id: string
+  sessionId: string
+  livekitRoom: string | null
+  sessionStatus: string | null
+  detectedLabel: string
+  confidence: number
+  action: LiveNudityAction | string
+  evidenceUrl: string | null
+  checkedAt: string
+  caller: LiveModerationUserBrief | null
+  creator: LiveModerationUserBrief | null
+}
+
+export interface HostStreamBanItem {
+  kind: 'host_ban'
+  id: string
+  userId: string
+  streamId: string
+  banNumber: number
+  banDurationHours: number
+  suspendedUntil: string
+  createdAt: string
+  active: boolean
+  user?: LiveModerationUserBrief | null
+}
+
+export interface LiveUserReportItem {
+  kind: 'user_report'
+  id: string
+  reason: string
+  context: string
+  status: string
+  additionalInfo?: string | null
+  liveSessionId?: string | null
+  hostUserId?: string | null
+  evidenceUrls: string[]
+  createdAt: string
+  reporter: LiveModerationUserBrief | null
+  reportedUser: LiveModerationUserBrief | null
+  hostUser: LiveModerationUserBrief | null
+}
+
+export interface LiveModerationPagination {
+  page: number
+  limit: number
+  total: number
+  hasMore: boolean
+}
+
+export interface UserLiveModerationDossier {
+  userId: string
+  hostStreamSuspendedUntil: string | null
+  accountStatus: string
+  summary: {
+    nudity: number
+    liveNudityDetections: number
+    videoCallNudity: number
+    abuse: number
+    fakeStreaming: number
+    liveBroadcast: number
+    hostBans: number
+    userReports: number
+  }
+  liveNudityLogs: LiveNudityLogItem[]
+  liveNudityPagination: LiveModerationPagination
+  videoCallLogs: VideoCallNudityLogItem[]
+  videoCallPagination: LiveModerationPagination
+  hostBans: HostStreamBanItem[]
+  hostBanPagination: LiveModerationPagination
+  userReports: LiveUserReportItem[]
+  userReportPagination: LiveModerationPagination
+}
+
+export interface AdminGlobalRestrictionItem extends ApiUserRestriction {
+  user?: LiveModerationUserBrief | null
+}
+
+export interface AdminGlobalRestrictionsResponse {
+  items: AdminGlobalRestrictionItem[]
+  pagination: LiveModerationPagination
+}
+
+export interface LiveModerationListResponse {
+  kind: LiveModerationKind
+  items: Array<LiveNudityLogItem | VideoCallNudityLogItem | HostStreamBanItem | LiveUserReportItem>
+  pagination: LiveModerationPagination
 }

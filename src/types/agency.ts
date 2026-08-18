@@ -139,6 +139,12 @@ export interface AgencyDetail {
   thisMonthEarningsPoints: string
   thisMonthEarningsUsd: string
   commissionTier: string
+  currentWindowTotalPoints?: string
+  /** Admin-assigned base tier while lock is active. */
+  tierLockLevel?: string | null
+  tierLockUntil?: string | null
+  tierLockBonusPoints?: string | null
+  effectiveWindowTotalPoints?: string
   /** Admin grant — agent cannot accept payroll without this */
   payrollPrivilegeGranted: boolean
   /** Agent accept-toggle (forced off when privilege revoked) */
@@ -285,6 +291,10 @@ export type AgencyLevelSnapshot = {
   currentLevel: string
   currentWindowTotalPoints: string
   lastLevelRecomputedAt: string | null
+  tierLockLevel?: string | null
+  tierLockUntil?: string | null
+  tierLockBonusPoints?: string | null
+  effectiveWindowTotalPoints?: string
 }
 
 export type AgencyRecomputeLevelResponse = {
@@ -327,4 +337,4 @@ export type AgencyCommissionWindowConfigUpdateResponse = AgencyCommissionWindowC
   recomputeEnqueued: boolean
 }
 
-export const COMMISSION_TIERS = ['D', 'C', 'B', 'A'] as const
+export const COMMISSION_TIERS = ['D', 'C', 'B', 'A', 'S', 'SS+'] as const

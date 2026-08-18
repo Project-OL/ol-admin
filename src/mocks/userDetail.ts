@@ -10,6 +10,8 @@ import type {
 export const mockUser: UserProfile = {
   id: '24566789',
   name: 'Riya Sharma',
+  firstName: 'Riya',
+  lastName: 'Sharma',
   username: 'riya_sharma',
   publicId: '34216589',
   displayPublicId: '34216589',
@@ -18,6 +20,7 @@ export const mockUser: UserProfile = {
   status: 'active',
   wealthLevel: 42,
   streamLevel: 18,
+  richTier: { tier: 3, displayName: 'RICH III' },
   walletCoins: 125000,
   points: 8450,
   totalEarnings: 2450000,
@@ -34,6 +37,7 @@ export const mockUser: UserProfile = {
   lastLogin: new Date(Date.now() - 1000 * 60 * 120).toISOString(),
   inAgency: true,
   agencyName: 'Star Agency',
+  agencyPublicId: 'AG-10001',
   ipAddress: '103.21.45.89',
   deviceName: 'Samsung Galaxy S24',
   deviceId: 'DEV-88291034',
@@ -45,23 +49,58 @@ export const mockUser: UserProfile = {
   faceVerified: true,
   genderEditable: false,
   faceVerificationStatus: 'verified',
+  livePhotoStatus: 'verified',
+  livePhotoDetail: {
+    hasLivePhoto: true,
+    isVerified: true,
+    verificationState: 'VERIFIED',
+    statusLabel: 'Verified',
+    statusDetail: 'Live photo is verified against the indexed face.',
+    imageUrl: 'https://i.pravatar.cc/300?u=live-photo',
+  },
 }
 
-export const mockCoinTransactions: CoinTransaction[] = Array.from({ length: 25 }, (_, i) => ({
-  id: `CTX-${1000 + i}`,
-  date: new Date(Date.now() - i * 86400000).toISOString(),
-  description: ['Gift received', 'Recharge', 'Coin transfer', 'Live reward', 'Purchase'][i % 5]!,
-  amount: (i % 2 === 0 ? 1 : -1) * (500 + i * 100),
-  status: (['success', 'pending', 'failed'] as const)[i % 3]!,
-}))
+export const mockCoinTransactions: CoinTransaction[] = Array.from({ length: 25 }, (_, i) => {
+  const names = ['Gift received', 'Recharge', 'Coin transfer', 'Live reward', 'Purchase'] as const
+  const name = names[i % 5]!
+  const amount = (i % 2 === 0 ? 1 : -1) * (500 + i * 100)
+  return {
+    id: `CTX-${1000 + i}`,
+    date: new Date(Date.now() - i * 86400000).toISOString(),
+    transactionName: name,
+    description: i % 3 === 0 ? `Detail for ${name}` : null,
+    amount,
+    direction: amount >= 0 ? 'credit' : 'debit',
+    status: (['success', 'pending', 'failed'] as const)[i % 3]!,
+    canRevert: i % 4 === 0,
+    counterpartyDetails:
+      i % 4 === 0
+        ? {
+            userId: 'peer-user',
+            name: 'Jane Doe',
+            publicId: '34216589',
+            avatarUrl: 'https://i.pravatar.cc/150?u=peer',
+          }
+        : null,
+  }
+})
 
-export const mockPointTransactions: PointTransaction[] = Array.from({ length: 25 }, (_, i) => ({
-  id: `PTX-${2000 + i}`,
-  date: new Date(Date.now() - i * 86400000).toISOString(),
-  description: ['Stream bonus', 'Daily login', 'Referral bonus', 'Task reward', 'Withdrawal'][i % 5]!,
-  amount: (i % 3 === 0 ? -1 : 1) * (50 + i * 10),
-  status: (['success', 'pending', 'failed'] as const)[i % 3]!,
-}))
+export const mockPointTransactions: PointTransaction[] = Array.from({ length: 25 }, (_, i) => {
+  const names = ['Stream bonus', 'Daily login', 'Referral bonus', 'Task reward', 'Withdrawal'] as const
+  const name = names[i % 5]!
+  const amount = (i % 3 === 0 ? -1 : 1) * (50 + i * 10)
+  return {
+    id: `PTX-${2000 + i}`,
+    date: new Date(Date.now() - i * 86400000).toISOString(),
+    transactionName: name,
+    description: null,
+    amount,
+    direction: amount >= 0 ? 'credit' : 'debit',
+    status: (['success', 'pending', 'failed'] as const)[i % 3]!,
+    canRevert: false,
+    counterpartyDetails: null,
+  }
+})
 
 export const mockPosts: Post[] = [
   {
@@ -132,14 +171,22 @@ export function paginate<T>(items: T[], page: number, limit: number) {
   }
 }
 
-export function filterTransactions<T extends { status: string; date: string }>(
+export function filterTransactions<T extends { status: string; date: string; direction?: string; amount?: number }>(
   items: T[],
-  params: { status?: string; from?: string; to?: string },
+  params: { status?: string; from?: string; to?: string; direction?: 'credit' | 'debit' },
 ): T[] {
   return items.filter((item) => {
     if (params.status && item.status !== params.status) return false
     if (params.from && new Date(item.date) < new Date(params.from)) return false
     if (params.to && new Date(item.date) > new Date(params.to + 'T23:59:59')) return false
+    if (params.direction) {
+      const dir = String(item.direction ?? '').toLowerCase()
+      if (dir === 'credit' || dir === 'debit') {
+        if (dir !== params.direction) return false
+      } else if (typeof item.amount === 'number') {
+        if (params.direction === 'debit' ? item.amount >= 0 : item.amount < 0) return false
+      }
+    }
     return true
   })
 }

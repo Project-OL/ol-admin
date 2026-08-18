@@ -8,6 +8,12 @@ import {
 
   mapFaceStatus,
 
+  mapFaceVerificationDetail,
+
+  mapLivePhotoDetail,
+
+  mapLivePhotoStatus,
+
   mapPointTransaction,
 
   mapPost,
@@ -27,6 +33,8 @@ import type {
   DeviceBanOptions,
 
   FaceRevokeOptions,
+
+  LivePhotoRemoveOptions,
 
   PointTransaction,
 
@@ -168,7 +176,7 @@ export const useUserDetailStore = defineStore('userDetail', {
 
         this.user = mapUserDetail(userData, walletData)
 
-        await this.fetchFaceVerification(id)
+        await Promise.all([this.fetchFaceVerification(id), this.fetchLivePhoto(id)])
 
       } catch {
 
@@ -190,24 +198,37 @@ export const useUserDetailStore = defineStore('userDetail', {
 
       const { data: walletData } = await userAdminApi.getWallet(id)
 
-      this.user = mapUserDetail(
-        {
-          userId: this.user.id,
-          username: this.user.name,
-          status: this.user.rawStatus ?? this.user.status,
-          tags: this.user.tags,
-          walletFreeze: {
-            personalCoinsFrozen: this.user.coinsFrozen,
-            tradingCoinsFrozen: this.user.tradingCoinsFrozen,
-            pointsFrozen: this.user.pointsFrozen,
-          },
-          posting: {
-            banned: Boolean(this.user.postingBanned),
-            suspendedUntil: this.user.postingSuspendedUntil ?? null,
-          },
-        },
-        walletData,
-      )
+      const personalCoins = Number(walletData.personalCoinBalance || 0) || 0
+
+      const points = Number(walletData.personalPointBalance || 0) || 0
+
+      const trading = Number(walletData.tradingCoinBalance || 0) || 0
+
+      const totalRecharge = Number(walletData.totalCoinsRecharged || 0) || 0
+
+      const totalWithdraw = Number(walletData.totalWithdrawalProcessedPoints || 0) || 0
+
+      // Update wallet balances only — never remapping profile (would drop firstName/lastName/faceVerified).
+
+      this.user = {
+
+        ...this.user,
+
+        walletCoins: personalCoins,
+
+        points,
+
+        totalEarnings: points,
+
+        totalPoints: points,
+
+        totalRechargeCoin: totalRecharge,
+
+        totalWithdrawUsd: totalWithdraw,
+
+        coinsInTrading: trading,
+
+      }
 
     },
 
@@ -263,13 +284,27 @@ export const useUserDetailStore = defineStore('userDetail', {
 
         this.user.faceVerificationStatus = mapFaceStatus(data)
 
-        this.user.faceVerificationDetail = {
-          duplicateUsername:
-            data.profile?.duplicateOfUser?.username ?? data.duplicateOfUser?.username,
-          matchedUsername: data.profile?.matchedUser?.username ?? data.matchedUser?.username,
-          referenceImageUrl:
-            data.profile?.referenceImageUrl ?? data.referenceImageUrl ?? null,
-        }
+        this.user.faceVerificationDetail = mapFaceVerificationDetail(data)
+
+      } catch {
+
+        /* optional endpoint */
+
+      }
+
+    },
+
+    async fetchLivePhoto(id: string) {
+
+      if (useMock || !this.user) return
+
+      try {
+
+        const { data } = await userAdminApi.getLivePhoto(id)
+
+        this.user.livePhotoStatus = mapLivePhotoStatus(data)
+
+        this.user.livePhotoDetail = mapLivePhotoDetail(data)
 
       } catch {
 
@@ -487,9 +522,12 @@ export const useUserDetailStore = defineStore('userDetail', {
 
         }
 
-        // No dedicated reports endpoint in Admin Users API collection
-
-        this.reportsSummary = { nudity: 0, abuse: 0, fakeStreaming: 0 }
+        const { data } = await userAdminApi.getUserLiveModeration(id, { limit: 1 })
+        this.reportsSummary = {
+          nudity: data.summary?.nudity ?? 0,
+          abuse: data.summary?.abuse ?? 0,
+          fakeStreaming: data.summary?.fakeStreaming ?? 0,
+        }
 
       } catch {
 
@@ -546,6 +584,18 @@ export const useUserDetailStore = defineStore('userDetail', {
         await delay()
 
         if (this.user) {
+          const nextFirst =
+            payload.firstName !== undefined ? payload.firstName : this.user.firstName
+          const nextLast =
+            payload.lastName !== undefined
+              ? payload.lastName === ''
+                ? null
+                : payload.lastName
+              : this.user.lastName
+          const composed = [nextFirst, nextLast]
+            .map((p) => (p ?? '').trim())
+            .filter(Boolean)
+            .join(' ')
 
           this.user = {
 
@@ -553,7 +603,11 @@ export const useUserDetailStore = defineStore('userDetail', {
 
             username: payload.username ?? this.user.username,
 
-            name: payload.username ?? this.user.name,
+            firstName: nextFirst ?? null,
+
+            lastName: nextLast ?? null,
+
+            name: composed || payload.username || this.user.name,
 
             email: payload.email ?? this.user.email,
 
@@ -577,23 +631,35 @@ export const useUserDetailStore = defineStore('userDetail', {
 
 
 
-      // Prefer a single dirty-field PATCH (tags included when present).
+      // Send only dirty fields provided by the caller (partial PATCH).
 
-      await userAdminApi.updateUser(id, {
+      const patch: UpdateUserPayload = {}
 
-        username: payload.username,
+      if (payload.username !== undefined) patch.username = payload.username
 
-        email: payload.email,
+      if (payload.firstName !== undefined) patch.firstName = payload.firstName
 
-        phone: payload.phone,
+      if (payload.lastName !== undefined) patch.lastName = payload.lastName
 
-        gender: payload.gender,
+      if (payload.email !== undefined) patch.email = payload.email
 
-        country: payload.country,
+      if (payload.phone !== undefined) patch.phone = payload.phone
 
-        tags: payload.tags,
+      if (payload.gender !== undefined) patch.gender = payload.gender
 
-      })
+      if (payload.country !== undefined) patch.country = payload.country
+
+      if (payload.tags !== undefined) patch.tags = payload.tags
+
+      if (!Object.keys(patch).length) {
+
+        showToast('No changes to save', 'info')
+
+        return
+
+      }
+
+      await userAdminApi.updateUser(id, patch)
 
       await this.fetchUser(id)
 
@@ -686,6 +752,50 @@ export const useUserDetailStore = defineStore('userDetail', {
       await this.fetchUser(id)
 
       showToast('Face verification revoked', 'success')
+
+    },
+
+    async removeLivePhoto(id: string, options: LivePhotoRemoveOptions = {}) {
+
+      if (useMock) {
+
+        await delay()
+
+        if (this.user) {
+
+          this.user.livePhotoStatus = 'none'
+
+          this.user.livePhotoDetail = {
+
+            hasLivePhoto: false,
+
+            isVerified: false,
+
+            verificationState: 'NOT_UPLOADED',
+
+            statusLabel: 'Not uploaded',
+
+            statusDetail: 'This user has not uploaded a live photo.',
+
+            imageUrl: null,
+
+            pendingImageUrl: null,
+
+          }
+
+        }
+
+        showToast('Live photo taken down', 'success')
+
+        return
+
+      }
+
+      await userAdminApi.removeLivePhoto(id, options.reason)
+
+      await this.fetchLivePhoto(id)
+
+      showToast('Live photo taken down', 'success')
 
     },
 
@@ -989,6 +1099,8 @@ export const useUserDetailStore = defineStore('userDetail', {
           this.user.inAgency = false
 
           this.user.agencyName = undefined
+
+          this.user.agencyPublicId = undefined
 
         }
 

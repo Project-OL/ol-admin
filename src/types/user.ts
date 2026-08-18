@@ -1,6 +1,23 @@
 export type UserStatus = 'active' | 'inactive' | 'banned' | 'suspended'
 export type TransactionStatus = 'success' | 'pending' | 'failed'
-export type FaceVerificationStatus = 'verified' | 'pending' | 'failed' | 'none'
+export type FaceVerificationStatus =
+  | 'verified'
+  | 'pending'
+  | 'failed'
+  | 'duplicate'
+  | 'revoked'
+  | 'none'
+
+export type LivePhotoStatus = 'verified' | 'pending' | 'failed' | 'rejected' | 'none'
+
+export interface FaceMatchedUser {
+  userId: string
+  username?: string
+  name?: string
+  avatarUrl?: string | null
+  publicId?: string
+  displayPublicId?: string
+}
 
 export interface DeviceInfo {
   id: string
@@ -13,7 +30,10 @@ export interface DeviceInfo {
 
 export interface UserProfile {
   id: string
+  /** Derived legal display name from API (`name`), or composed client-side. */
   name: string
+  firstName?: string | null
+  lastName?: string | null
   /** Handle used for PATCH `username` (distinct from display `name`). */
   username?: string
   avatar?: string
@@ -23,6 +43,8 @@ export interface UserProfile {
   suspendedUntil?: string | null
   wealthLevel: number
   streamLevel: number
+  /** Elite / RICH I–X from `GET /admin/users/:id` `vip.richTier`. `tier` 0 = none. */
+  richTier?: { tier: number; displayName: string | null }
   walletCoins: number
   points: number
   totalEarnings: number
@@ -39,6 +61,7 @@ export interface UserProfile {
   lastLogin: string
   inAgency: boolean
   agencyName?: string
+  agencyPublicId?: string
   ipAddress?: string
   deviceName?: string
   deviceId?: string
@@ -53,9 +76,36 @@ export interface UserProfile {
   genderEditable?: boolean
   faceVerificationStatus: FaceVerificationStatus
   faceVerificationDetail?: {
+    status?: string | null
+    statusLabel?: string
+    statusDetail?: string
+    failureReason?: string | null
+    notIndexedReason?: string | null
+    hasReferenceImage?: boolean
+    faceMatchSimilarity?: number | null
     duplicateUsername?: string
     matchedUsername?: string
     referenceImageUrl?: string | null
+    matchedUser?: FaceMatchedUser | null
+    duplicateOfUser?: FaceMatchedUser | null
+  }
+  livePhotoStatus?: LivePhotoStatus
+  livePhotoDetail?: {
+    hasLivePhoto?: boolean
+    isVerified?: boolean
+    verificationState?: string | null
+    statusLabel?: string
+    statusDetail?: string
+    verdictReason?: string | null
+    failureReason?: string | null
+    failureReasonDetail?: string | null
+    replaceFailedReason?: string | null
+    replaceFailedReasonDetail?: string | null
+    replaceInProgress?: boolean
+    similarityScore?: number | null
+    verifiedAt?: string | null
+    imageUrl?: string | null
+    pendingImageUrl?: string | null
   }
   postingBanned?: boolean
   postingSuspendedUntil?: string | null
@@ -65,22 +115,61 @@ export interface UserProfile {
   displayPublicId?: string
 }
 
+export interface TxCounterpartyDetails {
+  userId?: string
+  name?: string
+  publicId?: string
+  avatarUrl?: string | null
+  storeItemName?: string
+  price?: string
+  rarePublicId?: string
+  membershipType?: string
+  addedByAdmin?: { adminUserId: string; name?: string; publicId?: string }
+  transactionId?: string
+}
+
 export interface CoinTransaction {
   id: string
   date: string
-  description: string
+  /** Primary row title — prefer API `transactionName`. */
+  transactionName: string
+  /** Secondary line when present. */
+  description: string | null
   amount: number
+  balanceAfter?: number
+  direction?: 'credit' | 'debit'
   status: TransactionStatus
   type?: string
+  counterpartyId?: string | null
+  counterpartyDetails?: TxCounterpartyDetails | null
+  giftTransactionId?: string | null
+  coinTradingTransferId?: string | null
+  linkSummary?: string | null
+  canRevert: boolean
+  /** Present when per-user API adds explorer-parity revert routing. */
+  revertVia?: {
+    endpoint: 'coin_ledger' | 'coin_trading_transfer' | 'withdrawal'
+    id: string
+  } | null
 }
 
 export interface PointTransaction {
   id: string
   date: string
-  description: string
+  transactionName: string
+  description: string | null
   amount: number
+  balanceAfter?: number
+  direction?: 'credit' | 'debit'
   status: TransactionStatus
   type?: string
+  counterpartyId?: string | null
+  counterpartyDetails?: TxCounterpartyDetails | null
+  canRevert: boolean
+  revertVia?: {
+    endpoint: 'coin_ledger' | 'coin_trading_transfer' | 'withdrawal'
+    id: string
+  } | null
 }
 
 export interface Post {
@@ -105,7 +194,10 @@ export interface LiveSummary {
 
 export interface UserSearchResult {
   id: string
+  /** Prefer API `name`; else username. Used for chips / primary label. */
   name: string
+  firstName?: string | null
+  lastName?: string | null
   username?: string
   publicId?: string
   email?: string
@@ -113,10 +205,13 @@ export interface UserSearchResult {
   status?: string
   avatar?: string
   tags?: string[]
+  matchedBy?: string
 }
 
 export interface UpdateUserPayload {
   username?: string
+  firstName?: string
+  lastName?: string
   email?: string
   phone?: string
   gender?: string
@@ -147,4 +242,8 @@ export interface DeviceBanOptions {
 export interface FaceRevokeOptions {
   reason?: string
   revokeRelated?: boolean
+}
+
+export interface LivePhotoRemoveOptions {
+  reason?: string
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { format } from 'date-fns'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { customerSupportApi } from '@/api/customerSupport'
 import { useAuthStore } from '@/stores/auth'
 import { useSupportNotificationsStore } from '@/stores/supportNotifications'
@@ -10,6 +10,8 @@ import type {
   CsaAdmin,
   CsaOverview,
   CsaPerformance,
+  FailedLoginAttempt,
+  ReportReason,
   ReportStatus,
   SupportReport,
   SupportTicketListItem,
@@ -17,6 +19,7 @@ import type {
   SupportTicketStage,
   SupportTicketStatus,
 } from '@/types/customerSupport'
+import { REPORT_REASON_OPTIONS } from '@/types/customerSupport'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import AssignCsaViewsDialog from '@/components/support/AssignCsaViewsDialog.vue'
@@ -26,10 +29,15 @@ import TemporaryPasswordDialog from '@/components/shared/TemporaryPasswordDialog
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { adminAuthApi } from '@/api/adminAuth'
 import { formatNumber } from '@/utils/format'
+import { ticketCategoryBreadcrumb, ticketOpeningPreview, resolveInitialSubmission } from '@/utils/supportTicket'
 import { showToast } from '@/utils/toast'
 import axios from 'axios'
+import { useLiveModerationActions } from '@/composables/useLiveModerationActions'
+import { useCsaDirectory } from '@/composables/useCsaDirectory'
 
 const router = useRouter()
+const route = useRoute()
+const moderation = useLiveModerationActions()
 const auth = useAuthStore()
 const notifStore = useSupportNotificationsStore()
 
@@ -77,11 +85,16 @@ const tempPassword = ref('')
 const showTempPassword = ref(false)
 const pendingSelfLogout = ref(false)
 const failedLoginsOpen = ref(false)
+const failedLoginsTab = ref<'attempts' | 'accounts'>('attempts')
 const failedLogins = ref<CsaAdmin[]>([])
 const failedLoginsTotal = ref(0)
 const failedLoginsPage = ref(1)
 const loadingFailedLogins = ref(false)
 const failedLoginHours = ref(24)
+const failedAttempts = ref<FailedLoginAttempt[]>([])
+const failedAttemptsTotal = ref(0)
+const failedAttemptsPage = ref(1)
+const loadingFailedAttempts = ref(false)
 const csaTicketsOpen = ref(false)
 const csaTicketsTarget = ref<CsaAdmin | null>(null)
 const csaTickets = ref<SupportTicketListItem[]>([])
@@ -123,9 +136,17 @@ const loadingTickets = ref(false)
 const myStats = ref<CsaPerformance | null>(null)
 const ticketQueue = ref<'me' | 'unassigned' | 'all' | 'csa'>('me')
 const ticketAssignedCsaId = ref('')
+const {
+  csas: csaDirectory,
+  loading: loadingCsaDirectory,
+  load: loadCsaDirectory,
+  csaLabel,
+} = useCsaDirectory()
 const ticketFilters = reactive({
   status: '' as '' | SupportTicketStatus,
   priority: '' as '' | SupportTicketPriority,
+  /** '' | 'min:N' | 'max:N' — days since CSA resolve/reject (resolvedAt). */
+  reviewAge: '',
 })
 
 // --- Reports ---
@@ -136,6 +157,8 @@ const loadingReports = ref(false)
 const reportFilters = reactive({
   status: 'PENDING' as '' | ReportStatus,
   context: '' as '' | 'CHAT' | 'LIVE',
+  reason: '' as '' | ReportReason,
+  reportedUserId: '',
 })
 const selectedReport = ref<SupportReport | null>(null)
 const reportNote = ref('')
@@ -485,6 +508,32 @@ async function loadMyStats() {
   }
 }
 
+function parseReviewAgeFilter(reviewAge: string): {
+  minDaysSinceReviewed?: number
+  maxDaysSinceReviewed?: number
+} {
+  if (!reviewAge) return {}
+  const [kind, raw] = reviewAge.split(':')
+  const n = Number(raw)
+  if (!Number.isInteger(n) || n < 0) return {}
+  if (kind === 'min') return { minDaysSinceReviewed: n }
+  if (kind === 'max') return { maxDaysSinceReviewed: n }
+  return {}
+}
+
+function formatAvgRating(avg: number | null | undefined, count?: number) {
+  if (avg == null) return '—'
+  const base = avg.toFixed(1)
+  return count != null && count > 0 ? `${base} (${count})` : base
+}
+
+function formatDaysSinceReviewed(days: number | null | undefined) {
+  if (days == null) return '—'
+  if (days === 0) return 'Today'
+  if (days === 1) return '1 day'
+  return `${days} days`
+}
+
 async function loadTickets(page = 1) {
   loadingTickets.value = true
   ticketsPage.value = page
@@ -497,12 +546,14 @@ async function loadTickets(page = 1) {
     } else {
       assignedTo = ticketQueue.value === 'all' ? 'me' : ticketQueue.value
     }
+    const reviewAge = parseReviewAgeFilter(ticketFilters.reviewAge)
     const { data } = await customerSupportApi.listTickets({
       page,
       limit: 20,
       assignedTo,
       status: ticketFilters.status || undefined,
       priority: ticketFilters.priority || undefined,
+      ...reviewAge,
     })
     tickets.value = data.tickets ?? []
     ticketsTotal.value = data.pagination?.total ?? 0
@@ -515,6 +566,16 @@ function csaIsLocked(csa: CsaAdmin) {
   if (typeof csa.isLocked === 'boolean') return csa.isLocked
   if (!csa.lockedUntil) return false
   return new Date(csa.lockedUntil).getTime() > Date.now()
+}
+
+function failedAttemptReasonLabel(reason: FailedLoginAttempt['reason']) {
+  if (reason === 'ACCOUNT_LOCKED') return 'Account locked'
+  if (reason === 'ADMIN_IP_FORBIDDEN') return 'IP not allowed'
+  return 'Wrong password'
+}
+
+function csaFailWindowCount(csa: CsaAdmin) {
+  return csa.failedAttemptCount24h ?? csa.failedAttemptCount ?? 0
 }
 
 async function loadFailedLogins(page = 1) {
@@ -538,8 +599,30 @@ async function loadFailedLogins(page = 1) {
   }
 }
 
+async function loadFailedLoginAttempts(page = 1) {
+  loadingFailedAttempts.value = true
+  failedAttemptsPage.value = page
+  try {
+    const { data } = await customerSupportApi.listFailedLoginAttempts({
+      withinHours: failedLoginHours.value,
+      page,
+      limit: 50,
+    })
+    failedAttempts.value = data.attempts ?? []
+    failedAttemptsTotal.value = data.total ?? failedAttempts.value.length
+  } catch {
+    failedAttempts.value = []
+    failedAttemptsTotal.value = 0
+    showToast('Failed to load failed-login attempts', 'error')
+  } finally {
+    loadingFailedAttempts.value = false
+  }
+}
+
 function openFailedLogins() {
   failedLoginsOpen.value = true
+  failedLoginsTab.value = 'attempts'
+  void loadFailedLoginAttempts(1)
   void loadFailedLogins(1)
 }
 
@@ -596,6 +679,10 @@ function priorityClass(p: SupportTicketPriority) {
   return 'text-admin-subtext'
 }
 
+function ticketThumb(t: SupportTicketListItem) {
+  return resolveInitialSubmission(t)?.imageUrl ?? null
+}
+
 function openTicket(ticket: SupportTicketListItem) {
   router.push('/admin/support/tickets/' + ticket.id)
 }
@@ -620,6 +707,8 @@ async function loadReports(page = 1) {
       limit: 20,
       status: reportFilters.status || undefined,
       context: reportFilters.context || undefined,
+      reason: reportFilters.reason || undefined,
+      reportedUserId: reportFilters.reportedUserId.trim() || undefined,
     })
     reports.value = data.reports ?? []
     reportsTotal.value = data.pagination?.total ?? data.total ?? reports.value.length
@@ -678,17 +767,42 @@ watch(tab, (t) => {
     void Promise.all([
       loadTickets(),
       loadMyStats(),
-      isSuperAdmin.value && !csas.value.length ? loadCsas(1) : Promise.resolve(),
+      isSuperAdmin.value ? loadCsaDirectory() : Promise.resolve(),
     ])
   }
   if (t === 'reports') void loadReports()
 })
 
+watch(
+  () => [notifStore.badge.myAwaitingReply, notifStore.badge.unreadCount] as const,
+  () => {
+    if (tab.value === 'tickets') void loadTickets(ticketsPage.value)
+  },
+)
+
 onMounted(() => {
-  tab.value = defaultTab.value
+  const q = route.query
+  if (q.tab === 'reports' || q.tab === 'tickets' || q.tab === 'agents') {
+    tab.value = q.tab
+  } else {
+    tab.value = defaultTab.value
+  }
+  if (typeof q.reportedUserId === 'string') reportFilters.reportedUserId = q.reportedUserId
+  if (typeof q.reason === 'string') reportFilters.reason = q.reason as ReportReason
+  if (typeof q.status === 'string') reportFilters.status = q.status as ReportStatus
+  if (typeof q.context === 'string') reportFilters.context = q.context as 'CHAT' | 'LIVE' | ''
   if (tab.value === 'agents') void Promise.all([loadOverview(), loadCsas()])
-  else if (tab.value === 'tickets') void Promise.all([loadTickets(), loadMyStats()])
+  else if (tab.value === 'tickets') {
+    void Promise.all([
+      loadTickets(),
+      loadMyStats(),
+      isSuperAdmin.value ? loadCsaDirectory() : Promise.resolve(),
+    ])
+  }
   else void loadReports()
+  if (typeof q.reportId === 'string' && q.reportId) {
+    void openReport({ id: q.reportId } as SupportReport)
+  }
 })
 </script>
 
@@ -793,7 +907,7 @@ onMounted(() => {
             <p class="mt-1 text-xl font-semibold tabular-nums">
               {{ formatNumber(overview?.failedLoginAttempts24h ?? 0) }}
             </p>
-            <p class="mt-1 text-[10px] text-admin-accent">View roster →</p>
+            <p class="mt-1 text-[10px] text-admin-accent">View log →</p>
           </button>
           <button
             type="button"
@@ -841,6 +955,8 @@ onMounted(() => {
                 <th>Contact</th>
                 <th>Country</th>
                 <th>Open</th>
+                <th>Closed</th>
+                <th>Avg rating</th>
                 <th>Status</th>
                 <th>Login lock</th>
                 <th>Last login</th>
@@ -870,6 +986,13 @@ onMounted(() => {
                 </td>
                 <td class="text-sm">{{ csa.country ?? '—' }}</td>
                 <td class="tabular-nums">{{ csa.openTicketCount ?? 0 }}</td>
+                <td class="tabular-nums">{{ csa.closedTicketCount ?? 0 }}</td>
+                <td class="text-xs tabular-nums">
+                  <span v-if="csa.avgRating != null" class="text-amber-400">
+                    ★ {{ formatAvgRating(csa.avgRating, csa.ratingCount) }}
+                  </span>
+                  <span v-else class="text-admin-muted">—</span>
+                </td>
                 <td>
                   <StatusBadge
                     :status="csa.status === 'ACTIVE' ? 'active' : 'inactive'"
@@ -885,8 +1008,17 @@ onMounted(() => {
                       until {{ format(new Date(csa.lockedUntil), 'dd MMM HH:mm') }}
                     </p>
                   </template>
+                  <template v-else-if="csaFailWindowCount(csa) > 0">
+                    <span class="text-admin-warn">{{ csaFailWindowCount(csa) }} in 24h</span>
+                    <p
+                      v-if="(csa.failedLoginCount ?? 0) > 0"
+                      class="mt-1 text-admin-muted"
+                    >
+                      {{ csa.failedLoginCount }} streak
+                    </p>
+                  </template>
                   <template v-else-if="(csa.failedLoginCount ?? 0) > 0">
-                    <span class="text-admin-warn">{{ csa.failedLoginCount }} fails</span>
+                    <span class="text-admin-warn">{{ csa.failedLoginCount }} streak</span>
                   </template>
                   <span v-else class="text-admin-muted">—</span>
                 </td>
@@ -964,7 +1096,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!csas.length && !loadingCsas">
-                <td colspan="8" class="py-10 text-center text-admin-muted">No CSA agents yet</td>
+                <td colspan="10" class="py-10 text-center text-admin-muted">No CSA agents yet</td>
               </tr>
             </tbody>
           </table>
@@ -1077,10 +1209,11 @@ onMounted(() => {
             v-if="isSuperAdmin && ticketQueue === 'csa'"
             v-model="ticketAssignedCsaId"
             class="admin-input w-auto"
+            :disabled="loadingCsaDirectory"
             @change="loadTickets(1)"
           >
-            <option value="">Select CSA…</option>
-            <option v-for="c in csas" :key="c.id" :value="c.id">{{ c.name }}</option>
+            <option value="">{{ loadingCsaDirectory ? 'Loading CSAs…' : 'Select CSA…' }}</option>
+            <option v-for="c in csaDirectory" :key="c.id" :value="c.id">{{ csaLabel(c) }}</option>
           </select>
           <select v-model="ticketFilters.status" class="admin-input w-auto" @change="loadTickets(1)">
             <option value="">All status</option>
@@ -1097,6 +1230,21 @@ onMounted(() => {
             <option value="NORMAL">NORMAL</option>
             <option value="LOW">LOW</option>
           </select>
+          <select
+            v-if="isSuperAdmin"
+            v-model="ticketFilters.reviewAge"
+            class="admin-input w-auto"
+            title="Filter by days since CSA resolve/reject"
+            @change="loadTickets(1)"
+          >
+            <option value="">Any review age</option>
+            <option value="max:1">Reviewed within 1 day</option>
+            <option value="max:3">Reviewed within 3 days</option>
+            <option value="max:7">Reviewed within 7 days</option>
+            <option value="min:7">Reviewed 7+ days ago</option>
+            <option value="min:14">Reviewed 14+ days ago</option>
+            <option value="min:30">Reviewed 30+ days ago</option>
+          </select>
           <button type="button" class="admin-btn-primary" :disabled="loadingTickets" @click="loadTickets(1)">
             Refresh
           </button>
@@ -1111,6 +1259,7 @@ onMounted(() => {
                 <th>Priority</th>
                 <th>Stage</th>
                 <th>Rating</th>
+                <th>Since reviewed</th>
                 <th>Updated</th>
                 <th>Actions</th>
               </tr>
@@ -1123,13 +1272,30 @@ onMounted(() => {
                 @click="openTicket(t)"
               >
                 <td>
-                  <p class="font-medium">{{ t.publicId ?? t.id }}</p>
-                  <p class="text-xs text-admin-muted">
-                    {{ t.type }}{{ t.subType ? ' / ' + t.subType : '' }}
-                  </p>
-                  <p v-if="t.messages?.[0]?.content" class="mt-0.5 max-w-[240px] truncate text-xs text-admin-subtext">
-                    {{ t.messages[0].content }}
-                  </p>
+                  <div class="flex items-start gap-2">
+                    <img
+                      v-if="ticketThumb(t)"
+                      :src="ticketThumb(t) ?? ''"
+                      alt=""
+                      class="mt-0.5 h-9 w-9 shrink-0 rounded border border-admin-border object-cover"
+                    />
+                    <div class="min-w-0">
+                      <p class="font-medium">{{ t.publicId ?? t.id }}</p>
+                      <p class="text-xs text-admin-muted">{{ ticketCategoryBreadcrumb(t) }}</p>
+                      <p
+                        v-if="ticketOpeningPreview(t)"
+                        class="mt-0.5 max-w-[280px] truncate text-xs text-admin-subtext"
+                      >
+                        {{ ticketOpeningPreview(t) }}
+                      </p>
+                      <p
+                        v-else-if="t.messages?.[0]?.content"
+                        class="mt-0.5 max-w-[280px] truncate text-xs text-admin-subtext"
+                      >
+                        {{ t.messages[0].content }}
+                      </p>
+                    </div>
+                  </div>
                 </td>
                 <td class="text-sm">
                   <p>{{ t.user?.name || t.user?.username || '—' }}</p>
@@ -1142,6 +1308,9 @@ onMounted(() => {
                 <td class="text-xs tabular-nums">
                   <span v-if="t.rating != null" class="text-amber-400">★ {{ t.rating }}</span>
                   <span v-else class="text-admin-muted">—</span>
+                </td>
+                <td class="text-xs whitespace-nowrap text-admin-subtext">
+                  {{ formatDaysSinceReviewed(t.daysSinceReviewed) }}
                 </td>
                 <td class="text-xs whitespace-nowrap">
                   {{ format(new Date(t.updatedAt), 'dd MMM HH:mm') }}
@@ -1161,7 +1330,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!tickets.length && !loadingTickets">
-                <td colspan="7" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
+                <td colspan="8" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
               </tr>
             </tbody>
           </table>
@@ -1205,6 +1374,16 @@ onMounted(() => {
             <option value="CHAT">CHAT</option>
             <option value="LIVE">LIVE</option>
           </select>
+          <select v-model="reportFilters.reason" class="admin-input w-auto" @change="loadReports(1)">
+            <option value="">All reasons</option>
+            <option v-for="r in REPORT_REASON_OPTIONS" :key="r" :value="r">{{ r }}</option>
+          </select>
+          <input
+            v-model="reportFilters.reportedUserId"
+            class="admin-input w-56"
+            placeholder="Reported user UUID"
+            @keyup.enter="loadReports(1)"
+          />
           <button type="button" class="admin-btn-primary" :disabled="loadingReports" @click="loadReports(1)">
             Refresh
           </button>
@@ -1217,6 +1396,7 @@ onMounted(() => {
                 <th>Report</th>
                 <th>Reporter</th>
                 <th>Reported</th>
+                <th>Host</th>
                 <th>Reason</th>
                 <th>Status</th>
                 <th>Created</th>
@@ -1235,6 +1415,7 @@ onMounted(() => {
                 </td>
                 <td class="text-sm">{{ r.reporter?.name || r.reporter?.username || '—' }}</td>
                 <td class="text-sm">{{ r.reportedUser?.name || r.reportedUser?.username || '—' }}</td>
+                <td class="text-sm">{{ r.hostUser?.name || r.hostUser?.username || '—' }}</td>
                 <td class="text-xs">{{ r.reason ?? '—' }}</td>
                 <td>
                   <StatusBadge
@@ -1247,7 +1428,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!reports.length && !loadingReports">
-                <td colspan="6" class="py-10 text-center text-admin-muted">No reports</td>
+                <td colspan="7" class="py-10 text-center text-admin-muted">No reports</td>
               </tr>
             </tbody>
           </table>
@@ -1416,6 +1597,40 @@ onMounted(() => {
             Live session: {{ selectedReport.liveSessionId }}
             <span v-if="selectedReport.hostUserId"> · Host: {{ selectedReport.hostUserId }}</span>
           </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              v-if="selectedReport.reportedUser?.id"
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              @click="moderation.applyMute({ userId: selectedReport.reportedUser.id, type: 'LIVE_CHAT_MUTE', reportId: selectedReport.id })"
+            >
+              Mute chat
+            </button>
+            <button
+              v-if="selectedReport.reportedUser?.id"
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              @click="moderation.applyMute({ userId: selectedReport.reportedUser.id, type: 'LIVE_AUDIO_MUTE', reportId: selectedReport.id })"
+            >
+              Mute audio
+            </button>
+            <button
+              v-if="selectedReport.reportedUser?.id"
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              @click="moderation.applyMute({ userId: selectedReport.reportedUser.id, type: 'LIVE_STREAM_START_BAN', reportId: selectedReport.id })"
+            >
+              Ban going live
+            </button>
+            <button
+              v-if="selectedReport.liveSessionId"
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              @click="moderation.stopLive(selectedReport.liveSessionId, 'Closed from report review')"
+            >
+              Close live
+            </button>
+          </div>
           <div v-if="selectedReport.evidenceUrls?.length" class="flex flex-wrap gap-2">
             <a
               v-for="(url, i) in selectedReport.evidenceUrls"
@@ -1490,17 +1705,38 @@ onMounted(() => {
 
     <BaseDialog
       :open="failedLoginsOpen"
-      title="Failed logins roster"
+      title="Failed login attempts"
       size="lg"
       @close="failedLoginsOpen = false"
     >
       <template #body>
+        <p class="mb-3 text-xs text-admin-muted">
+          Each failed CSA login is kept even after a later successful login. The lockout streak still resets on success.
+        </p>
         <div class="mb-3 flex flex-wrap items-center gap-2">
+          <div class="flex gap-1">
+            <button
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              :class="failedLoginsTab === 'attempts' ? 'border-admin-accent text-admin-accent' : ''"
+              @click="failedLoginsTab = 'attempts'"
+            >
+              Attempt log
+            </button>
+            <button
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              :class="failedLoginsTab === 'accounts' ? 'border-admin-accent text-admin-accent' : ''"
+              @click="failedLoginsTab = 'accounts'"
+            >
+              Accounts
+            </button>
+          </div>
           <label class="text-xs text-admin-subtext">Within hours</label>
           <select
             v-model.number="failedLoginHours"
             class="admin-input w-auto py-1 text-xs"
-            @change="loadFailedLogins(1)"
+            @change="loadFailedLoginAttempts(1); loadFailedLogins(1)"
           >
             <option :value="6">6h</option>
             <option :value="24">24h</option>
@@ -1509,100 +1745,157 @@ onMounted(() => {
           <button
             type="button"
             class="admin-btn-secondary py-1 text-xs"
-            :disabled="loadingFailedLogins"
-            @click="loadFailedLogins(failedLoginsPage)"
+            :disabled="loadingFailedLogins || loadingFailedAttempts"
+            @click="loadFailedLoginAttempts(failedAttemptsPage); loadFailedLogins(failedLoginsPage)"
           >
             Refresh
           </button>
         </div>
-        <div class="admin-table-wrap max-h-[50vh] overflow-auto">
-          <table class="admin-table">
-            <thead>
-              <tr>
-                <th>CSA</th>
-                <th>Status</th>
-                <th>Fails</th>
-                <th>Lock</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr v-for="csa in failedLogins" :key="csa.id">
-                <td>
-                  <p class="font-medium">{{ csa.name }}</p>
-                  <p class="text-xs text-admin-muted">{{ csa.email }}</p>
-                </td>
-                <td>
-                  <StatusBadge
-                    :status="csa.status === 'ACTIVE' ? 'active' : 'inactive'"
-                    :label="csa.status"
-                  />
-                </td>
-                <td class="tabular-nums text-sm">{{ csa.failedLoginCount ?? 0 }}</td>
-                <td class="text-xs">
-                  <span v-if="csaIsLocked(csa)" class="text-admin-danger">
-                    Locked
-                    <template v-if="csa.lockedUntil">
-                      until {{ format(new Date(csa.lockedUntil), 'dd MMM HH:mm') }}
-                    </template>
-                  </span>
-                  <span v-else class="text-admin-muted">—</span>
-                </td>
-                <td>
-                  <div class="flex flex-wrap gap-1">
-                    <button
-                      type="button"
-                      class="admin-btn-secondary py-1 text-xs"
-                      @click="openSetPassword(csa)"
-                    >
-                      Set password
-                    </button>
-                    <button
-                      type="button"
-                      class="admin-btn-secondary py-1 text-xs"
-                      @click="openAutoReset(csa)"
-                    >
-                      Gen. password
-                    </button>
-                    <button
-                      v-if="csa.status === 'ACTIVE'"
-                      type="button"
-                      class="admin-btn-secondary py-1 text-xs"
-                      :disabled="acting"
-                      @click="setCsaStatus(csa, 'SUSPENDED')"
-                    >
-                      Suspend
-                    </button>
-                  </div>
-                </td>
-              </tr>
-              <tr v-if="!failedLogins.length && !loadingFailedLogins">
-                <td colspan="5" class="py-8 text-center text-admin-muted">No failed-login accounts</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        <div class="admin-pagination mt-3">
-          <span class="text-xs">{{ failedLoginsTotal }} total</span>
-          <div class="flex gap-2">
-            <button
-              type="button"
-              class="admin-btn-secondary text-xs"
-              :disabled="failedLoginsPage <= 1"
-              @click="loadFailedLogins(failedLoginsPage - 1)"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              class="admin-btn-secondary text-xs"
-              :disabled="failedLoginsPage * 50 >= failedLoginsTotal"
-              @click="loadFailedLogins(failedLoginsPage + 1)"
-            >
-              Next
-            </button>
+
+        <template v-if="failedLoginsTab === 'attempts'">
+          <div class="admin-table-wrap max-h-[50vh] overflow-auto">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>When</th>
+                  <th>CSA</th>
+                  <th>Reason</th>
+                  <th>IP</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="row in failedAttempts" :key="row.id">
+                  <td class="whitespace-nowrap text-xs tabular-nums">
+                    {{ format(new Date(row.createdAt), 'dd MMM yyyy HH:mm') }}
+                  </td>
+                  <td>
+                    <p class="font-medium">{{ row.name }}</p>
+                    <p class="text-xs text-admin-muted">{{ row.email }}</p>
+                  </td>
+                  <td class="text-sm">{{ failedAttemptReasonLabel(row.reason) }}</td>
+                  <td class="text-xs tabular-nums">{{ row.ipAddress ?? '—' }}</td>
+                </tr>
+                <tr v-if="!failedAttempts.length && !loadingFailedAttempts">
+                  <td colspan="4" class="py-8 text-center text-admin-muted">No failed-login attempts</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
-        </div>
+          <div class="admin-pagination mt-3">
+            <span class="text-xs">{{ failedAttemptsTotal }} total</span>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="admin-btn-secondary text-xs"
+                :disabled="failedAttemptsPage <= 1"
+                @click="loadFailedLoginAttempts(failedAttemptsPage - 1)"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                class="admin-btn-secondary text-xs"
+                :disabled="failedAttemptsPage * 50 >= failedAttemptsTotal"
+                @click="loadFailedLoginAttempts(failedAttemptsPage + 1)"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </template>
+
+        <template v-else>
+          <div class="admin-table-wrap max-h-[50vh] overflow-auto">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>CSA</th>
+                  <th>Status</th>
+                  <th>Attempts</th>
+                  <th>Lock</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="csa in failedLogins" :key="csa.id">
+                  <td>
+                    <p class="font-medium">{{ csa.name }}</p>
+                    <p class="text-xs text-admin-muted">{{ csa.email }}</p>
+                  </td>
+                  <td>
+                    <StatusBadge
+                      :status="csa.status === 'ACTIVE' ? 'active' : 'inactive'"
+                      :label="csa.status"
+                    />
+                  </td>
+                  <td class="tabular-nums text-sm">
+                    {{ csa.failedAttemptCount ?? csaFailWindowCount(csa) }}
+                  </td>
+                  <td class="text-xs">
+                    <span v-if="csaIsLocked(csa)" class="text-admin-danger">
+                      Locked
+                      <template v-if="csa.lockedUntil">
+                        until {{ format(new Date(csa.lockedUntil), 'dd MMM HH:mm') }}
+                      </template>
+                    </span>
+                    <span v-else class="text-admin-muted">—</span>
+                  </td>
+                  <td>
+                    <div class="flex flex-wrap gap-1">
+                      <button
+                        type="button"
+                        class="admin-btn-secondary py-1 text-xs"
+                        @click="openSetPassword(csa)"
+                      >
+                        Set password
+                      </button>
+                      <button
+                        type="button"
+                        class="admin-btn-secondary py-1 text-xs"
+                        @click="openAutoReset(csa)"
+                      >
+                        Gen. password
+                      </button>
+                      <button
+                        v-if="csa.status === 'ACTIVE'"
+                        type="button"
+                        class="admin-btn-secondary py-1 text-xs"
+                        :disabled="acting"
+                        @click="setCsaStatus(csa, 'SUSPENDED')"
+                      >
+                        Suspend
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+                <tr v-if="!failedLogins.length && !loadingFailedLogins">
+                  <td colspan="5" class="py-8 text-center text-admin-muted">No failed-login accounts</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="admin-pagination mt-3">
+            <span class="text-xs">{{ failedLoginsTotal }} total</span>
+            <div class="flex gap-2">
+              <button
+                type="button"
+                class="admin-btn-secondary text-xs"
+                :disabled="failedLoginsPage <= 1"
+                @click="loadFailedLogins(failedLoginsPage - 1)"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                class="admin-btn-secondary text-xs"
+                :disabled="failedLoginsPage * 50 >= failedLoginsTotal"
+                @click="loadFailedLogins(failedLoginsPage + 1)"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </template>
       </template>
       <template #footer>
         <button type="button" class="admin-btn-secondary" @click="failedLoginsOpen = false">Close</button>
@@ -1657,7 +1950,8 @@ onMounted(() => {
               <tr v-for="t in csaTickets" :key="t.id">
                 <td>
                   <p class="font-medium">{{ t.publicId ?? t.id }}</p>
-                  <p class="text-xs text-admin-muted">{{ t.user?.name || t.user?.username || '—' }}</p>
+                  <p class="text-xs text-admin-muted">{{ ticketCategoryBreadcrumb(t) }}</p>
+                  <p class="text-xs text-admin-subtext">{{ t.user?.name || t.user?.username || '—' }}</p>
                 </td>
                 <td>
                   <StatusBadge :status="stageTone(t.stage)" :label="stageLabel(t.stage)" />

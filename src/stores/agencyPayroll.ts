@@ -5,6 +5,7 @@ import type {
   AdminPayrollAssignment,
   AdminPayrollAssignmentsQuery,
   AdminPendingPlatformWithdrawal,
+  AdminWithdrawalDetail,
 } from '@/types/agencyPayroll'
 import { showToast } from '@/utils/toast'
 
@@ -22,13 +23,20 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
     loadingDisputed: false,
     loadingMoreDisputed: false,
 
-    pendingPlatform: [] as AdminPendingPlatformWithdrawal[],
-    pendingCursor: null as string | null,
-    pendingHasMore: false,
-    loadingPending: false,
-    loadingMorePending: false,
+    pendingAdminPay: [] as AdminPendingPlatformWithdrawal[],
+    pendingAdminPayCursor: null as string | null,
+    pendingAdminPayHasMore: false,
+    loadingAdminPay: false,
+    loadingMoreAdminPay: false,
+
+    pendingAssign: [] as AdminPendingPlatformWithdrawal[],
+    pendingAssignCursor: null as string | null,
+    pendingAssignHasMore: false,
+    loadingAssignQueue: false,
+    loadingMoreAssignQueue: false,
 
     detail: null as AdminPayrollAssignment | null,
+    withdrawalDetail: null as AdminWithdrawalDetail | null,
     loadingDetail: false,
     acting: false,
   }),
@@ -69,20 +77,39 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
       }
     },
 
-    async fetchPendingPlatform(append = false) {
-      if (append) this.loadingMorePending = true
-      else this.loadingPending = true
+    async fetchPendingAdminPay(append = false) {
+      if (append) this.loadingMoreAdminPay = true
+      else this.loadingAdminPay = true
       try {
         const { data } = await agencyPayrollAdminApi.listPendingPlatform({
           limit: 20,
-          cursor: append ? (this.pendingCursor ?? undefined) : undefined,
+          handler: 'PLATFORM',
+          cursor: append ? (this.pendingAdminPayCursor ?? undefined) : undefined,
         })
-        this.pendingPlatform = append ? [...this.pendingPlatform, ...data.items] : data.items
-        this.pendingCursor = data.nextCursor ?? null
-        this.pendingHasMore = data.hasMore
+        this.pendingAdminPay = append ? [...this.pendingAdminPay, ...data.items] : data.items
+        this.pendingAdminPayCursor = data.nextCursor ?? null
+        this.pendingAdminPayHasMore = data.hasMore
       } finally {
-        this.loadingPending = false
-        this.loadingMorePending = false
+        this.loadingAdminPay = false
+        this.loadingMoreAdminPay = false
+      }
+    },
+
+    async fetchPendingAssign(append = false) {
+      if (append) this.loadingMoreAssignQueue = true
+      else this.loadingAssignQueue = true
+      try {
+        const { data } = await agencyPayrollAdminApi.listPendingPlatform({
+          limit: 20,
+          handler: 'AGENCY',
+          cursor: append ? (this.pendingAssignCursor ?? undefined) : undefined,
+        })
+        this.pendingAssign = append ? [...this.pendingAssign, ...data.items] : data.items
+        this.pendingAssignCursor = data.nextCursor ?? null
+        this.pendingAssignHasMore = data.hasMore
+      } finally {
+        this.loadingAssignQueue = false
+        this.loadingMoreAssignQueue = false
       }
     },
 
@@ -97,18 +124,67 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
       }
     },
 
-    clearDetail() {
-      this.detail = null
+    async fetchWithdrawalDetail(withdrawalId: string) {
+      this.loadingDetail = true
+      try {
+        const { data } = await agencyPayrollAdminApi.getWithdrawal(withdrawalId)
+        this.withdrawalDetail = data
+        return data
+      } finally {
+        this.loadingDetail = false
+      }
     },
 
-    async assignWithdrawal(withdrawalId: string, agencyUserId?: string) {
+    clearDetail() {
+      this.detail = null
+      this.withdrawalDetail = null
+    },
+
+    async completePlatformPayout(withdrawalId: string, file: File) {
       this.acting = true
       try {
-        await agencyPayrollAdminApi.assignWithdrawal(withdrawalId, agencyUserId)
+        const { data: presign } = await agencyPayrollAdminApi.getProofUploadUrl(
+          withdrawalId,
+          file.type || 'image/jpeg',
+        )
+        const putRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'image/jpeg' },
+          body: file,
+        })
+        if (!putRes.ok) {
+          throw new Error(`Screenshot upload failed: ${putRes.status}`)
+        }
+        await agencyPayrollAdminApi.completePlatformPayout(
+          withdrawalId,
+          presign.s3Key,
+          presign.s3Bucket,
+        )
+        showToast('EPAY payout marked waiting', 'success')
+        await this.fetchPendingAdminPay()
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
+        }
+      } finally {
+        this.acting = false
+      }
+    },
+
+    async assignWithdrawal(
+      withdrawalId: string,
+      agency?: { agencyUserId?: string; agencyPublicId?: string },
+    ) {
+      this.acting = true
+      try {
+        await agencyPayrollAdminApi.assignWithdrawal(withdrawalId, agency)
         showToast('Withdrawal assigned', 'success')
         if (this.detail?.withdrawal.withdrawalId === withdrawalId) {
           await this.fetchDetail(this.detail.assignmentId)
         }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
+        }
+        await this.fetchPendingAssign()
       } finally {
         this.acting = false
       }
@@ -121,6 +197,9 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
         showToast('Withdrawal reversed', 'success')
         if (this.detail?.withdrawal.withdrawalId === withdrawalId) {
           await this.fetchDetail(this.detail.assignmentId)
+        }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
         }
       } finally {
         this.acting = false
@@ -135,6 +214,9 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
         if (this.detail?.withdrawal.withdrawalId === withdrawalId) {
           await this.fetchDetail(this.detail.assignmentId)
         }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
+        }
         await this.fetchDisputed()
       } finally {
         this.acting = false
@@ -148,6 +230,9 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
         showToast('Dispute resolved in favour of host', 'success')
         if (this.detail?.withdrawal.withdrawalId === withdrawalId) {
           await this.fetchDetail(this.detail.assignmentId)
+        }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
         }
         await this.fetchDisputed()
       } finally {

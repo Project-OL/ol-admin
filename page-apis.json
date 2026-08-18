@@ -84,6 +84,7 @@
     "POST /admin/gift-gallery/categories",
     "PATCH /admin/gift-gallery/categories/:sectionId",
     "POST /admin/gift-gallery/categories/:sectionId/gifts",
+    "DELETE /admin/gift-gallery/categories/:sectionId/gifts",
     "DELETE /admin/gift-gallery/categories/:sectionId"
   ],
   "StoreAdminView": [

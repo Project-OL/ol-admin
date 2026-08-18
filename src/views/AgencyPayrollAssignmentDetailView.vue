@@ -1,32 +1,34 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
+import axios from 'axios'
 import { format } from 'date-fns'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useAgencyPayrollStore } from '@/stores/agencyPayroll'
-import { formatPoints, formatUsd } from '@/utils/format'
+import { formatLocalMoney, formatPoints, formatUsd } from '@/utils/format'
+import { showToast } from '@/utils/toast'
 
 const route = useRoute()
 const router = useRouter()
 const store = useAgencyPayrollStore()
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const assignmentId = computed(() => route.params.assignmentId as string)
 const detail = computed(() => store.detail)
 
 const reverseOpen = ref(false)
 const assignOpen = ref(false)
-const assignAgencyUserId = ref('')
+const assignAgencyId = ref('')
 const favourAgentOpen = ref(false)
 const favourHostOpen = ref(false)
 const favourHostAgencyUserId = ref('')
 const actingLocal = ref(false)
 
-const canReverse = computed(() => {
-  const w = detail.value?.withdrawal.status
-  return w === 'WAITING' || w === 'ASSIGNED' || w === 'PENDING' || w === 'DISPUTED'
-})
+const canReverse = computed(() => detail.value?.withdrawal.canRevert === true)
 
 const canAssign = computed(() => {
   const w = detail.value?.withdrawal.status
@@ -61,14 +63,46 @@ async function load() {
 
 async function handleAssign() {
   if (!detail.value || actingLocal.value) return
+  const raw = assignAgencyId.value.trim().replace(/^#/, '')
+  let agency: { agencyUserId?: string; agencyPublicId?: string } | undefined
+  if (raw) {
+    if (UUID_RE.test(raw)) agency = { agencyUserId: raw }
+    else if (/^\d+$/.test(raw)) agency = { agencyPublicId: raw }
+    else {
+      showToast('Enter an agency UUID or numeric public / display ID', 'error')
+      return
+    }
+  }
   actingLocal.value = true
   try {
-    await store.assignWithdrawal(
-      detail.value.withdrawal.withdrawalId,
-      assignAgencyUserId.value.trim() || undefined,
-    )
+    await store.assignWithdrawal(detail.value.withdrawal.withdrawalId, agency)
     assignOpen.value = false
-    assignAgencyUserId.value = ''
+    assignAgencyId.value = ''
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const body = err.response?.data as { code?: string; message?: string } | undefined
+      if (body?.code === 'AGENCY_NOT_FOUND') {
+        showToast(body.message || 'Agency not found', 'error')
+        return
+      }
+      if (body?.code === 'PAYROLL_AGENCY_INELIGIBLE') {
+        showToast(body.message || 'Agency is not eligible for payroll', 'error')
+        return
+      }
+      if (body?.code === 'PAYROLL_SELF_ASSIGN_FORBIDDEN') {
+        showToast(body.message || 'Cannot assign to the host or their own agency', 'error')
+        return
+      }
+      if (body?.code === 'COUNTRY_MISMATCH') {
+        showToast(body.message || 'Agency country does not match the host', 'error')
+        return
+      }
+      if (body?.message) {
+        showToast(body.message, 'error')
+        return
+      }
+    }
+    showToast('Failed to assign withdrawal', 'error')
   } finally {
     actingLocal.value = false
   }
@@ -213,13 +247,35 @@ onUnmounted(() => store.clearDetail())
                 ? formatUsd(Number(detail.withdrawal.hostPayoutUsd))
                 : '—'
             }}
-            · ₹{{ detail.withdrawal.localCurrencyAmount }}
+            ·
+            {{
+              formatLocalMoney(
+                detail.withdrawal.localCurrencyAmount,
+                detail.withdrawal.localCurrencyCode,
+              )
+            }}
           </p>
         </div>
         <div>
-          <p class="text-xs text-admin-subtext">Agent reward</p>
+          <p class="text-xs text-admin-subtext">
+            {{ detail.withdrawal.payoutHandler === 'PLATFORM' ? 'Service fee' : 'Agent reward' }}
+          </p>
           <p class="mt-0.5 text-sm font-semibold tabular-nums">
-            {{ formatPts(detail.withdrawal.agentRewardPoints) }}
+            {{
+              formatPts(
+                detail.withdrawal.payoutHandler === 'PLATFORM'
+                  ? detail.withdrawal.serviceFeePoints
+                  : detail.withdrawal.agentRewardPoints,
+              )
+            }}
+          </p>
+          <p
+            v-if="detail.withdrawal.methodType"
+            class="text-xs text-admin-muted"
+          >
+            {{ detail.withdrawal.methodType }}
+            ·
+            {{ detail.withdrawal.payoutHandler === 'PLATFORM' ? 'Platform payout' : 'Agency payroll' }}
           </p>
         </div>
       </div>
@@ -341,7 +397,9 @@ onUnmounted(() => store.clearDetail())
               class="admin-btn-primary text-sm"
               @click="favourAgentOpen = true"
             >
-              Favour agent
+              {{
+                detail.withdrawal.payoutHandler === 'PLATFORM' ? 'Confirm paid' : 'Favour agent'
+              }}
             </button>
             <button
               v-if="isDisputed"
@@ -359,14 +417,21 @@ onUnmounted(() => store.clearDetail())
     <BaseDialog
       :open="assignOpen"
       title="Assign withdrawal"
-      @close="assignOpen = false; assignAgencyUserId = ''"
+      @close="assignOpen = false; assignAgencyId = ''"
     >
       <template #body>
         <div class="space-y-3">
           <p class="text-sm text-admin-subtext">
-            Optional agency UUID override; empty uses automatic assignment.
+            Paste an agency UUID or public / display ID to assign to that agency (any country).
+            Leave empty for automatic same-country assignment.
           </p>
-          <input v-model="assignAgencyUserId" type="text" class="admin-input" placeholder="Agency user UUID" />
+          <input
+            v-model="assignAgencyId"
+            type="text"
+            class="admin-input"
+            placeholder="Agency UUID or public / display ID"
+            @keydown.enter="handleAssign"
+          />
         </div>
       </template>
       <template #footer>
@@ -390,9 +455,13 @@ onUnmounted(() => store.clearDetail())
 
     <ConfirmActionDialog
       :open="favourAgentOpen"
-      title="Resolve favour agent"
-      message="Close the dispute in favour of the agency agent."
-      confirm-label="Favour agent"
+      title="Confirm payout"
+      :message="
+        detail?.withdrawal.payoutHandler === 'PLATFORM'
+          ? 'Mark this EPAY dispute as paid. No agency is credited.'
+          : 'Close the dispute in favour of the agency agent.'
+      "
+      confirm-label="Confirm paid"
       variant="warn"
       :require-reason="true"
       @close="favourAgentOpen = false"
@@ -402,7 +471,11 @@ onUnmounted(() => store.clearDetail())
     <ConfirmActionDialog
       :open="favourHostOpen"
       title="Resolve favour host"
-      message="Close the dispute in favour of the host."
+      :message="
+        detail?.withdrawal.payoutHandler === 'PLATFORM'
+          ? 'Refund the host the full gross. This EPAY row is not assigned to an agency.'
+          : 'Close the dispute in favour of the host.'
+      "
       confirm-label="Favour host"
       variant="danger"
       :require-reason="true"

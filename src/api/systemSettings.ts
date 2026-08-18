@@ -11,16 +11,28 @@ import type {
   HostRevenueShares,
   HostRevenueSharesUpdate,
   LevelThreshold,
+  MessagingConfigDto,
+  MessagingConfigUpdate,
   PayrollConfigSnapshot,
   PayrollConfigUpdate,
+  PayoutRailsConfig,
+  PayoutRailsConfigUpdate,
   RateTier,
   RateTierBody,
+  SupportReviewWindowConfigDto,
+  SupportReviewWindowConfigUpdate,
+  AdminAuthConfigDto,
+  AdminAuthConfigUpdate,
+  AgencyHostConfigDto,
+  AgencyHostConfigUpdate,
   SystemRatesAggregate,
   TradingPackage,
   TradingPackagesBody,
   VideoCallPriceCapsBody,
   VideoCallPriceCapsSnapshot,
   WalletLevelConfigsBody,
+  RichTierConfig,
+  RichTierConfigBody,
 } from '@/types/systemRates'
 
 export const systemSettingsApi = {
@@ -66,6 +78,14 @@ export const systemSettingsApi = {
       '/admin/system-settings/wallet-level-configs',
       payload,
     )
+  },
+
+  getRichTierConfig() {
+    return api.get<{ tiers: RichTierConfig[] }>('/admin/system-settings/rich-tier')
+  },
+
+  updateRichTierConfig(payload: RichTierConfigBody) {
+    return api.put<{ tiers: RichTierConfig[] }>('/admin/system-settings/rich-tier', payload)
   },
 
   getTradingTopupRates() {
@@ -119,6 +139,14 @@ export const systemSettingsApi = {
     return api.put<PayrollConfigSnapshot>('/admin/agency/payroll/config', payload)
   },
 
+  getPayoutRailsConfig() {
+    return api.get<PayoutRailsConfig>('/admin/agency/withdrawal/payout-rails')
+  },
+
+  updatePayoutRailsConfig(payload: PayoutRailsConfigUpdate) {
+    return api.put<PayoutRailsConfig>('/admin/agency/withdrawal/payout-rails', payload)
+  },
+
   getVideoCallPriceCaps() {
     return api.get<VideoCallPriceCapsSnapshot>(
       '/admin/system-settings/video-call-price-caps',
@@ -130,5 +158,37 @@ export const systemSettingsApi = {
       '/admin/system-settings/video-call-price-caps',
       payload,
     )
+  },
+
+  getMessagingConfig() {
+    return api.get<MessagingConfigDto>('/admin/system-settings/messaging')
+  },
+
+  updateMessagingConfig(payload: MessagingConfigUpdate) {
+    return api.put<MessagingConfigDto>('/admin/system-settings/messaging', payload)
+  },
+
+  getSupportReviewWindowConfig() {
+    return api.get<SupportReviewWindowConfigDto>('/admin/system-settings/support')
+  },
+
+  updateSupportReviewWindowConfig(payload: SupportReviewWindowConfigUpdate) {
+    return api.put<SupportReviewWindowConfigDto>('/admin/system-settings/support', payload)
+  },
+
+  getAdminAuthConfig() {
+    return api.get<AdminAuthConfigDto>('/admin/system-settings/admin-auth')
+  },
+
+  updateAdminAuthConfig(payload: AdminAuthConfigUpdate) {
+    return api.put<AdminAuthConfigDto>('/admin/system-settings/admin-auth', payload)
+  },
+
+  getAgencyHostConfig() {
+    return api.get<AgencyHostConfigDto>('/admin/system-settings/agency-host')
+  },
+
+  updateAgencyHostConfig(payload: AgencyHostConfigUpdate) {
+    return api.put<AgencyHostConfigDto>('/admin/system-settings/agency-host', payload)
   },
 }

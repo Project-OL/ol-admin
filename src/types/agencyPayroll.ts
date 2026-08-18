@@ -46,7 +46,12 @@ export type AdminPayrollAssignmentWithdrawal = {
   localCurrencyAmount: string
   localCurrencyCode: 'INR' | string
   agentRewardPoints: string
+  serviceFeePoints?: string
+  methodType?: string | null
+  payoutHandler?: string | null
   notes: string | null
+  /** Admin may reverse within 4 days of requestedAt when status allows. */
+  canRevert?: boolean
 }
 
 export type AdminPayrollAssignment = {
@@ -78,7 +83,11 @@ export type AdminPayrollAssignmentsQuery = {
   cursor?: string
   status?: string
   agencyUserId?: string
+  /** Numeric agency public ID or owner public/display ID. */
+  agencyPublicId?: string
   hostUserId?: string
+  /** Numeric host public or display ID. */
+  hostPublicId?: string
   withdrawalId?: string
   from?: string
   to?: string
@@ -91,6 +100,9 @@ export type AdminDisputedPayrollItem = {
   hostPublicId: string
   grossPoints: string
   hostPayoutUsd: string | null
+  serviceFeePoints?: string | null
+  methodType?: string | null
+  payoutHandler?: string | null
   localCurrencyAmount: string
   localCurrencyCode: 'INR' | string
   disputeTicketId: string | null
@@ -102,7 +114,9 @@ export type AdminDisputedPayrollItem = {
     agentPublicId: string
     proofS3Key: string | null
     waitingExpiresAt: string | null
-  }
+  } | null
+  proofS3Key?: string | null
+  proofImageUrl?: string | null
   paymentMethod: AdminPayrollPaymentMethod | null
 }
 
@@ -121,6 +135,10 @@ export type AdminPendingPlatformWithdrawal = {
   hostPayoutUsd: string | null
   platformFeePoints: string | null
   agentRewardPoints: string | null
+  serviceFeePoints?: string | null
+  methodType?: string | null
+  payoutHandler?: string | null
+  waitingExpiresAt?: string | null
   assignmentCount: number
   disputeTicketId: string | null
   paymentMethodId: string | null
@@ -136,4 +154,36 @@ export type AdminPendingPlatformPage = {
 export type CursorPageQuery = {
   limit?: number
   cursor?: string
+  /** PLATFORM = admin-pay EPAY inbox; AGENCY = leftover BANK assign queue. */
+  handler?: 'PLATFORM' | 'AGENCY'
+}
+
+export type AdminWithdrawalDetail = {
+  id: string
+  withdrawalId: string
+  grossPoints: string
+  status: string
+  requestedAt: string
+  processedAt: string | null
+  hostPayoutUsd: string | null
+  hostPayoutPoints: string
+  platformFeePoints: string | null
+  agentRewardPoints: string | null
+  serviceFeePoints: string | null
+  methodType: string | null
+  payoutHandler: string | null
+  waitingExpiresAt: string | null
+  waitingSecondsRemaining: number
+  proofS3Key: string | null
+  proofImageUrl: string | null
+  assignmentCount: number
+  disputeTicketId: string | null
+  paymentMethodId: string | null
+  failReason: string | null
+  canRevert: boolean
+  canPay: boolean
+  localCurrencyAmount: string
+  localCurrencyCode: string
+  host: AdminPayrollUserCard
+  paymentMethod: AdminPayrollPaymentMethod | null
 }

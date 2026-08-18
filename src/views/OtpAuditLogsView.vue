@@ -101,6 +101,13 @@ function flowLabel(flow: string) {
   return FLOW_LABELS[flow] ?? flow
 }
 
+function flowNote(item: OtpDeliveryAuditItem): string | null {
+  if (item.fallbackFrom) return `Fallback from ${item.fallbackFrom}`
+  if (item.routeReason === 'fallback_to_sms') return 'Then tried SMS'
+  if (item.routeReason === 'sms_request_threshold') return 'SMS after WhatsApp window'
+  return null
+}
+
 function meansLabel(means: string) {
   if (means === 'whatsapp') return 'WhatsApp'
   if (means === 'none') return '—'
@@ -440,8 +447,8 @@ onMounted(async () => {
               </td>
               <td>
                 <p class="text-sm font-medium">{{ flowLabel(item.flow || item.purpose) }}</p>
-                <p v-if="item.fallbackFrom" class="text-xs text-admin-muted">
-                  Fallback from {{ item.fallbackFrom }}
+                <p v-if="flowNote(item)" class="text-xs text-admin-muted">
+                  {{ flowNote(item) }}
                 </p>
               </td>
               <td class="text-sm">{{ meansLabel(item.means) }}</td>

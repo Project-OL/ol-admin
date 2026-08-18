@@ -14,16 +14,17 @@ import type {
   AdminTransactionEntry,
   AdminUserBrief,
   AdminVipPurchase,
+  PlatformProfitBuckets,
   TransactionsTab,
 } from '@/types/transactions'
 import { formatCoins, formatNumber, formatPoints } from '@/utils/format'
 import { showToast } from '@/utils/toast'
+import { resolveExplorerRevert } from '@/utils/transactionRevert'
 
 const TABS: { value: TransactionsTab; label: string; short: string }[] = [
   { value: 'coins', label: 'Personal coins', short: 'Coins' },
   { value: 'points', label: 'Points', short: 'Points' },
-  { value: 'trading-coins', label: 'Trading ledger', short: 'Trading' },
-  { value: 'coin-trading-transfers', label: 'Trading transfers', short: 'Transfers' },
+  { value: 'trading-coins', label: 'Trading coins', short: 'Trading' },
   { value: 'gifts', label: 'Gifts', short: 'Gifts' },
   { value: 'subscriptions', label: 'Subscriptions', short: 'Subs' },
   { value: 'vip-purchases', label: 'VIP purchases', short: 'VIP' },
@@ -31,11 +32,11 @@ const TABS: { value: TransactionsTab; label: string; short: string }[] = [
 ]
 
 const LEDGER_TABS = new Set<TransactionsTab>(['coins', 'points', 'trading-coins'])
+/** Tabs that may show Revert when API sends canRevert (point / trading-coin sourced only). */
 const REVERTABLE_TABS = new Set<TransactionsTab>([
-  'coins',
+  'coins', // only when revertVia is coin_trading_transfer (trading-coin source)
   'points',
-  'coin-trading-transfers',
-  'gifts',
+  'trading-coins',
 ])
 
 const route = useRoute()
@@ -48,6 +49,8 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const showAdvanced = ref(false)
+const profitTotals = ref<PlatformProfitBuckets | null>(null)
+const profitLoading = ref(false)
 
 const filters = reactive({
   q: '',
@@ -57,6 +60,10 @@ const filters = reactive({
   senderUserId: '',
   receiverUserId: '',
   userId: '',
+  publicId: '',
+  id: '',
+  types: '',
+  counterpartyId: '',
 })
 
 const selected = ref<AdminTransactionEntry | null>(null)
@@ -80,13 +87,43 @@ function shortId(id: string) {
 
 function userLabel(u: AdminUserBrief | null | undefined) {
   if (!u) return '—'
-  return u.displayName || u.username || u.displayPublicId || '—'
+  return (u.name || '').trim() || u.displayName || u.username || u.displayPublicId || '—'
 }
 
 function userSub(u: AdminUserBrief | null | undefined) {
   if (!u) return ''
   const id = u.displayPublicId || u.publicId
   return id ? `#${id}${u.username ? ` · @${u.username}` : ''}` : u.username ? `@${u.username}` : ''
+}
+
+function userInitial(u: AdminUserBrief | null | undefined) {
+  return userLabel(u).charAt(0).toUpperCase() || '?'
+}
+
+/** Prefer AdminUserBrief counterparty; fall back to counterpartyDetails on ledger rows. */
+function ledgerPeer(entry: AdminLedgerEntry): {
+  userId?: string
+  label: string
+  sub: string
+  avatarUrl: string | null
+} | null {
+  if (entry.counterparty) {
+    return {
+      userId: entry.counterparty.userId,
+      label: userLabel(entry.counterparty),
+      sub: userSub(entry.counterparty),
+      avatarUrl: entry.counterparty.avatarUrl,
+    }
+  }
+  const d = entry.counterpartyDetails
+  if (!d?.userId && !(d?.name || d?.publicId)) return null
+  const label = (d?.name || '').trim() || d?.publicId || 'User'
+  return {
+    userId: d?.userId,
+    label,
+    sub: d?.publicId ? `#${d.publicId}` : '',
+    avatarUrl: d?.avatarUrl ?? null,
+  }
 }
 
 function isLedger(e: AdminTransactionEntry): e is AdminLedgerEntry {
@@ -122,11 +159,47 @@ function directionClass(dir: string) {
 
 function canRevertEntry(e: AdminTransactionEntry | null): boolean {
   if (!e || !REVERTABLE_TABS.has(activeTab.value)) return false
-  if ('canRevert' in e) return Boolean(e.canRevert)
+  // Trust API flag only — never infer from counterpartyId.
+  if ('canRevert' in e) return e.canRevert === true
   return false
 }
 
 const selectedCanRevert = computed(() => canRevertEntry(selected.value))
+
+/** Personal COIN fallback when API has links but canRevert is false (old payload / already undone). */
+function personalCoinRevertHint(entry: AdminTransactionEntry | null): {
+  label: string
+  tab: TransactionsTab
+  q: string
+} | null {
+  if (activeTab.value !== 'coins' || !entry || !isLedger(entry)) return null
+  if (entry.canRevert === true) return null
+  if (entry.coinTradingTransfer?.id) {
+    return {
+      label: 'Open Trading coins tab',
+      tab: 'trading-coins',
+      q: entry.coinTradingTransfer.id,
+    }
+  }
+  if (entry.gift?.giftTransactionId) {
+    return {
+      label: 'Open Gifts tab',
+      tab: 'gifts',
+      q: entry.gift.giftTransactionId,
+    }
+  }
+  return null
+}
+
+const selectedPersonalCoinHint = computed(() => personalCoinRevertHint(selected.value))
+
+function jumpToTab(tab: TransactionsTab, q: string) {
+  filters.q = q
+  activeTab.value = tab
+  selected.value = null
+  router.replace({ query: { ...route.query, tab, q } })
+  void loadEntries(false)
+}
 
 function listParams(cursor?: string) {
   const params: Record<string, string | number | undefined> = {
@@ -137,6 +210,10 @@ function listParams(cursor?: string) {
     userId: filters.userId.trim() || undefined,
     senderUserId: filters.senderUserId.trim() || undefined,
     receiverUserId: filters.receiverUserId.trim() || undefined,
+    publicId: filters.publicId.trim() || undefined,
+    id: filters.id.trim() || undefined,
+    types: filters.types.trim() || undefined,
+    counterpartyId: filters.counterpartyId.trim() || undefined,
     cursor,
   }
   if (LEDGER_TABS.has(activeTab.value) && filters.direction) {
@@ -147,7 +224,23 @@ function listParams(cursor?: string) {
 
 function parseTab(raw: unknown): TransactionsTab | null {
   if (typeof raw !== 'string') return null
+  if (raw === 'coin-trading-transfers') return 'trading-coins'
   return TABS.some((t) => t.value === raw) ? (raw as TransactionsTab) : null
+}
+
+async function loadProfitSummary() {
+  profitLoading.value = true
+  try {
+    const { data } = await transactionsApi.platformProfitSummary({
+      from: filters.from ? new Date(filters.from).toISOString() : undefined,
+      to: filters.to ? new Date(`${filters.to}T23:59:59.999`).toISOString() : undefined,
+    })
+    profitTotals.value = data.platformProfitTotals ?? null
+  } catch {
+    profitTotals.value = null
+  } finally {
+    profitLoading.value = false
+  }
 }
 
 async function loadEntries(append = false) {
@@ -157,6 +250,7 @@ async function loadEntries(append = false) {
   } else {
     loading.value = true
     selected.value = null
+    void loadProfitSummary()
   }
 
   try {
@@ -183,15 +277,24 @@ async function loadEntries(append = false) {
 
 function errorMessage(err: unknown, fallback: string) {
   if (!axios.isAxiosError(err)) return fallback
-  const body = err.response?.data as { code?: string; message?: string } | undefined
+  const body = err.response?.data as {
+    code?: string
+    message?: string
+    details?: { transferId?: string }
+  } | undefined
   const code = body?.code
   switch (code) {
     case 'USER_NOT_FOUND':
       return 'No user found for that public ID'
     case 'INVALID_REQUEST':
       return body?.message || 'Invalid search or request'
-    case 'NOT_REVERTABLE':
-      return 'This entry has no counterparty and cannot be reverted'
+    case 'NOT_REVERTABLE': {
+      const transferId = body?.details?.transferId
+      if (transferId) {
+        return `Not revertable as a ledger row — search the transfer id on Trading coins (${transferId.slice(0, 8)}…)`
+      }
+      return 'This row cannot be reverted (no peer, personal COIN, or already handled elsewhere)'
+    }
     case 'ALREADY_REVERTED':
     case 'TRANSFER_ALREADY_REVERSED':
       return 'Already reverted'
@@ -230,6 +333,10 @@ function resetFilters() {
   filters.senderUserId = ''
   filters.receiverUserId = ''
   filters.userId = ''
+  filters.publicId = ''
+  filters.id = ''
+  filters.types = ''
+  filters.counterpartyId = ''
   showAdvanced.value = false
   void loadEntries(false)
 }
@@ -266,32 +373,32 @@ async function confirmRevert() {
   const entry = selected.value
   const reason = revertReason.value.trim()
   if (!entry || !reason || reverting.value) return
+  if (!canRevertEntry(entry)) {
+    showToast('This row is not marked revertable', 'error')
+    return
+  }
+
+  const action = resolveExplorerRevert(activeTab.value, entry)
+  if (!action) {
+    showToast('Revert is not available for this row', 'error')
+    return
+  }
 
   reverting.value = true
   try {
-    const idempotencyKey = `admin-tx-revert-${entry.id}-${Date.now()}`
-    const body = { reason, idempotencyKey }
+    const body = {
+      reason,
+      idempotencyKey: `admin-tx-revert-${action.kind}-${action.id}-${Date.now()}`,
+    }
 
-    if (activeTab.value === 'coins' || activeTab.value === 'trading-coins') {
-      // Prefer dedicated transfer revert so TRADING_COIN restores to the agent.
-      const transferId =
-        isLedger(entry) && entry.coinTradingTransfer?.id
-          ? entry.coinTradingTransfer.id
-          : null
-      if (transferId) {
-        await transactionsApi.revertCoinTradingTransfer(transferId, body)
-      } else {
-        await transactionsApi.revertCoin(entry.id, body)
-      }
-    } else if (activeTab.value === 'points') {
-      await transactionsApi.revertPoint(entry.id, body)
-    } else if (activeTab.value === 'coin-trading-transfers') {
-      await transactionsApi.revertCoinTradingTransfer(entry.id, body)
-    } else if (activeTab.value === 'gifts') {
-      await transactionsApi.revertGift(entry.id, body)
-    } else {
-      showToast('Revert is not available for this tab', 'error')
-      return
+    if (action.kind === 'points') {
+      await transactionsApi.revertPoint(action.id, body)
+    } else if (action.kind === 'trading-coins') {
+      await transactionsApi.revertCoin(action.id, body)
+    } else if (action.kind === 'coin-trading-transfer') {
+      await transactionsApi.revertCoinTradingTransfer(action.id, body)
+    } else if (action.kind === 'withdrawal') {
+      await transactionsApi.revertWithdrawal(action.id, body)
     }
 
     showToast('Transaction reverted', 'success')
@@ -299,6 +406,16 @@ async function confirmRevert() {
     selected.value = null
     await loadEntries(false)
   } catch (err) {
+    // If personal-coin-style mistake returns transferId, jump operator there.
+    if (axios.isAxiosError(err)) {
+      const transferId = (err.response?.data as { details?: { transferId?: string } } | undefined)
+        ?.details?.transferId
+      if (transferId && (err.response?.data as { code?: string })?.code === 'NOT_REVERTABLE') {
+        showToast(errorMessage(err, 'Failed to revert'), 'error')
+        jumpToTab('trading-coins', transferId)
+        return
+      }
+    }
     showToast(errorMessage(err, 'Failed to revert transaction'), 'error')
   } finally {
     reverting.value = false
@@ -317,6 +434,22 @@ function primaryAmount(entry: AdminTransactionEntry): string {
   if (isVip(entry)) return formatCoins(Number(entry.coinCost))
   if (isStore(entry)) return formatCoins(entry.coinsPaid)
   return '—'
+}
+
+function entryPlatformProfit(entry: AdminTransactionEntry): PlatformProfitBuckets | null {
+  if ('platformProfit' in entry && entry.platformProfit) return entry.platformProfit
+  return null
+}
+
+function formatPlatformProfit(p: PlatformProfitBuckets | null | undefined): string {
+  if (!p) return '—'
+  const parts: string[] = []
+  if (p.coins && p.coins !== '0') parts.push(`${formatCoins(Number(p.coins))} coins`)
+  if (p.points && p.points !== '0') parts.push(`${formatPoints(Number(p.points))} pts`)
+  if (p.tradingCoins && p.tradingCoins !== '0') {
+    parts.push(`${formatCoins(Number(p.tradingCoins))} trading`)
+  }
+  return parts.length > 0 ? parts.join(' · ') : '—'
 }
 
 function primaryTitle(entry: AdminTransactionEntry): string {
@@ -363,7 +496,7 @@ onUnmounted(() => {
         <h1 class="text-xl font-semibold sm:text-2xl">Transactions</h1>
         <p class="mt-1 text-sm text-admin-subtext">
           Explore platform money movements and safely revert peer transfers, gifts, and trading
-          transfers
+          coins
         </p>
       </div>
       <button
@@ -374,6 +507,39 @@ onUnmounted(() => {
       >
         Refresh
       </button>
+    </div>
+
+    <div class="admin-stats-grid">
+      <div class="admin-card !p-3">
+        <p class="text-xs text-admin-subtext">Platform profit · Coins</p>
+        <p class="mt-1 text-2xl font-semibold tabular-nums">
+          {{
+            profitLoading
+              ? '…'
+              : formatCoins(Number(profitTotals?.coins ?? 0))
+          }}
+        </p>
+      </div>
+      <div class="admin-card !p-3">
+        <p class="text-xs text-admin-subtext">Platform profit · Points</p>
+        <p class="mt-1 text-2xl font-semibold tabular-nums">
+          {{
+            profitLoading
+              ? '…'
+              : formatPoints(Number(profitTotals?.points ?? 0))
+          }}
+        </p>
+      </div>
+      <div class="admin-card !p-3">
+        <p class="text-xs text-admin-subtext">Platform profit · Trading coins</p>
+        <p class="mt-1 text-2xl font-semibold tabular-nums">
+          {{
+            profitLoading
+              ? '…'
+              : formatCoins(Number(profitTotals?.tradingCoins ?? 0))
+          }}
+        </p>
+      </div>
     </div>
 
     <!-- Tabs -->
@@ -441,6 +607,25 @@ onUnmounted(() => {
 
       <div v-if="showAdvanced" class="grid gap-2 sm:grid-cols-3">
         <input
+          v-model="filters.id"
+          type="text"
+          class="admin-input"
+          placeholder="Exact row / ledger id"
+        />
+        <input
+          v-model="filters.publicId"
+          type="text"
+          class="admin-input"
+          placeholder="Public / display ID (digits)"
+        />
+        <input
+          v-model="filters.types"
+          type="text"
+          class="admin-input"
+          placeholder="Ledger types (csv)"
+          :disabled="!LEDGER_TABS.has(activeTab)"
+        />
+        <input
           v-model="filters.userId"
           type="text"
           class="admin-input"
@@ -457,6 +642,13 @@ onUnmounted(() => {
           type="text"
           class="admin-input"
           placeholder="Receiver / creator UUID"
+        />
+        <input
+          v-model="filters.counterpartyId"
+          type="text"
+          class="admin-input"
+          placeholder="Counterparty UUID (ledger)"
+          :disabled="!LEDGER_TABS.has(activeTab)"
         />
       </div>
     </section>
@@ -499,21 +691,54 @@ onUnmounted(() => {
               {{ primaryAmount(entry) }}
             </p>
             <p class="mt-0.5 text-xs text-admin-muted">{{ formatDt(entry.createdAt) }}</p>
+            <p
+              v-if="formatPlatformProfit(entryPlatformProfit(entry)) !== '—'"
+              class="mt-0.5 text-xs text-admin-subtext"
+            >
+              Profit {{ formatPlatformProfit(entryPlatformProfit(entry)) }}
+            </p>
           </div>
         </div>
-        <div class="mt-2 flex flex-wrap gap-2 text-xs text-admin-subtext">
+        <div class="mt-2 flex flex-wrap items-center gap-2 text-xs text-admin-subtext">
           <template v-if="isLedger(entry)">
-            <span>{{ userLabel(entry.user) }}</span>
-            <span v-if="entry.counterparty">→ {{ userLabel(entry.counterparty) }}</span>
+            <span class="inline-flex items-center gap-1.5">
+              <img
+                v-if="entry.user.avatarUrl"
+                :src="entry.user.avatarUrl"
+                alt=""
+                class="h-5 w-5 rounded-full object-cover"
+              />
+              <span>{{ userLabel(entry.user) }}</span>
+            </span>
+            <template v-if="ledgerPeer(entry)">
+              <span>→</span>
+              <span class="inline-flex items-center gap-1.5">
+                <img
+                  v-if="ledgerPeer(entry)!.avatarUrl"
+                  :src="ledgerPeer(entry)!.avatarUrl!"
+                  alt=""
+                  class="h-5 w-5 rounded-full object-cover"
+                />
+                <span>{{ ledgerPeer(entry)!.label }}</span>
+              </span>
+            </template>
             <span
-              v-if="entry.canRevert"
+              v-if="canRevertEntry(entry)"
               class="rounded bg-admin-warn/15 px-1.5 py-0.5 text-admin-warn"
             >Revertable</span>
           </template>
           <template v-else-if="isTransfer(entry)">
-            <span>{{ userLabel(entry.sender) }} → {{ userLabel(entry.receiver) }}</span>
+            <span class="inline-flex items-center gap-1.5">
+              <img
+                v-if="entry.sender.avatarUrl"
+                :src="entry.sender.avatarUrl"
+                alt=""
+                class="h-5 w-5 rounded-full object-cover"
+              />
+              {{ userLabel(entry.sender) }} → {{ userLabel(entry.receiver) }}
+            </span>
             <span
-              v-if="entry.canRevert"
+              v-if="canRevertEntry(entry)"
               class="rounded bg-admin-warn/15 px-1.5 py-0.5 text-admin-warn"
             >Revertable</span>
             <span
@@ -524,7 +749,7 @@ onUnmounted(() => {
           <template v-else-if="isGift(entry)">
             <span>{{ userLabel(entry.sender) }} → {{ userLabel(entry.receiver) }}</span>
             <span
-              v-if="entry.canRevert"
+              v-if="canRevertEntry(entry)"
               class="rounded bg-admin-warn/15 px-1.5 py-0.5 text-admin-warn"
             >Revertable</span>
           </template>
@@ -551,6 +776,7 @@ onUnmounted(() => {
               <th>Summary</th>
               <th>Parties</th>
               <th>Amount</th>
+              <th>Platform profit</th>
               <th>Flags</th>
             </tr>
           </thead>
@@ -575,23 +801,72 @@ onUnmounted(() => {
               </td>
               <td>
                 <template v-if="isLedger(entry)">
-                  <p class="text-sm">{{ userLabel(entry.user) }}</p>
-                  <p class="text-xs text-admin-subtext">{{ userSub(entry.user) }}</p>
-                  <p v-if="entry.counterparty" class="mt-1 text-xs text-admin-subtext">
-                    ↔ {{ userLabel(entry.counterparty) }}
-                  </p>
+                  <div class="flex items-start gap-2">
+                    <img
+                      v-if="entry.user.avatarUrl"
+                      :src="entry.user.avatarUrl"
+                      alt=""
+                      class="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover"
+                    />
+                    <span
+                      v-else
+                      class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-admin-accent/20 text-[10px] font-bold text-admin-accent"
+                    >
+                      {{ userInitial(entry.user) }}
+                    </span>
+                    <div class="min-w-0">
+                      <p class="text-sm">{{ userLabel(entry.user) }}</p>
+                      <p class="text-xs text-admin-subtext">{{ userSub(entry.user) }}</p>
+                      <div v-if="ledgerPeer(entry)" class="mt-1 flex items-center gap-1.5 text-xs text-admin-subtext">
+                        <img
+                          v-if="ledgerPeer(entry)!.avatarUrl"
+                          :src="ledgerPeer(entry)!.avatarUrl!"
+                          alt=""
+                          class="h-4 w-4 rounded-full object-cover"
+                        />
+                        <span>↔ {{ ledgerPeer(entry)!.label }}</span>
+                        <span v-if="ledgerPeer(entry)!.sub" class="text-admin-muted">{{ ledgerPeer(entry)!.sub }}</span>
+                      </div>
+                    </div>
+                  </div>
                 </template>
                 <template v-else-if="isTransfer(entry) || isGift(entry)">
-                  <p class="text-sm">{{ userLabel(entry.sender) }}</p>
-                  <p class="text-xs text-admin-subtext">→ {{ userLabel(entry.receiver) }}</p>
+                  <div class="flex items-start gap-2">
+                    <img
+                      v-if="entry.sender.avatarUrl"
+                      :src="entry.sender.avatarUrl"
+                      alt=""
+                      class="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover"
+                    />
+                    <span
+                      v-else
+                      class="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-admin-accent/20 text-[10px] font-bold text-admin-accent"
+                    >
+                      {{ userInitial(entry.sender) }}
+                    </span>
+                    <div>
+                      <p class="text-sm">{{ userLabel(entry.sender) }}</p>
+                      <p class="text-xs text-admin-subtext">→ {{ userLabel(entry.receiver) }}</p>
+                    </div>
+                  </div>
                 </template>
                 <template v-else-if="isSubscription(entry)">
                   <p class="text-sm">{{ userLabel(entry.subscriber) }}</p>
                   <p class="text-xs text-admin-subtext">→ {{ userLabel(entry.creator) }}</p>
                 </template>
                 <template v-else-if="isVip(entry)">
-                  <p class="text-sm">{{ userLabel(entry.user) }}</p>
-                  <p class="text-xs text-admin-subtext">{{ userSub(entry.user) }}</p>
+                  <div class="flex items-start gap-2">
+                    <img
+                      v-if="entry.user.avatarUrl"
+                      :src="entry.user.avatarUrl"
+                      alt=""
+                      class="mt-0.5 h-7 w-7 shrink-0 rounded-full object-cover"
+                    />
+                    <div>
+                      <p class="text-sm">{{ userLabel(entry.user) }}</p>
+                      <p class="text-xs text-admin-subtext">{{ userSub(entry.user) }}</p>
+                    </div>
+                  </div>
                 </template>
                 <template v-else-if="isStore(entry)">
                   <p class="text-sm">{{ userLabel(entry.buyer) }}</p>
@@ -618,9 +893,12 @@ onUnmounted(() => {
                   −{{ formatCoins(Number(entry.tradingCoinsDebited)) }} trading
                 </p>
               </td>
+              <td class="text-xs tabular-nums text-admin-subtext">
+                {{ formatPlatformProfit(entryPlatformProfit(entry)) }}
+              </td>
               <td>
                 <span
-                  v-if="'canRevert' in entry && entry.canRevert"
+                  v-if="canRevertEntry(entry)"
                   class="inline-flex rounded-full bg-admin-warn/15 px-2 py-0.5 text-xs font-medium text-admin-warn"
                 >
                   Revertable
@@ -635,10 +913,10 @@ onUnmounted(() => {
               </td>
             </tr>
             <tr v-if="loading && !entries.length">
-              <td colspan="5" class="py-10 text-center text-admin-muted">Loading…</td>
+              <td colspan="6" class="py-10 text-center text-admin-muted">Loading…</td>
             </tr>
             <tr v-else-if="!entries.length">
-              <td colspan="5" class="py-10 text-center text-admin-muted">No transactions found</td>
+              <td colspan="6" class="py-10 text-center text-admin-muted">No transactions found</td>
             </tr>
           </tbody>
         </table>
@@ -749,8 +1027,24 @@ onUnmounted(() => {
                   <template v-if="isLedger(selected)">
                     <div class="rounded-md border border-admin-border bg-admin-bg/40 p-3 text-sm">
                       <p class="text-xs text-admin-muted">Wallet owner</p>
-                      <p class="font-medium">{{ userLabel(selected.user) }}</p>
-                      <p class="text-xs text-admin-subtext">{{ userSub(selected.user) }}</p>
+                      <div class="mt-1 flex items-center gap-2">
+                        <img
+                          v-if="selected.user.avatarUrl"
+                          :src="selected.user.avatarUrl"
+                          alt=""
+                          class="h-8 w-8 rounded-full object-cover"
+                        />
+                        <span
+                          v-else
+                          class="flex h-8 w-8 items-center justify-center rounded-full bg-admin-accent/20 text-xs font-bold text-admin-accent"
+                        >
+                          {{ userInitial(selected.user) }}
+                        </span>
+                        <div>
+                          <p class="font-medium">{{ userLabel(selected.user) }}</p>
+                          <p class="text-xs text-admin-subtext">{{ userSub(selected.user) }}</p>
+                        </div>
+                      </div>
                       <RouterLink
                         :to="`/admin/users/${selected.user.userId}`"
                         class="mt-1 inline-block text-xs font-medium text-admin-accent hover:underline"
@@ -759,14 +1053,31 @@ onUnmounted(() => {
                       </RouterLink>
                     </div>
                     <div
-                      v-if="selected.counterparty"
+                      v-if="ledgerPeer(selected)"
                       class="rounded-md border border-admin-border bg-admin-bg/40 p-3 text-sm"
                     >
                       <p class="text-xs text-admin-muted">Counterparty</p>
-                      <p class="font-medium">{{ userLabel(selected.counterparty) }}</p>
-                      <p class="text-xs text-admin-subtext">{{ userSub(selected.counterparty) }}</p>
+                      <div class="mt-1 flex items-center gap-2">
+                        <img
+                          v-if="ledgerPeer(selected)!.avatarUrl"
+                          :src="ledgerPeer(selected)!.avatarUrl!"
+                          alt=""
+                          class="h-8 w-8 rounded-full object-cover"
+                        />
+                        <span
+                          v-else
+                          class="flex h-8 w-8 items-center justify-center rounded-full bg-admin-accent/20 text-xs font-bold text-admin-accent"
+                        >
+                          {{ ledgerPeer(selected)!.label.charAt(0).toUpperCase() }}
+                        </span>
+                        <div>
+                          <p class="font-medium">{{ ledgerPeer(selected)!.label }}</p>
+                          <p class="text-xs text-admin-subtext">{{ ledgerPeer(selected)!.sub }}</p>
+                        </div>
+                      </div>
                       <RouterLink
-                        :to="`/admin/users/${selected.counterparty.userId}`"
+                        v-if="ledgerPeer(selected)!.userId"
+                        :to="`/admin/users/${ledgerPeer(selected)!.userId}`"
                         class="mt-1 inline-block text-xs font-medium text-admin-accent hover:underline"
                       >
                         Open profile →
@@ -923,6 +1234,14 @@ onUnmounted(() => {
                     <p class="mt-1 break-all font-mono text-xs text-admin-muted">
                       {{ selected.gift.giftTransactionId }}
                     </p>
+                    <button
+                      v-if="activeTab === 'coins' && selected.gift.giftTransactionId"
+                      type="button"
+                      class="mt-2 text-xs font-medium text-admin-accent hover:underline"
+                      @click="jumpToTab('gifts', selected.gift.giftTransactionId)"
+                    >
+                      Open in Gifts tab →
+                    </button>
                   </div>
                   <div
                     v-if="selected.storeItem"
@@ -959,6 +1278,14 @@ onUnmounted(() => {
                     <p class="mt-1 break-all font-mono text-xs text-admin-muted">
                       {{ selected.coinTradingTransfer.id }}
                     </p>
+                    <button
+                      v-if="activeTab === 'coins' && selected.coinTradingTransfer.id"
+                      type="button"
+                      class="mt-2 text-xs font-medium text-admin-accent hover:underline"
+                      @click="jumpToTab('trading-coins', selected.coinTradingTransfer.id)"
+                    >
+                      Open in Trading coins →
+                    </button>
                   </div>
                 </div>
               </section>
@@ -1009,14 +1336,40 @@ onUnmounted(() => {
             </div>
 
             <div
-              v-if="selectedCanRevert"
+              v-if="selectedCanRevert || selectedPersonalCoinHint"
               class="shrink-0 border-t border-admin-border px-4 py-3 sm:px-5"
             >
-              <button type="button" class="admin-btn-danger w-full" @click="openRevert">
+              <button
+                v-if="selectedCanRevert"
+                type="button"
+                class="admin-btn-danger w-full"
+                @click="openRevert"
+              >
                 Revert transaction
               </button>
+              <button
+                v-else-if="selectedPersonalCoinHint"
+                type="button"
+                class="admin-btn-secondary w-full"
+                @click="jumpToTab(selectedPersonalCoinHint.tab, selectedPersonalCoinHint.q)"
+              >
+                {{ selectedPersonalCoinHint.label }}
+              </button>
               <p class="mt-2 text-center text-xs text-admin-muted">
-                Debits the receiver first, then credits the sender. Requires a reason.
+                <template v-if="selectedCanRevert">
+                  Debits the receiver first, then credits the sender. Requires a reason.
+                  <template v-if="activeTab === 'coins'">
+                    Only trading-transfer–funded personal coin credits are revertable (trading-coin
+                    source).
+                  </template>
+                </template>
+                <template v-else-if="selectedPersonalCoinHint">
+                  Linked gift/transfer — open that tab, or refresh if this row should be
+                  revertable in-place.
+                </template>
+                <template v-else>
+                  This row is not marked revertable.
+                </template>
               </p>
             </div>
           </aside>

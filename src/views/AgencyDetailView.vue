@@ -285,6 +285,16 @@ async function recomputeTier() {
             <p v-if="agency.pausedUntil" class="mt-1 text-sm text-admin-warn">
               Suspended until {{ format(new Date(agency.pausedUntil), 'dd MMM yyyy HH:mm') }}
             </p>
+            <p
+              v-if="agency.tierLockLevel && agency.tierLockUntil"
+              class="mt-1 text-sm text-admin-subtext"
+            >
+              Base tier {{ agency.tierLockLevel }} locked until
+              {{ format(new Date(agency.tierLockUntil), 'dd MMM yyyy HH:mm') }}
+              <span v-if="agency.effectiveWindowTotalPoints" class="text-admin-muted">
+                · effective {{ formatPoints(Number(agency.effectiveWindowTotalPoints)) }} pts
+              </span>
+            </p>
           </div>
           <div class="flex flex-wrap gap-2">
             <button type="button" class="admin-btn-secondary text-xs" @click="reload">Refresh</button>
@@ -541,6 +551,16 @@ async function recomputeTier() {
                 {{ formatPoints(Number(recomputeResult.after.currentWindowTotalPoints)) }}
               </span>
             </div>
+            <div
+              v-if="recomputeResult.after.tierLockUntil"
+              class="admin-kv-row border-0"
+            >
+              <span class="admin-kv-label">Tier lock</span>
+              <span class="admin-kv-value">
+                Base {{ recomputeResult.after.tierLockLevel }} until
+                {{ format(new Date(recomputeResult.after.tierLockUntil), 'dd MMM yyyy HH:mm') }}
+              </span>
+            </div>
           </div>
           <p v-if="recomputeResult.levelWindow.note" class="text-xs text-admin-muted">
             {{ recomputeResult.levelWindow.note }}
@@ -558,7 +578,9 @@ async function recomputeTier() {
           <option v-for="tier in COMMISSION_TIERS" :key="tier" :value="tier">{{ tier }}</option>
         </select>
         <p class="mt-2 text-xs text-admin-muted">
-          Manual override. Daily / force recompute can change this again from earnings.
+          Sets a base tier for one rolling-window duration from now. Recomputes cannot drop below
+          this tier until then, but the agency can still rise if earnings qualify. After the window,
+          tier follows actual earnings only.
         </p>
       </template>
       <template #footer>
@@ -584,7 +606,13 @@ async function recomputeTier() {
 
     <BaseDialog :open="addHostDialog" title="Add Host" @close="addHostDialog = false">
       <template #body>
-        <input v-model="hostUserId" type="text" class="admin-input font-mono" placeholder="Host user UUID" />
+        <label class="mb-1 block text-xs text-admin-subtext">Host UUID or public / display ID</label>
+        <input
+          v-model="hostUserId"
+          type="text"
+          class="admin-input font-mono"
+          placeholder="34216592"
+        />
       </template>
       <template #footer>
         <button type="button" class="admin-btn-secondary" @click="addHostDialog = false">Cancel</button>
@@ -602,8 +630,15 @@ async function recomputeTier() {
             <input v-model="targetAgencyId" type="text" class="admin-input" placeholder="34216592" />
           </div>
           <div>
-            <label class="mb-1 block text-xs text-admin-subtext">Host user IDs (comma separated)</label>
-            <textarea v-model="transferHostIds" rows="3" class="admin-input resize-none font-mono text-xs" />
+            <label class="mb-1 block text-xs text-admin-subtext">
+              Host UUIDs or public IDs (comma or space separated)
+            </label>
+            <textarea
+              v-model="transferHostIds"
+              rows="3"
+              class="admin-input resize-none font-mono text-xs"
+              placeholder="34216592, 88100221"
+            />
           </div>
         </div>
       </template>

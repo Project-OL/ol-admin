@@ -24,6 +24,8 @@ type NavItem = {
   exact?: boolean
   /** SUPER_ADMIN-only tooling; never shown when view-restricted */
   superAdminOnly?: boolean
+  /** Kept in code/router; omitted from the sidebar */
+  hidden?: boolean
 }
 
 const allNavItems: NavItem[] = [
@@ -35,6 +37,7 @@ const allNavItems: NavItem[] = [
     icon: 'locations',
     roles: ['SUPER_ADMIN'],
     viewName: 'UserLocationsView',
+    hidden: true,
   },
   {
     to: '/admin/agency',
@@ -81,6 +84,13 @@ const allNavItems: NavItem[] = [
     viewName: 'CustomerSupportView',
   },
   {
+    to: '/admin/live-moderation',
+    label: 'Live Moderation',
+    icon: 'support',
+    roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'MODERATOR'],
+    viewName: 'LiveModerationView',
+  },
+  {
     to: '/admin/otp-audit',
     label: 'OTP Audit',
     icon: 'otp',
@@ -109,6 +119,20 @@ const allNavItems: NavItem[] = [
     viewName: 'TransactionsView',
   },
   {
+    to: '/admin/currency',
+    label: 'Currency',
+    icon: 'transactions',
+    roles: ['SUPER_ADMIN'],
+    viewName: 'CurrencyView',
+  },
+  {
+    to: '/admin/activity',
+    label: 'Activity',
+    icon: 'ledger',
+    roles: ['SUPER_ADMIN'],
+    viewName: 'AdminActivityView',
+  },
+  {
     to: '/admin/system-settings',
     label: 'Settings',
     icon: 'settings',
@@ -129,19 +153,20 @@ const navItems = computed(() => {
 
   if (auth.restricted) {
     return allNavItems.filter((item) => {
+      if (item.hidden) return false
       if (item.superAdminOnly) return false
       if (!item.viewName) return false
       return auth.canAccessView(item.viewName)
     })
   }
 
-  if (!role) return allNavItems.filter((i) => i.roles.includes('SUPER_ADMIN'))
-  return allNavItems.filter((i) => i.roles.includes(role))
+  if (!role) return allNavItems.filter((i) => !i.hidden && i.roles.includes('SUPER_ADMIN'))
+  return allNavItems.filter((i) => !i.hidden && i.roles.includes(role))
 })
 
 function isActive(item: NavItem) {
   if (item.exact) return route.path === item.to
-  return route.path.startsWith(item.to)
+  return route.path === item.to || route.path.startsWith(`${item.to}/`)
 }
 </script>
 

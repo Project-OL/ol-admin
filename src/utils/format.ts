@@ -29,6 +29,22 @@ export function formatUsd(value: number): string {
   }).format(value)
 }
 
+const LOCAL_CURRENCY_SYMBOL: Record<string, string> = {
+  INR: '₹',
+  NPR: 'रू',
+}
+
+/** Host local FX display (admin-managed country rates). */
+export function formatLocalMoney(
+  amount: string | number | null | undefined,
+  code?: string | null,
+): string {
+  if (amount == null || amount === '') return '—'
+  const upper = (code ?? 'INR').toUpperCase()
+  const prefix = LOCAL_CURRENCY_SYMBOL[upper] ?? `${upper} `
+  return `${prefix}${amount}`
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')

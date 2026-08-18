@@ -11,6 +11,7 @@ export const VIEW_ROUTES: Record<string, string> = {
   AgencyDetailView: '/admin/agency/:id',
   AgencyPayrollView: '/admin/agency-payroll',
   AgencyPayrollAssignmentDetailView: '/admin/agency-payroll/:assignmentId',
+  AgencyPayrollWithdrawalDetailView: '/admin/agency-payroll/w/:withdrawalId',
   PlatformMessagesView: '/admin/messages',
   GiftAdminView: '/admin/gifts',
   StoreAdminView: '/admin/store',
@@ -18,10 +19,13 @@ export const VIEW_ROUTES: Record<string, string> = {
   CustomGiftAdminView: '/admin/custom-gifts',
   CustomerSupportView: '/admin/support',
   SupportTicketDetailView: '/admin/support/tickets/:ticketId',
+  LiveModerationView: '/admin/live-moderation',
   OtpAuditLogsView: '/admin/otp-audit',
   PushNotificationsView: '/admin/push-notifications',
   LedgerAuditView: '/admin/ledger-audit',
   TransactionsView: '/admin/transactions',
+  CurrencyView: '/admin/currency',
+  AdminActivityView: '/admin/activity',
   SystemSettingsView: '/admin/system-settings',
 }
 
@@ -34,6 +38,7 @@ export const VIEW_PARENT_BY_DETAIL: Record<string, string> = {
   UserDetailView: 'UserListView',
   AgencyDetailView: 'AgencyListView',
   AgencyPayrollAssignmentDetailView: 'AgencyPayrollView',
+  AgencyPayrollWithdrawalDetailView: 'AgencyPayrollView',
   SupportTicketDetailView: 'CustomerSupportView',
 }
 
@@ -41,9 +46,12 @@ export const VIEW_PARENT_BY_DETAIL: Record<string, string> = {
 export const VIEW_COMPANIONS: Record<string, string[]> = {
   UserListView: ['UserDetailView'],
   AgencyListView: ['AgencyDetailView'],
-  AgencyPayrollView: ['AgencyPayrollAssignmentDetailView'],
+  AgencyPayrollView: ['AgencyPayrollAssignmentDetailView', 'AgencyPayrollWithdrawalDetailView'],
   CustomerSupportView: ['SupportTicketDetailView'],
 }
+
+/** Views kept in router/code but omitted from the sidebar and default landing. */
+export const HIDDEN_NAV_VIEWS = new Set(['UserLocationsView'])
 
 /** Sidebar / list routes keyed by view name (detail routes omitted). */
 export const VIEW_NAV_PATHS: Record<string, string> = {
@@ -58,10 +66,13 @@ export const VIEW_NAV_PATHS: Record<string, string> = {
   BannerAdminView: '/admin/banners',
   CustomGiftAdminView: '/admin/custom-gifts',
   CustomerSupportView: '/admin/support',
+  LiveModerationView: '/admin/live-moderation',
   OtpAuditLogsView: '/admin/otp-audit',
   PushNotificationsView: '/admin/push-notifications',
   LedgerAuditView: '/admin/ledger-audit',
   TransactionsView: '/admin/transactions',
+  CurrencyView: '/admin/currency',
+  AdminActivityView: '/admin/activity',
   SystemSettingsView: '/admin/system-settings',
 }
 
@@ -89,6 +100,7 @@ export function firstAllowedPath(
 ): string {
   if (!restricted) return roleFallback
   for (const [name, path] of Object.entries(VIEW_NAV_PATHS)) {
+    if (HIDDEN_NAV_VIEWS.has(name)) continue
     if (viewNames.has(name)) return path
   }
   return roleFallback

@@ -9,10 +9,18 @@ import type {
   AdminTransactionsListQuery,
   AdminTransactionsListResponse,
   AdminVipPurchase,
+  PlatformProfitSummaryResponse,
   TransactionsTab,
 } from '@/types/transactions'
 
 export const transactionsApi = {
+  platformProfitSummary(params: { from?: string; to?: string } = {}) {
+    return api.get<PlatformProfitSummaryResponse>(
+      '/admin/transactions/platform-profit/summary',
+      { params },
+    )
+  },
+
   list(tab: TransactionsTab, params: AdminTransactionsListQuery = {}) {
     return api.get<AdminTransactionsListResponse>(`/admin/transactions/${tab}`, { params })
   },
@@ -81,6 +89,12 @@ export const transactionsApi = {
 
   revertCoinTradingTransfer(transferId: string, body: AdminTransactionRevertBody) {
     return api.post(`/admin/transactions/coin-trading-transfers/${transferId}/revert`, body)
+  },
+
+  revertWithdrawal(withdrawalId: string, body: AdminTransactionRevertBody) {
+    return api.post(`/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/reverse`, {
+      reason: body.reason,
+    })
   },
 
   revertGift(giftTransactionId: string, body: AdminTransactionRevertBody) {

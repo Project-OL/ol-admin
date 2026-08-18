@@ -1,10 +1,14 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import axios from 'axios'
 import { format } from 'date-fns'
 import { userAdminApi } from '@/api/userAdmin'
 import { showToast } from '@/utils/toast'
-import type { AdminLocationFeedItem } from '@/types/userLocation'
+import type { AdminLocationFeedItem, AdminLocationsQuery } from '@/types/userLocation'
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 const items = ref<AdminLocationFeedItem[]>([])
 const nextCursor = ref<string | null>(null)
@@ -12,7 +16,7 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 
-const userIdFilter = ref('')
+const userFilter = ref('')
 const dateFrom = ref('')
 const dateTo = ref('')
 
@@ -34,26 +38,59 @@ function mapsUrl(lat: number, lng: number) {
   return `https://www.google.com/maps?q=${lat},${lng}`
 }
 
-function queryParams(cursor?: string) {
+function parseUserFilter():
+  | { ok: true; userId?: string; publicId?: string }
+  | { ok: false; message: string } {
+  const q = userFilter.value.trim().replace(/^#/, '')
+  if (!q) return { ok: true }
+  if (UUID_RE.test(q)) return { ok: true, userId: q }
+  if (/^\d+$/.test(q)) return { ok: true, publicId: q }
+  return { ok: false, message: 'Enter a user UUID or numeric public / display ID' }
+}
+
+function queryParams(cursor?: string): AdminLocationsQuery | null {
+  const parsed = parseUserFilter()
+  if (!parsed.ok) {
+    showToast(parsed.message, 'error')
+    return null
+  }
   return {
     limit: 50,
     cursor,
-    userId: userIdFilter.value.trim() || undefined,
+    userId: parsed.userId,
+    publicId: parsed.publicId,
     from: dateFrom.value ? new Date(dateFrom.value).toISOString() : undefined,
     to: dateTo.value ? new Date(dateTo.value + 'T23:59:59').toISOString() : undefined,
   }
 }
 
+function toastLoadError(err: unknown) {
+  if (axios.isAxiosError(err)) {
+    const body = err.response?.data as { code?: string; message?: string } | undefined
+    if (body?.code === 'USER_NOT_FOUND') {
+      showToast(body.message || 'User not found', 'error')
+      return
+    }
+    if (body?.code === 'INVALID_REQUEST') {
+      showToast(body.message || 'Invalid location filter', 'error')
+      return
+    }
+  }
+  showToast('Failed to load locations feed', 'error')
+}
+
 async function load() {
+  const params = queryParams()
+  if (!params) return
   loading.value = true
   try {
-    const { data } = await userAdminApi.listLocations(queryParams())
+    const { data } = await userAdminApi.listLocations(params)
     items.value = data.items
     nextCursor.value = data.nextCursor
     hasMore.value = data.hasMore
-  } catch {
+  } catch (err) {
     items.value = []
-    showToast('Failed to load locations feed', 'error')
+    toastLoadError(err)
   } finally {
     loading.value = false
   }
@@ -61,14 +98,16 @@ async function load() {
 
 async function loadMore() {
   if (loadingMore.value || !hasMore.value || !nextCursor.value) return
+  const params = queryParams(nextCursor.value)
+  if (!params) return
   loadingMore.value = true
   try {
-    const { data } = await userAdminApi.listLocations(queryParams(nextCursor.value))
+    const { data } = await userAdminApi.listLocations(params)
     items.value = [...items.value, ...data.items]
     nextCursor.value = data.nextCursor
     hasMore.value = data.hasMore
-  } catch {
-    showToast('Failed to load more locations', 'error')
+  } catch (err) {
+    toastLoadError(err)
   } finally {
     loadingMore.value = false
   }
@@ -82,17 +121,18 @@ onMounted(() => load())
     <div>
       <h1 class="text-xl font-semibold sm:text-2xl">Locations</h1>
       <p class="mt-1 text-sm text-admin-subtext">
-        Global GPS sample feed (read-only)
+        Global GPS sample feed (read-only). Search a user by UUID, public ID, or display ID.
       </p>
     </div>
 
     <div class="admin-card">
       <div class="mb-4 flex flex-wrap gap-2">
         <input
-          v-model="userIdFilter"
+          v-model="userFilter"
           type="text"
           class="admin-input min-w-0 w-full flex-1 sm:min-w-[220px]"
-          placeholder="Filter by user UUID"
+          placeholder="User UUID, public ID, or display ID"
+          @keydown.enter="load"
         />
         <input v-model="dateFrom" type="date" class="admin-input w-auto" />
         <input v-model="dateTo" type="date" class="admin-input w-auto" />
