@@ -67,6 +67,7 @@ const ACTION_LABELS: Record<string, string> = {
   ADMIN_CUSTOM_GIFT_COMPLETED: 'Completed custom gift request',
   ADMIN_CUSTOM_GIFT_FAILED: 'Failed custom gift request',
   ADMIN_SYSTEM_SETTINGS_UPDATED: 'Changed system settings',
+  ADMIN_ACCOUNT_DELETION_CANCELLED: 'Cancelled account deletion',
   ADMIN_SUPPORT_TICKET_REPLY: 'Replied to support ticket',
   ADMIN_SUPPORT_TICKET_RESOLVE: 'Resolved support ticket',
   ADMIN_SUPPORT_TICKET_REJECT: 'Rejected support ticket',
@@ -121,7 +122,8 @@ function groupForAction(actionType: string): (typeof GROUP_ORDER)[number] {
   if (actionType.startsWith('ADMIN_GIFT') || actionType.startsWith('ADMIN_CUSTOM_GIFT')) return 'Gifts'
   if (actionType.startsWith('ADMIN_STORE_')) return 'Store'
   if (actionType.startsWith('ADMIN_BANNER_')) return 'Banners'
-  if (actionType.startsWith('ADMIN_SYSTEM_SETTINGS')) return 'Settings'
+  if (actionType.startsWith('ADMIN_SYSTEM_SETTINGS') || actionType.startsWith('ADMIN_ACCOUNT_DELETION'))
+    return 'Settings'
   if (actionType.startsWith('ADMIN_SUPPORT_')) return 'Support'
   return 'Other'
 }
@@ -166,7 +168,9 @@ export function destinationHref(resourceType: string | null, resourceId: string 
     case 'custom_gift_config':
       return '/admin/custom-gifts'
     case 'system_settings':
-      return '/admin/system-settings'
+      return resourceId === 'account-deletion' ? '/admin/account-deletions' : '/admin/system-settings'
+    case 'account_deletion':
+      return '/admin/account-deletions'
     default:
       return ''
   }

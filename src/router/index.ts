@@ -222,6 +222,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/account-deletions',
+          name: 'account-deletions',
+          component: () => import('../views/AccountDeletionsView.vue'),
+          meta: {
+            title: 'Account Deletion',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'AccountDeletionsView',
+          },
+        },
+        {
           path: 'admin/views',
           name: 'admin-views',
           component: () => import('../views/AdminViewsView.vue'),

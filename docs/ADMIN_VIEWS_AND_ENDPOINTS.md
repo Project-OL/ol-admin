@@ -60,7 +60,7 @@ Route: `/admin/users/:id` · Sidebar: no (companion of UserListView)
 
 Wallet history, prefer-transfer revert, and freeze: [`ADMIN_TRANSACTIONS_CONTROLS_AND_REVERT.md`](./ADMIN_TRANSACTIONS_CONTROLS_AND_REVERT.md). Create / return adjustments live on Currency.
 
-**Feature restrictions:** mute live chat / live audio / messaging (optional `targetUserIds`) / ban starting live. **Active live:** `GET/POST …/live-streams/active|stop`. **Live moderation dossier:** `GET /admin/users/:id/live-moderation`.
+**Feature restrictions:** mute live chat / live audio / ban starting live via live backend `https://live.offoolive.com/api/v1/admin/users/:id/restrictions` (admin JWT). Disable DMs (`MESSAGING_DISABLE`, optional `targetUserIds`) stays on this REST API. Room kick / stream-admin APIs are not used. **Active live:** `GET/POST …/live-streams/active|stop`. **Live moderation dossier:** `GET /admin/users/:id/live-moderation`.
 
 **Face verification:** `GET /admin/users/:id/face-verification` includes `statusLabel` / `statusDetail` / `notIndexedReason` (why a saved image is not indexed) and matched/duplicate user (`publicId`, `displayPublicId`) when another face matches.
 
@@ -265,6 +265,21 @@ POST /admin/ledger-audit/run
 GET /admin/users/search
 ```
 
+## AccountDeletionsView
+
+Route: `/admin/account-deletions` · Sidebar: Account Deletion
+
+Dedicated page (not a System Settings tab). Top card sets grace / permanent-delete windows (`GET|PUT /admin/system-settings/account-deletion`). Inbox lists requests (`status=open|cancelled|deleted|all`) with search (`q` + `qType`) and admin cancel. Saving windows applies to **new** user schedules only; existing `deletionAt` values stay stored. User detail header links here when `rawStatus=deactivating`.
+
+```
+GET /admin/system-settings/account-deletion
+PUT /admin/system-settings/account-deletion
+GET /admin/account-deletions
+GET /admin/account-deletions/:id
+POST /admin/account-deletions/:id/cancel
+GET /admin/users/:id
+```
+
 ## TransactionsView
 
 Route: `/admin/transactions` · Sidebar: Transactions
@@ -414,6 +429,8 @@ Route: `/admin/live-moderation` · Sidebar: Live Moderation
 
 Global live/video-call nudity detections, host stream bans, and live user reports. Per-user dossier also lives on User Detail → Reports.
 
+Chat mute / audio mute / going-live ban: live backend `GET|POST|DELETE https://live.offoolive.com/api/v1/admin/users/:id/restrictions` (and `POST …/:type/clear`). Does **not** call room kick, toggle-admin, chat-permission, or global-message.
+
 ```
 GET /admin/live-moderation
 GET /admin/users/:id/live-moderation
@@ -422,11 +439,6 @@ GET /admin/live-streams/active
 POST /admin/live-streams/:streamRef/stop
 GET /admin/users/:id/live-streams/active
 POST /admin/users/:id/live-streams/:streamRef/stop
-GET /admin/restrictions
-GET /admin/users/:id/restrictions
-POST /admin/users/:id/restrictions
-DELETE /admin/users/:id/restrictions/:restrictionId
-POST /admin/users/:id/restrictions/:type/clear
 GET /admin/support/reports
 GET /admin/support/reports/:reportId
 PATCH /admin/support/reports/:reportId/status

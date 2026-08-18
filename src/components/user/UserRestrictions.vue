@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink } from 'vue-router'
 import { format } from 'date-fns'
 import axios from 'axios'
+import { liveRestrictionsApi, isLiveEnforcedRestrictionType } from '@/api/liveRestrictions'
 import { userAdminApi } from '@/api/userAdmin'
 import type { ApiUserRestriction, UserRestrictionType, UserSearchItem } from '@/types/api'
 import { showToast } from '@/utils/toast'
@@ -135,8 +136,25 @@ async function load() {
   if (!props.userId) return
   loading.value = true
   try {
-    const { data } = await userAdminApi.listRestrictions(props.userId)
-    active.value = data.active ?? []
+    const [liveResult, restResult] = await Promise.allSettled([
+      liveRestrictionsApi.list(props.userId),
+      userAdminApi.listRestrictions(props.userId),
+    ])
+
+    const liveActive =
+      liveResult.status === 'fulfilled'
+        ? liveResult.value.filter((r) => r.active !== false && isLiveEnforcedRestrictionType(r.type))
+        : []
+    const restActive = restResult.status === 'fulfilled' ? (restResult.value.data.active ?? []) : []
+    const restMessaging = restActive.filter((r) => r.type === 'MESSAGING_DISABLE')
+
+    if (liveResult.status === 'fulfilled') {
+      active.value = [...liveActive, ...restMessaging]
+    } else {
+      active.value = restActive
+      showToast('Could not load live-backend mutes/bans', 'error')
+    }
+
     const ids = active.value.flatMap((r) => r.targetUserIds ?? [])
     void enrichTargetLabels(ids)
   } catch {
@@ -206,7 +224,16 @@ async function apply() {
       }
       if (extendExisting.value) payload.extend = true
     }
-    await userAdminApi.applyRestriction(props.userId, payload)
+    if (isLiveEnforcedRestrictionType(restrictionType.value)) {
+      await liveRestrictionsApi.apply(props.userId, {
+        type: restrictionType.value,
+        restrictedUntil: payload.restrictedUntil,
+        reason: payload.reason,
+        reportId: payload.reportId,
+      })
+    } else {
+      await userAdminApi.applyRestriction(props.userId, payload)
+    }
     const extra =
       isMessaging.value && messagingScope.value === 'specific'
         ? extendExisting.value
@@ -244,7 +271,11 @@ async function clearRestriction(row: ApiUserRestriction) {
   if (clearingId.value) return
   clearingId.value = row.id
   try {
-    await userAdminApi.deleteRestriction(props.userId, row.id)
+    if (isLiveEnforcedRestrictionType(row.type)) {
+      await liveRestrictionsApi.delete(props.userId, row.id)
+    } else {
+      await userAdminApi.deleteRestriction(props.userId, row.id)
+    }
     showToast(`${typeLabel(row.type)} cleared`, 'success')
     await load()
   } catch {
@@ -295,7 +326,8 @@ watch(restrictionType, (type) => {
     </div>
 
     <p class="text-xs text-admin-muted">
-      Timed, independent mutes/bans. Mute live chat, mute mic in live, disable DMs, or ban going live.
+      Timed, independent mutes/bans. Live chat mute, live audio mute, and going-live ban are applied on
+      the live backend so they take effect in rooms immediately. Disable DMs stays on the main API.
       Re-applying the same type replaces it unless you extend an existing messaging ban.
       <span v-if="reportId"> Linked report {{ reportId.slice(0, 8) }}…</span>
     </p>

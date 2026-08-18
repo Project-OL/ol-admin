@@ -27,6 +27,7 @@ export const VIEW_ROUTES: Record<string, string> = {
   CurrencyView: '/admin/currency',
   AdminActivityView: '/admin/activity',
   SystemSettingsView: '/admin/system-settings',
+  AccountDeletionsView: '/admin/account-deletions',
 }
 
 /**
@@ -74,6 +75,7 @@ export const VIEW_NAV_PATHS: Record<string, string> = {
   CurrencyView: '/admin/currency',
   AdminActivityView: '/admin/activity',
   SystemSettingsView: '/admin/system-settings',
+  AccountDeletionsView: '/admin/account-deletions',
 }
 
 export function isViewAllowed(viewName: string, assigned: Set<string>): boolean {

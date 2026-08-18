@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { liveRestrictionsApi } from '@/api/liveRestrictions'
 import { userAdminApi } from '@/api/userAdmin'
 import { customerSupportApi } from '@/api/customerSupport'
 import type { UserRestrictionType } from '@/types/api'
@@ -25,7 +26,7 @@ export function useLiveModerationActions() {
     reportId?: string
   }) {
     try {
-      await userAdminApi.applyRestriction(params.userId, {
+      await liveRestrictionsApi.apply(params.userId, {
         type: params.type,
         restrictedUntil: hoursFromNowIso(params.hours ?? 24),
         reason: params.reason,
@@ -41,6 +42,17 @@ export function useLiveModerationActions() {
       return true
     } catch (err) {
       showToast(errorMessage(err, 'Failed to apply restriction'), 'error')
+      return false
+    }
+  }
+
+  async function clearLiveRestriction(userId: string, restrictionId: string) {
+    try {
+      await liveRestrictionsApi.delete(userId, restrictionId)
+      showToast('Restriction cleared', 'success')
+      return true
+    } catch (err) {
+      showToast(errorMessage(err, 'Failed to clear restriction'), 'error')
       return false
     }
   }
@@ -82,5 +94,5 @@ export function useLiveModerationActions() {
     }
   }
 
-  return { applyMute, stopLive, liftHostBan, reviewReport }
+  return { applyMute, clearLiveRestriction, stopLive, liftHostBan, reviewReport }
 }

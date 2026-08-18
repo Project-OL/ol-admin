@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
 import { formatDistanceToNow } from 'date-fns'
 import type { UserProfile, UserSearchResult } from '@/types/user'
 import { formatCoins, formatINR, formatNumber, formatPoints } from '@/utils/format'
@@ -22,6 +22,11 @@ const richTierLabel = computed(() => {
 const hasRichTier = computed(() => (props.user.richTier?.tier ?? 0) > 0)
 
 const router = useRouter()
+const auth = useAuthStore()
+const isDeactivating = computed(() => props.user.rawStatus === 'deactivating')
+const showDeletionLink = computed(
+  () => isDeactivating.value && auth.canAccessView('AccountDeletionsView'),
+)
 const copiedField = ref<'id' | 'publicId' | 'displayId' | null>(null)
 let copiedTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -40,7 +45,6 @@ async function copyValue(value: string, field: 'id' | 'publicId' | 'displayId') 
   }
 }
 
-const auth = useAuthStore()
 const searchQuery = ref('')
 const searching = ref(false)
 const searchResults = ref<UserSearchResult[]>([])
@@ -209,7 +213,14 @@ onBeforeUnmount(() => {
             >
               {{ richTierLabel }}
             </span>
-            <StatusBadge :status="user.status" />
+            <StatusBadge :status="user.rawStatus ?? user.status" />
+            <RouterLink
+              v-if="showDeletionLink"
+              :to="{ path: '/admin/account-deletions', query: { q: user.id, qType: 'userId', status: 'open' } }"
+              class="text-xs font-medium text-admin-accent hover:underline"
+            >
+              Review scheduled deletion
+            </RouterLink>
           </div>
           <p v-if="user.username" class="mt-0.5 text-sm text-admin-subtext">@{{ user.username }}</p>
           <p class="mt-0.5 flex flex-wrap items-center gap-1 break-all text-sm text-admin-subtext">

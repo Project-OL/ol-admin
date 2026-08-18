@@ -3,6 +3,7 @@ import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRoute, useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { userAdminApi } from '@/api/userAdmin'
+import { liveRestrictionsApi, isLiveEnforcedRestrictionType } from '@/api/liveRestrictions'
 import { useLiveModerationActions } from '@/composables/useLiveModerationActions'
 import { REPORT_REASON_OPTIONS } from '@/types/customerSupport'
 import type {
@@ -65,7 +66,8 @@ function hydrateFromRoute() {
   actionFilter.value = action === 'BLOCK' || action === 'WARNING' ? action : ''
   reasonFilter.value = qStr(q.reason)
   statusFilter.value = qStr(q.status)
-  restrictionType.value = (qStr(q.type) as UserRestrictionType) || ''
+  const type = qStr(q.type)
+  restrictionType.value = isLiveEnforcedRestrictionType(type) ? type : ''
   const p = Number(q.page)
   page.value = Number.isFinite(p) && p > 0 ? p : 1
 }
@@ -98,17 +100,25 @@ async function load(nextPage = 1) {
       items.value = []
       restrictions.value = []
     } else if (kind.value === 'restrictions') {
-      const { data } = await userAdminApi.listGlobalRestrictions({
-        userId: uid,
-        type: restrictionType.value || undefined,
-        active: true,
-        page: nextPage,
-        limit: 20,
-      })
-      restrictions.value = data.items ?? []
-      total.value = data.pagination?.total ?? restrictions.value.length
-      items.value = []
-      streams.value = []
+      if (!uid) {
+        restrictions.value = []
+        total.value = 0
+        items.value = []
+        streams.value = []
+      } else {
+        const rows = await liveRestrictionsApi.list(uid)
+        const filtered = rows
+          .filter((row) => {
+            if (row.active === false) return false
+            if (restrictionType.value && row.type !== restrictionType.value) return false
+            return isLiveEnforcedRestrictionType(row.type)
+          })
+          .map((row) => ({ ...row, userId: row.userId || uid }))
+        restrictions.value = filtered
+        total.value = filtered.length
+        items.value = []
+        streams.value = []
+      }
     } else {
       const { data } = await userAdminApi.listLiveModeration({
         kind: kind.value,
@@ -194,6 +204,13 @@ async function liftBan(uid: string) {
   if (ok) void load(page.value)
 }
 
+async function clearRestriction(uid: string, restrictionId: string) {
+  actingId.value = restrictionId
+  const ok = await actions.clearLiveRestriction(uid, restrictionId)
+  actingId.value = null
+  if (ok) void load(page.value)
+}
+
 async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
   actingId.value = id
   const ok = await actions.reviewReport(id, status)
@@ -207,9 +224,9 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
     <div>
       <h1 class="text-lg font-semibold">Live moderation</h1>
       <p class="text-sm text-admin-muted">
-        Overall and per-user nudity detections, user reports, host bans, open rooms, and mutes.
-        Chat/audio mutes are written to shared restrictions so Live-server enforces them on the next
-        message or mic publish.
+        Overall and per-user nudity detections, user reports, host bans, and open rooms.
+        Chat mute, audio mute, and going-live ban are applied on the live backend
+        (live.offoolive.com) — not room kick or stream-admin tools.
       </p>
     </div>
 
@@ -225,7 +242,7 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
       <input
         v-model="userId"
         class="admin-input w-64"
-        placeholder="Filter user UUID"
+        :placeholder="kind === 'restrictions' ? 'User UUID (required)' : 'Filter user UUID'"
         @keyup.enter="load(1)"
       />
       <select
@@ -268,7 +285,6 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
         <option value="">All types</option>
         <option value="LIVE_CHAT_MUTE">Chat mute</option>
         <option value="LIVE_AUDIO_MUTE">Audio mute</option>
-        <option value="MESSAGING_DISABLE">Messaging disable</option>
         <option value="LIVE_STREAM_START_BAN">Live-start ban</option>
       </select>
       <button type="button" class="admin-btn-primary" :disabled="loading" @click="load(1)">
@@ -342,13 +358,17 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
     </div>
 
     <div v-else-if="kind === 'restrictions'" class="admin-table-wrap">
-      <table class="admin-table">
+      <p v-if="!userId.trim()" class="px-4 py-6 text-sm text-admin-muted">
+        Enter a user UUID to load chat mute, audio mute, and going-live bans from the live backend.
+      </p>
+      <table v-else class="admin-table">
         <thead>
           <tr>
             <th>User</th>
             <th>Type</th>
             <th>Until</th>
             <th>Reason</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
@@ -361,15 +381,27 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
               >
                 {{ row.user?.name || row.user?.username || row.userId.slice(0, 8) }}
               </RouterLink>
+              <span v-else class="text-xs text-admin-muted">—</span>
             </td>
             <td class="text-xs">{{ row.type }}</td>
             <td class="whitespace-nowrap text-xs">
               {{ format(new Date(row.restrictedUntil), 'dd MMM yyyy HH:mm') }}
             </td>
             <td class="text-xs">{{ row.reason || '—' }}</td>
+            <td>
+              <button
+                v-if="row.userId"
+                type="button"
+                class="admin-btn-secondary text-xs"
+                :disabled="actingId === row.id"
+                @click="clearRestriction(row.userId, row.id)"
+              >
+                {{ actingId === row.id ? 'Clearing…' : 'Clear' }}
+              </button>
+            </td>
           </tr>
           <tr v-if="!restrictions.length && !loading">
-            <td colspan="4" class="py-10 text-center text-admin-muted">No active restrictions</td>
+            <td colspan="5" class="py-10 text-center text-admin-muted">No active live restrictions</td>
           </tr>
         </tbody>
       </table>
