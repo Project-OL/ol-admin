@@ -49,8 +49,6 @@ const hasMore = ref(false)
 const loading = ref(false)
 const loadingMore = ref(false)
 const showAdvanced = ref(false)
-const profitTotals = ref<PlatformProfitBuckets | null>(null)
-const profitLoading = ref(false)
 
 const filters = reactive({
   q: '',
@@ -228,21 +226,6 @@ function parseTab(raw: unknown): TransactionsTab | null {
   return TABS.some((t) => t.value === raw) ? (raw as TransactionsTab) : null
 }
 
-async function loadProfitSummary() {
-  profitLoading.value = true
-  try {
-    const { data } = await transactionsApi.platformProfitSummary({
-      from: filters.from ? new Date(filters.from).toISOString() : undefined,
-      to: filters.to ? new Date(`${filters.to}T23:59:59.999`).toISOString() : undefined,
-    })
-    profitTotals.value = data.platformProfitTotals ?? null
-  } catch {
-    profitTotals.value = null
-  } finally {
-    profitLoading.value = false
-  }
-}
-
 async function loadEntries(append = false) {
   if (append) {
     if (loadingMore.value || !hasMore.value || !nextCursor.value) return
@@ -250,7 +233,6 @@ async function loadEntries(append = false) {
   } else {
     loading.value = true
     selected.value = null
-    void loadProfitSummary()
   }
 
   try {
@@ -496,7 +478,8 @@ onUnmounted(() => {
         <h1 class="text-xl font-semibold sm:text-2xl">Transactions</h1>
         <p class="mt-1 text-sm text-admin-subtext">
           Explore platform money movements and safely revert peer transfers, gifts, and trading
-          coins
+          coins. Company P&amp;L and inventory live on
+          <RouterLink class="text-admin-accent underline" to="/admin/currency">Currency</RouterLink>.
         </p>
       </div>
       <button
@@ -507,39 +490,6 @@ onUnmounted(() => {
       >
         Refresh
       </button>
-    </div>
-
-    <div class="admin-stats-grid">
-      <div class="admin-card !p-3">
-        <p class="text-xs text-admin-subtext">Platform profit · Coins</p>
-        <p class="mt-1 text-2xl font-semibold tabular-nums">
-          {{
-            profitLoading
-              ? '…'
-              : formatCoins(Number(profitTotals?.coins ?? 0))
-          }}
-        </p>
-      </div>
-      <div class="admin-card !p-3">
-        <p class="text-xs text-admin-subtext">Platform profit · Points</p>
-        <p class="mt-1 text-2xl font-semibold tabular-nums">
-          {{
-            profitLoading
-              ? '…'
-              : formatPoints(Number(profitTotals?.points ?? 0))
-          }}
-        </p>
-      </div>
-      <div class="admin-card !p-3">
-        <p class="text-xs text-admin-subtext">Platform profit · Trading coins</p>
-        <p class="mt-1 text-2xl font-semibold tabular-nums">
-          {{
-            profitLoading
-              ? '…'
-              : formatCoins(Number(profitTotals?.tradingCoins ?? 0))
-          }}
-        </p>
-      </div>
     </div>
 
     <!-- Tabs -->

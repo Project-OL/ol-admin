@@ -4,6 +4,13 @@ import type {
   AdminCurrencyAdjustmentsResponse,
   AdminCurrencyKind,
   AdminCurrencySupplySummary,
+  CompanyCashCreateBody,
+  CompanyCashDirection,
+  CompanyCashJournalResponse,
+  CompanyCashReason,
+  LedgerGrain,
+  MasterLedgerDashboard,
+  MasterLedgerStock,
 } from '@/types/currency'
 
 export const currencyApi = {
@@ -27,5 +34,37 @@ export const currencyApi = {
     } = {},
   ) {
     return api.get<AdminCurrencyAdjustmentsResponse>('/admin/currency/adjustments', { params })
+  },
+
+  ledgerStock(params: { at?: string } = {}) {
+    return api.get<MasterLedgerStock>('/admin/ledger/stock', { params })
+  },
+
+  ledgerPnl(
+    params: {
+      from?: string
+      to?: string
+      grain?: LedgerGrain
+      at?: string
+    } = {},
+  ) {
+    return api.get<MasterLedgerDashboard>('/admin/ledger/pnl', { params })
+  },
+
+  listCashJournal(
+    params: {
+      from?: string
+      to?: string
+      reason?: CompanyCashReason
+      direction?: CompanyCashDirection
+      cursor?: string
+      limit?: number
+    } = {},
+  ) {
+    return api.get<CompanyCashJournalResponse>('/admin/currency/cash-journal', { params })
+  },
+
+  createCashJournal(body: CompanyCashCreateBody) {
+    return api.post('/admin/currency/cash-journal', body)
   },
 }
