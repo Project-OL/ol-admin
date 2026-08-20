@@ -64,6 +64,8 @@ Wallet history, prefer-transfer revert, and freeze: [`ADMIN_TRANSACTIONS_CONTROL
 
 **Face verification:** `GET /admin/users/:id/face-verification` includes `statusLabel` / `statusDetail` / `notIndexedReason` (why a saved image is not indexed) and matched/duplicate user (`publicId`, `displayPublicId`) when another face matches.
 
+**Devices:** `GET /admin/users/:id/devices` includes `otherActiveLogins` (other users currently logged in on the same physical device) and `otherActiveLoginCount`.
+
 ```
 GET /admin/users/search
 GET /admin/users/search/history

@@ -140,6 +140,23 @@ export function mapDevice(device: ApiDevice): DeviceInfo {
     ipAddress: device.ipAddress ?? undefined,
     lastActiveAt: device.lastActiveAt ?? undefined,
     isBanned: Boolean(device.isBanned),
+    hasActiveSession: Boolean(device.hasActiveSession),
+    sessionId: device.sessionId ?? undefined,
+    loginType: device.loginType ?? undefined,
+    otherActiveLogins: (device.otherActiveLogins ?? []).map((row) => ({
+      userId: row.userId,
+      username: row.username,
+      name: row.name,
+      avatarUrl: row.avatarUrl,
+      publicId: row.publicId,
+      displayPublicId: row.displayPublicId,
+      status: row.status,
+      sessionId: row.sessionId,
+      deviceName: row.deviceName,
+      ipAddress: row.ipAddress,
+      lastActiveAt: row.lastActiveAt,
+      loginType: row.loginType,
+    })),
   }
 }
 

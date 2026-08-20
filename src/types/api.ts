@@ -138,6 +138,21 @@ export interface ApiWallet {
   totalWithdrawalProcessedPoints: string
 }
 
+export interface ApiDeviceOtherActiveLogin {
+  userId: string
+  username?: string
+  name?: string
+  avatarUrl?: string | null
+  publicId?: string
+  displayPublicId?: string
+  status?: string
+  sessionId?: string
+  deviceName?: string
+  ipAddress?: string
+  lastActiveAt?: string
+  loginType?: string | null
+}
+
 export interface ApiDevice {
   deviceId: string
   deviceName?: string | null
@@ -145,10 +160,28 @@ export interface ApiDevice {
   ipAddress?: string | null
   lastActiveAt?: string | null
   isBanned?: boolean
+  hasActiveSession?: boolean
+  sessionId?: string | null
+  loginType?: string | null
+  otherActiveLogins?: ApiDeviceOtherActiveLogin[]
 }
 
 export interface ApiDevicesResponse {
+  userId?: string
   devices: ApiDevice[]
+  activeSessions?: Array<{
+    sessionId: string
+    deviceId: string
+    deviceName?: string | null
+    ipAddress?: string | null
+    lastActiveAt: string
+    loginType?: string | null
+    expiresAt?: string
+    otherActiveLogins?: ApiDeviceOtherActiveLogin[]
+  }>
+  activeSessionCount?: number
+  maxActiveSessions?: number
+  otherActiveLoginCount?: number
 }
 
 export interface StatusActionPayload {

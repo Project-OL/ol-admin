@@ -1162,6 +1162,18 @@ export const useUserDetailStore = defineStore('userDetail', {
 
     },
 
+    async logoutAllDevices(id: string) {
+      if (useMock) {
+        await delay()
+        this.devices = this.devices.map((d) => ({ ...d, hasActiveSession: false, sessionId: undefined }))
+        showToast('Logged out all devices', 'success')
+        return
+      }
+      const { data } = await userAdminApi.logoutAllDevices(id)
+      await this.fetchDevices(id)
+      showToast(data.message || 'Logged out all devices', 'success')
+    },
+
   },
 
 })

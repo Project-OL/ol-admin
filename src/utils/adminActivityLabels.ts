@@ -12,6 +12,7 @@ const ACTION_LABELS: Record<string, string> = {
   ADMIN_POST_DELETED: 'Deleted post',
   ADMIN_DEVICE_BANNED: 'Banned device',
   ADMIN_DEVICE_UNBANNED: 'Unbanned device',
+  ADMIN_DEVICE_LOGOUT_ALL: 'Logged out all devices',
   ADMIN_USER_RESTRICTION_APPLIED: 'Applied restriction (mute/ban live)',
   ADMIN_USER_RESTRICTION_CLEARED: 'Cleared restriction',
   ADMIN_LIVE_STREAM_STOP_REQUESTED: 'Stopped live stream',

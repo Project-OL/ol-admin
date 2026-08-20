@@ -63,7 +63,7 @@ async function ban() {
       <button
         type="button"
         class="admin-btn-primary text-xs"
-        :disabled="submitting"
+        :disabled="submitting || user.rawStatus === 'active' || user.status === 'active'"
         @click="activate"
       >
         Activate Account

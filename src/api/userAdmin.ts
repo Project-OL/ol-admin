@@ -284,6 +284,12 @@ export const userAdminApi = {
     return api.post(`/admin/users/${id}/devices/ban`, payload ?? {})
   },
 
+  logoutAllDevices(id: string) {
+    return api.post<{ ok: boolean; userId: string; revokedSessionCount: number; message: string }>(
+      `/admin/users/${id}/devices/logout-all`,
+    )
+  },
+
   unbanDevice(deviceId: string) {
     return api.delete(`/admin/devices/${deviceId}/ban`)
   },

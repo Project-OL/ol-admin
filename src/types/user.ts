@@ -19,6 +19,21 @@ export interface FaceMatchedUser {
   displayPublicId?: string
 }
 
+export interface DeviceOtherActiveLogin {
+  userId: string
+  username?: string
+  name?: string
+  avatarUrl?: string | null
+  publicId?: string
+  displayPublicId?: string
+  status?: string
+  sessionId?: string
+  deviceName?: string
+  ipAddress?: string
+  lastActiveAt?: string
+  loginType?: string | null
+}
+
 export interface DeviceInfo {
   id: string
   name?: string
@@ -26,6 +41,10 @@ export interface DeviceInfo {
   ipAddress?: string
   lastActiveAt?: string
   isBanned: boolean
+  hasActiveSession?: boolean
+  sessionId?: string
+  loginType?: string
+  otherActiveLogins?: DeviceOtherActiveLogin[]
 }
 
 export interface UserProfile {

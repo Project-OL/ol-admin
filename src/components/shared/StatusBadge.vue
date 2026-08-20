@@ -25,6 +25,8 @@ const config = computed(() => {
     cancelled: { bg: 'bg-admin-muted/20', text: 'text-admin-muted', label: 'Cancelled' },
     deleted: { bg: 'bg-admin-danger/20', text: 'text-admin-danger', label: 'Deleted' },
     deactivating: { bg: 'bg-admin-warn/20', text: 'text-admin-warn', label: 'Deactivating' },
+    'logged-in': { bg: 'bg-admin-success/20', text: 'text-admin-success', label: 'Logged in' },
+    registered: { bg: 'bg-admin-muted/20', text: 'text-admin-muted', label: 'Registered' },
   }
   return map[props.status] ?? {
     bg: 'bg-admin-muted/20',
