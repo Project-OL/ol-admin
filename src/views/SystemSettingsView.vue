@@ -32,6 +32,8 @@ import type {
   AdminAuthLockoutUnit,
   AgencyHostConfigDto,
   AgencyHostCooldownUnit,
+  LivestreamRewardConfigDto,
+  RestrictedIdentityWordsDto,
 } from '@/types/systemRates'
 import { showToast } from '@/utils/toast'
 
@@ -45,7 +47,9 @@ type SettingsTab =
   | 'messaging'
   | 'support'
   | 'adminLogin'
+  | 'restrictedNames'
   | 'agency'
+  | 'platformReward'
   | 'payroll'
 
 const PAYOUT_RAIL_KEYS = ['epay', 'bank'] as const
@@ -60,7 +64,9 @@ const TABS: { value: SettingsTab; label: string; short: string }[] = [
   { value: 'messaging', label: 'Messaging', short: 'Msg' },
   { value: 'support', label: 'Support tickets', short: 'Support' },
   { value: 'adminLogin', label: 'Admin login', short: 'Login' },
+  { value: 'restrictedNames', label: 'Restricted names', short: 'Names' },
   { value: 'agency', label: 'Agency', short: 'Agency' },
+  { value: 'platformReward', label: 'Platform rewards', short: 'Rewards' },
   { value: 'payroll', label: 'Payroll / FX', short: 'Payroll' },
 ]
 
@@ -93,7 +99,9 @@ const savingPayoutRails = ref(false)
 const savingMessaging = ref(false)
 const savingSupport = ref(false)
 const savingAdminAuth = ref(false)
+const savingRestrictedWords = ref(false)
 const savingAgencyHost = ref(false)
+const savingLivestreamReward = ref(false)
 
 const hostError = ref('')
 const callPriceError = ref('')
@@ -111,7 +119,9 @@ const payoutRailsError = ref('')
 const messagingError = ref('')
 const supportError = ref('')
 const adminAuthError = ref('')
+const restrictedWordsError = ref('')
 const agencyHostError = ref('')
+const livestreamRewardError = ref('')
 
 const hostSaved = ref<HostRevenueShares | null>(null)
 const hostForm = reactive({
@@ -123,6 +133,7 @@ const hostForm = reactive({
 
 const personalExchangeTiers = ref<RateTierDraft[]>([])
 const coinPackageDrafts = ref<CoinPackageDraft[]>([])
+const restrictedWordDrafts = ref<string[]>([''])
 const wealthDrafts = ref<LevelThresholdDraft[]>([])
 const livestreamDrafts = ref<LevelThresholdDraft[]>([])
 const richTierDrafts = ref<RichTierConfig[]>([])
@@ -182,6 +193,12 @@ const agencyHostSaved = ref<AgencyHostConfigDto | null>(null)
 const agencyHostForm = reactive({
   amount: 1 as number | null,
   unit: 'days' as AgencyHostCooldownUnit,
+})
+
+const livestreamRewardSaved = ref<LivestreamRewardConfigDto | null>(null)
+const livestreamRewardForm = reactive({
+  windowDays: 7 as number | null,
+  pointsPerHour: 2500 as number | null,
 })
 
 const callPriceBands = ref<CallPriceBandDraft[]>([])
@@ -524,6 +541,12 @@ function applyAgencyHost(cfg: AgencyHostConfigDto) {
   agencyHostForm.unit = cfg.unit
 }
 
+function applyLivestreamReward(cfg: LivestreamRewardConfigDto) {
+  livestreamRewardSaved.value = cfg
+  livestreamRewardForm.windowDays = cfg.windowDays
+  livestreamRewardForm.pointsPerHour = cfg.pointsPerHour
+}
+
 function defaultCallPriceBands(): CallPriceBandDraft[] {
   return [
     { minLevel: 1, maxLevel: 4, label: '≤Lv4', prices: [1800] },
@@ -582,6 +605,9 @@ function applyAggregate(data: Awaited<ReturnType<typeof systemSettingsApi.getRat
   if (data.agencyHost) {
     applyAgencyHost(data.agencyHost)
   }
+  if (data.livestreamReward) {
+    applyLivestreamReward(data.livestreamReward)
+  }
   if (data.videoCallPriceCaps) {
     applyCallPriceTiers(data.videoCallPriceCaps.tiers)
   }
@@ -595,6 +621,7 @@ async function loadAll() {
   supportError.value = ''
   adminAuthError.value = ''
   agencyHostError.value = ''
+  livestreamRewardError.value = ''
   richTierError.value = ''
   try {
     const { data } = await systemSettingsApi.getRatesAggregate()
@@ -632,10 +659,22 @@ async function loadAll() {
       adminAuthError.value = apiErrorMessage(err, 'Failed to load admin login lock settings.')
     }
     try {
+      const restricted = await systemSettingsApi.getRestrictedIdentityWords()
+      applyRestrictedWords(restricted.data)
+    } catch (err) {
+      restrictedWordsError.value = apiErrorMessage(err, 'Failed to load restricted name words.')
+    }
+    try {
       const agencyHost = await systemSettingsApi.getAgencyHostConfig()
       applyAgencyHost(agencyHost.data)
     } catch (err) {
       agencyHostError.value = apiErrorMessage(err, 'Failed to load agency rejoin cooldown.')
+    }
+    try {
+      const livestreamReward = await systemSettingsApi.getLivestreamRewardConfig()
+      applyLivestreamReward(livestreamReward.data)
+    } catch (err) {
+      livestreamRewardError.value = apiErrorMessage(err, 'Failed to load platform reward settings.')
     }
     if (!richTierDrafts.value.length) {
       try {
@@ -1578,6 +1617,50 @@ async function saveAdminAuth() {
   }
 }
 
+function applyRestrictedWords(data: RestrictedIdentityWordsDto) {
+  restrictedWordDrafts.value = data.words.length > 0 ? [...data.words] : ['']
+}
+
+function addRestrictedWord() {
+  restrictedWordDrafts.value.push('')
+}
+
+function removeRestrictedWord(index: number) {
+  if (restrictedWordDrafts.value.length <= 1) {
+    restrictedWordDrafts.value = ['']
+    return
+  }
+  restrictedWordDrafts.value.splice(index, 1)
+}
+
+async function saveRestrictedWords() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  restrictedWordsError.value = ''
+  const words = restrictedWordDrafts.value.map((w) => w.trim()).filter(Boolean)
+  for (let i = 0; i < words.length; i++) {
+    if (words[i]!.length > 100) {
+      restrictedWordsError.value = `Word ${i + 1} cannot exceed 100 characters.`
+      return
+    }
+  }
+
+  savingRestrictedWords.value = true
+  try {
+    const { data } = await systemSettingsApi.updateRestrictedIdentityWords({ words })
+    applyRestrictedWords(data)
+    showToast('Restricted name words saved.', 'success')
+  } catch (e) {
+    restrictedWordsError.value = apiErrorMessage(e, 'Failed to save restricted name words.')
+    showToast(restrictedWordsError.value, 'error')
+  } finally {
+    savingRestrictedWords.value = false
+  }
+}
+
 function validateAgencyHostForm(): string | null {
   const amount = agencyHostForm.amount
   if (amount == null || !Number.isInteger(amount) || amount < 1) {
@@ -1621,6 +1704,52 @@ async function saveAgencyHost() {
   }
 }
 
+function validateLivestreamRewardForm(): string | null {
+  const windowDays = livestreamRewardForm.windowDays
+  const pointsPerHour = livestreamRewardForm.pointsPerHour
+  if (windowDays == null || !Number.isInteger(windowDays) || windowDays < 1 || windowDays > 30) {
+    return 'Duration must be an integer from 1 to 30 days.'
+  }
+  if (
+    pointsPerHour == null ||
+    !Number.isInteger(pointsPerHour) ||
+    pointsPerHour < 1 ||
+    pointsPerHour > 1_000_000
+  ) {
+    return 'Per-hour reward must be an integer from 1 to 1,000,000 points.'
+  }
+  return null
+}
+
+async function saveLivestreamReward() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  livestreamRewardError.value = ''
+  const validationError = validateLivestreamRewardForm()
+  if (validationError) {
+    livestreamRewardError.value = validationError
+    return
+  }
+
+  savingLivestreamReward.value = true
+  try {
+    const { data } = await systemSettingsApi.updateLivestreamRewardConfig({
+      windowDays: Math.trunc(Number(livestreamRewardForm.windowDays)),
+      pointsPerHour: Math.trunc(Number(livestreamRewardForm.pointsPerHour)),
+    })
+    applyLivestreamReward(data)
+    showToast('Platform reward settings saved.', 'success')
+  } catch (e) {
+    livestreamRewardError.value = apiErrorMessage(e, 'Failed to save platform reward settings.')
+    showToast(livestreamRewardError.value, 'error')
+  } finally {
+    savingLivestreamReward.value = false
+  }
+}
+
 onMounted(() => {
   void loadAll()
 })
@@ -1632,7 +1761,7 @@ onMounted(() => {
         <h1 class="text-lg font-semibold sm:text-xl">System Settings</h1>
         <p class="mt-0.5 text-xs text-admin-subtext">
           Coin &amp; point-level rates: host shares, call price, exchange, packages, commission,
-          messaging window, support contest window, admin login lock, agency rejoin cooldown, and payroll FX. Changes take
+          messaging window, support contest window, admin login lock, agency rejoin cooldown, platform livestream rewards, and payroll FX. Changes take
           effect immediately for new traffic. Click a value to edit.
         </p>
       </div>
@@ -3047,6 +3176,65 @@ onMounted(() => {
         </form>
       </section>
 
+      <!-- Restricted identity words -->
+      <section v-else-if="activeTab === 'restrictedNames'" class="admin-card max-w-xl space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-admin-text">Restricted names</h2>
+          <p class="mt-0.5 text-xs text-admin-subtext">
+            Case-insensitive substring list. If
+            <code class="text-[10px]">admin</code> is listed, first name, last name, and username
+            cannot contain it (e.g.
+            <code class="text-[10px]">Administrator</code>). Super-admin user PATCH may still set
+            those names. Saving replaces the whole list.
+          </p>
+        </div>
+
+        <div class="space-y-1.5">
+          <div
+            v-for="(word, idx) in restrictedWordDrafts"
+            :key="'rw-' + idx"
+            class="flex items-center gap-1.5"
+          >
+            <InlineEditField
+              v-model="restrictedWordDrafts[idx]"
+              empty-label="word"
+              :disabled="savingRestrictedWords"
+            />
+            <button
+              type="button"
+              class="text-xs text-admin-danger disabled:opacity-40"
+              :disabled="savingRestrictedWords"
+              @click="removeRestrictedWord(idx)"
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+
+        <p v-if="restrictedWordsError" class="text-xs text-admin-danger">
+          {{ restrictedWordsError }}
+        </p>
+
+        <div class="flex flex-wrap gap-1.5">
+          <button
+            type="button"
+            class="admin-btn-secondary"
+            :disabled="savingRestrictedWords"
+            @click="addRestrictedWord"
+          >
+            Add word
+          </button>
+          <button
+            type="button"
+            class="admin-btn-primary"
+            :disabled="savingRestrictedWords"
+            @mousedown.prevent="saveRestrictedWords"
+          >
+            {{ savingRestrictedWords ? 'Saving…' : 'Save words' }}
+          </button>
+        </div>
+      </section>
+
       <!-- Agency rejoin cooldown -->
       <section v-else-if="activeTab === 'agency'" class="admin-card max-w-xl space-y-3">
         <div>
@@ -3116,6 +3304,80 @@ onMounted(() => {
               @mousedown.prevent="saveAgencyHost"
             >
               {{ savingAgencyHost ? 'Saving…' : 'Save rejoin cooldown' }}
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <!-- Platform livestream reward -->
+      <section v-else-if="activeTab === 'platformReward'" class="admin-card max-w-xl space-y-3">
+        <div>
+          <h2 class="text-sm font-semibold text-admin-text">Platform livestream reward</h2>
+          <p class="mt-0.5 text-xs text-admin-subtext">
+            New members can claim points for streaming each UTC day during their first N membership
+            days. Two parts per day unlock at 1 hour and 2 hours streamed; each part pays the
+            configured per-hour amount. Existing claims keep the points amount recorded at claim
+            time.
+          </p>
+        </div>
+
+        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="saveLivestreamReward">
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Duration (days)</label>
+            <InlineEditField
+              v-model="livestreamRewardForm.windowDays"
+              type="number"
+              :min="1"
+              :max="30"
+              step="1"
+              :disabled="savingLivestreamReward"
+            />
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Points per hour</label>
+            <InlineEditField
+              v-model="livestreamRewardForm.pointsPerHour"
+              type="number"
+              :min="1"
+              :max="1000000"
+              step="1"
+              :disabled="savingLivestreamReward"
+            />
+          </div>
+
+          <dl
+            class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+          >
+            <div>
+              <dt class="text-xs text-admin-subtext">Daily max (2 parts)</dt>
+              <dd class="font-medium text-admin-text">
+                {{
+                  livestreamRewardForm.pointsPerHour != null
+                    ? `${(Number(livestreamRewardForm.pointsPerHour) * 2).toLocaleString()} pts`
+                    : '—'
+                }}
+              </dd>
+            </div>
+            <div>
+              <dt class="text-xs text-admin-subtext">Last updated</dt>
+              <dd class="font-medium text-admin-text">
+                {{ formatDt(livestreamRewardSaved?.updatedAt ?? null) }}
+              </dd>
+            </div>
+          </dl>
+
+          <p v-if="livestreamRewardError" class="sm:col-span-2 text-xs text-admin-danger">
+            {{ livestreamRewardError }}
+          </p>
+
+          <div class="sm:col-span-2">
+            <button
+              type="button"
+              class="admin-btn-primary"
+              :disabled="savingLivestreamReward"
+              @mousedown.prevent="saveLivestreamReward"
+            >
+              {{ savingLivestreamReward ? 'Saving…' : 'Save platform rewards' }}
             </button>
           </div>
         </form>

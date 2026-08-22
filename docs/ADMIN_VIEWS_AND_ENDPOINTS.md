@@ -230,6 +230,8 @@ GET /admin/agency/withdrawal/payout-rails
 PUT /admin/agency/withdrawal/payout-rails
 GET /admin/system-settings/messaging
 PUT /admin/system-settings/messaging
+GET /admin/system-settings/restricted-words
+PUT /admin/system-settings/restricted-words
 ```
 
 ## PlatformMessagesView

@@ -8,9 +8,14 @@ import type {
   CompanyCashDirection,
   CompanyCashJournalResponse,
   CompanyCashReason,
+  HouseAccountUpsertBody,
+  HouseAccountsResponse,
   LedgerGrain,
   MasterLedgerDashboard,
   MasterLedgerStock,
+  TreasuryFlowClassifyBody,
+  TreasuryFlowClassification,
+  TreasuryFlowsResponse,
 } from '@/types/currency'
 
 export const currencyApi = {
@@ -49,6 +54,35 @@ export const currencyApi = {
     } = {},
   ) {
     return api.get<MasterLedgerDashboard>('/admin/ledger/pnl', { params })
+  },
+
+  listHouseAccounts(params: { includeInactive?: boolean } = {}) {
+    return api.get<HouseAccountsResponse>('/admin/ledger/house-accounts', { params })
+  },
+
+  upsertHouseAccount(body: HouseAccountUpsertBody) {
+    return api.post('/admin/ledger/house-accounts', body)
+  },
+
+  deactivateHouseAccount(userId: string, body: { force?: boolean } = {}) {
+    return api.delete(`/admin/ledger/house-accounts/${userId}`, { data: body })
+  },
+
+  listTreasuryFlows(
+    params: {
+      from?: string
+      to?: string
+      classification?: TreasuryFlowClassification
+      senderUserId?: string
+      cursor?: string
+      limit?: number
+    } = {},
+  ) {
+    return api.get<TreasuryFlowsResponse>('/admin/ledger/treasury-flows', { params })
+  },
+
+  classifyTreasuryFlow(body: TreasuryFlowClassifyBody) {
+    return api.post('/admin/ledger/treasury-flows/classify', body)
   },
 
   listCashJournal(

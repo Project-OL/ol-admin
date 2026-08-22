@@ -6,6 +6,30 @@
   html {
     @apply bg-admin-bg text-admin-text antialiased;
     font-family: 'Inter', system-ui, sans-serif;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 92, 252, 0.2) transparent;
+  }
+
+  html::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  html::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  html::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.12);
+    border-radius: 9999px;
+  }
+
+  html::-webkit-scrollbar-thumb:hover {
+    background: rgba(124, 92, 252, 0.5);
+  }
+
+  html::-webkit-scrollbar-button {
+    display: none;
   }
 
   body {
@@ -76,7 +100,7 @@
   }
 
   .admin-table-wrap {
-    @apply overflow-x-auto rounded-md border border-admin-border;
+    @apply admin-scrollbar overflow-x-auto rounded-md border border-admin-border;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -133,5 +157,50 @@
 
   .admin-kv-value {
     @apply min-w-0 break-words text-admin-text sm:text-right;
+  }
+
+  /* Thin overlay scrollbar — accent on hover, no arrow buttons */
+  .admin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(124, 92, 252, 0) transparent;
+  }
+
+  .admin-scrollbar:hover {
+    scrollbar-color: rgba(124, 92, 252, 0.45) transparent;
+  }
+
+  .admin-scrollbar::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+
+  .admin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+    margin: 6px 0;
+  }
+
+  .admin-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.12);
+    border-radius: 9999px;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .admin-scrollbar:hover::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(124, 92, 252, 0.55), rgba(124, 92, 252, 0.3));
+    box-shadow: 0 0 6px rgba(124, 92, 252, 0.25);
+  }
+
+  .admin-scrollbar::-webkit-scrollbar-thumb:active {
+    background: rgba(124, 92, 252, 0.75);
+  }
+
+  .admin-scrollbar::-webkit-scrollbar-button {
+    display: none;
+    width: 0;
+    height: 0;
+  }
+
+  .admin-scrollbar::-webkit-scrollbar-corner {
+    background: transparent;
   }
 }

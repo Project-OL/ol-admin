@@ -56,10 +56,14 @@ function resultLabel(u: UserSearchResult) {
   return legal || u.username || u.id.slice(0, 8)
 }
 
-function openUser(id: string) {
+function onUserLinkClick() {
   showResults.value = false
   searchResults.value = []
   searchQuery.value = ''
+}
+
+function openUser(id: string) {
+  onUserLinkClick()
   router.push(`/admin/users/${id}`)
 }
 
@@ -134,17 +138,17 @@ onBeforeUnmount(() => {
 
         <div
           v-if="showResults && searchResults.length > 1"
-          class="absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-auto rounded-md border border-admin-border bg-admin-card shadow-lg sm:right-auto sm:w-full"
+          class="admin-scrollbar absolute left-0 right-0 top-full z-30 mt-1 max-h-72 overflow-auto rounded-md border border-admin-border bg-admin-card shadow-lg sm:right-auto sm:w-full"
         >
           <p class="border-b border-admin-border px-3 py-2 text-xs text-admin-muted">
             {{ searchResults.length }} matches — select a user
           </p>
-          <button
+          <RouterLink
             v-for="hit in searchResults"
             :key="hit.id"
-            type="button"
+            :to="`/admin/users/${hit.id}`"
             class="flex w-full items-center gap-3 px-3 py-2 text-left text-sm transition-colors hover:bg-admin-bg/80"
-            @click="openUser(hit.id)"
+            @click="onUserLinkClick"
           >
             <img
               v-if="hit.avatar"
@@ -172,7 +176,7 @@ onBeforeUnmount(() => {
             <span class="shrink-0 rounded bg-admin-bg px-1.5 py-0.5 text-[10px] capitalize text-admin-muted">
               {{ hit.status ?? '—' }}
             </span>
-          </button>
+          </RouterLink>
         </div>
       </form>
       <div class="flex shrink-0 items-center gap-2">
