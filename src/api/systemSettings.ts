@@ -25,6 +25,10 @@ import type {
   AdminAuthConfigUpdate,
   AgencyHostConfigDto,
   AgencyHostConfigUpdate,
+  LivestreamRewardConfigDto,
+  LivestreamRewardConfigUpdate,
+  RestrictedIdentityWordsBody,
+  RestrictedIdentityWordsDto,
   SystemRatesAggregate,
   TradingPackage,
   TradingPackagesBody,
@@ -190,5 +194,27 @@ export const systemSettingsApi = {
 
   updateAgencyHostConfig(payload: AgencyHostConfigUpdate) {
     return api.put<AgencyHostConfigDto>('/admin/system-settings/agency-host', payload)
+  },
+
+  getLivestreamRewardConfig() {
+    return api.get<LivestreamRewardConfigDto>('/admin/system-settings/livestream-reward')
+  },
+
+  updateLivestreamRewardConfig(payload: LivestreamRewardConfigUpdate) {
+    return api.put<LivestreamRewardConfigDto>(
+      '/admin/system-settings/livestream-reward',
+      payload,
+    )
+  },
+
+  getRestrictedIdentityWords() {
+    return api.get<RestrictedIdentityWordsDto>('/admin/system-settings/restricted-words')
+  },
+
+  updateRestrictedIdentityWords(payload: RestrictedIdentityWordsBody) {
+    return api.put<RestrictedIdentityWordsDto>(
+      '/admin/system-settings/restricted-words',
+      payload,
+    )
   },
 }

@@ -124,7 +124,7 @@ onUnmounted(() => {
         </button>
       </header>
 
-      <main class="flex-1 overflow-auto">
+      <main class="admin-scrollbar flex-1 overflow-auto">
         <RouterView />
       </main>
     </div>

@@ -33,6 +33,14 @@ export type CoinPackagesBody = {
   }>
 }
 
+export type RestrictedIdentityWordsDto = {
+  words: string[]
+}
+
+export type RestrictedIdentityWordsBody = {
+  words: string[]
+}
+
 export type TradingPackage = {
   id: string
   tradingCoins: string
@@ -298,6 +306,17 @@ export type AgencyHostConfigUpdate = {
   rejoinCooldownHours?: number
 }
 
+export type LivestreamRewardConfigDto = {
+  windowDays: number
+  pointsPerHour: number
+  updatedAt: string
+}
+
+export type LivestreamRewardConfigUpdate = {
+  windowDays?: number
+  pointsPerHour?: number
+}
+
 export type VideoCallPriceCapTier = {
   minLevel: number
   maxLevel: number | null
@@ -333,6 +352,7 @@ export type SystemRatesAggregate = {
   payroll: PayrollConfigSnapshot
   videoCallPriceCaps?: VideoCallPriceCapsSnapshot
   agencyHost?: AgencyHostConfigDto
+  livestreamReward?: LivestreamRewardConfigDto
 }
 
 /** Editable row for tier tables (maxUsd blank = open-ended). */

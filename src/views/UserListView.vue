@@ -1,13 +1,12 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { RouterLink } from 'vue-router'
 import { userAdminApi } from '@/api/userAdmin'
 import { mapSearchUser } from '@/api/mappers'
 import type { UserSearchResult } from '@/types/user'
 import { mockUser } from '@/mocks/userDetail'
 import { showToast } from '@/utils/toast'
 
-const router = useRouter()
 const useMock = import.meta.env.VITE_USE_MOCK === 'true'
 
 const query = ref('')
@@ -104,10 +103,6 @@ async function search() {
   }
 }
 
-function openUser(id: string) {
-  router.push(`/admin/users/${id}`)
-}
-
 onMounted(() => {
   void loadHistory()
 })
@@ -147,12 +142,11 @@ onMounted(() => {
         <p class="mb-2 text-xs font-medium uppercase tracking-wide text-admin-subtext">Recent</p>
         <p v-if="loadingHistory && !recent.length" class="text-xs text-admin-muted">Loading…</p>
         <div v-else class="flex flex-wrap gap-2">
-          <button
+          <RouterLink
             v-for="user in recent"
             :key="user.id"
-            type="button"
+            :to="`/admin/users/${user.id}`"
             class="inline-flex max-w-full items-center gap-2 rounded-md border border-admin-border bg-admin-bg/60 px-2.5 py-1.5 text-left text-sm transition-colors hover:border-admin-accent/40"
-            @click="openUser(user.id)"
           >
             <img
               v-if="user.avatar"
@@ -173,7 +167,7 @@ onMounted(() => {
             <span class="shrink-0 font-mono text-xs text-admin-muted">
               {{ user.publicId ?? user.id.slice(0, 8) }}
             </span>
-          </button>
+          </RouterLink>
         </div>
       </div>
 
@@ -229,23 +223,22 @@ onMounted(() => {
                 <span class="rounded bg-admin-bg px-2 py-0.5 text-xs capitalize">{{ user.status ?? '—' }}</span>
               </td>
               <td class="text-right">
-                <button type="button" class="admin-btn-secondary text-xs" @click="openUser(user.id)">
+                <RouterLink :to="`/admin/users/${user.id}`" class="admin-btn-secondary text-xs">
                   View
-                </button>
+                </RouterLink>
               </td>
             </tr>
           </tbody>
         </table>
       </div>
 
-      <button
+      <RouterLink
         v-if="useMock"
-        type="button"
-        class="admin-btn-secondary mt-6 w-full"
-        @click="openUser(mockUser.id)"
+        :to="`/admin/users/${mockUser.id}`"
+        class="admin-btn-secondary mt-6 block w-full text-center"
       >
         View Demo User ({{ mockUser.name }})
-      </button>
+      </RouterLink>
     </div>
   </div>
 </template>

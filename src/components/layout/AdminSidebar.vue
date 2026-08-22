@@ -180,7 +180,7 @@ function isActive(item: NavItem) {
 <template>
   <aside
     :class="[
-      'fixed inset-y-0 left-0 z-50 flex w-56 flex-col border-r border-admin-border bg-admin-surface transition-all duration-300 ease-in-out lg:static lg:translate-x-0',
+      'fixed inset-y-0 left-0 z-50 flex h-screen w-56 shrink-0 flex-col border-r border-admin-border bg-admin-surface transition-all duration-300 ease-in-out lg:sticky lg:top-0 lg:translate-x-0 lg:self-start',
       open ? 'translate-x-0' : '-translate-x-full',
       expanded ? 'lg:w-56' : 'lg:w-[4.5rem]',
     ]"
@@ -206,7 +206,7 @@ function isActive(item: NavItem) {
       </div>
     </div>
 
-    <nav class="flex-1 space-y-1 overflow-y-auto overscroll-contain p-2">
+    <nav class="admin-scrollbar flex-1 space-y-1 overflow-y-auto overscroll-contain p-2">
       <RouterLink
         v-for="item in navItems"
         :key="item.to"
