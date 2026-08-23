@@ -77,6 +77,14 @@ const searchHits = ref<UserSearchItem[]>([])
 const searching = ref(false)
 const submitting = ref(false)
 
+/** Mint/adjust: treasury dropdown by default; optional search for other users. */
+const includeNonTreasuryUsers = ref(false)
+const selectedTreasuryUserId = ref('')
+
+const treasuryHouseAccounts = computed(() =>
+  houseAccounts.value.filter((a) => a.role === 'TREASURY' && a.isActive),
+)
+
 const cashForm = reactive<CompanyCashCreateBody>({
   direction: 'IN',
   reason: 'AGENCY_TRADING_PURCHASE',
@@ -742,6 +750,7 @@ function windowParams() {
 }
 
 async function searchUsers() {
+  if (!includeNonTreasuryUsers.value) return
   const q = form.userQuery.trim()
   if (!q) {
     searchHits.value = []
@@ -755,6 +764,50 @@ async function searchUsers() {
     searchHits.value = []
   } finally {
     searching.value = false
+  }
+}
+
+function treasuryAccountLabel(acc: HouseAccountEntry): string {
+  const name = acc.user.name || acc.user.displayName || acc.user.username
+  const tag = acc.label ? `${acc.label} · ` : ''
+  return `${tag}${name} (#${acc.user.publicId})`
+}
+
+function applyTreasurySelection(userId: string) {
+  const acc = treasuryHouseAccounts.value.find((a) => a.userId === userId)
+  if (!acc) return
+  form.userId = acc.userId
+  form.userLabel = treasuryAccountLabel(acc)
+  selectedTreasuryUserId.value = userId
+  form.userQuery = ''
+  searchHits.value = []
+  if (form.direction === 'credit') {
+    form.currency = 'TRADING_COIN'
+  }
+  void loadAdjustments(false)
+}
+
+function onTreasuryDropdownChange() {
+  if (!selectedTreasuryUserId.value) {
+    clearSelectedUser()
+    return
+  }
+  applyTreasurySelection(selectedTreasuryUserId.value)
+}
+
+function onIncludeNonTreasuryChange() {
+  if (includeNonTreasuryUsers.value) return
+  form.userQuery = ''
+  searchHits.value = []
+  if (treasuryHouseAccounts.value.length) {
+    const id =
+      selectedTreasuryUserId.value &&
+      treasuryHouseAccounts.value.some((a) => a.userId === selectedTreasuryUserId.value)
+        ? selectedTreasuryUserId.value
+        : treasuryHouseAccounts.value[0]!.userId
+    applyTreasurySelection(id)
+  } else {
+    clearSelectedUser()
   }
 }
 
@@ -782,6 +835,7 @@ function pickUser(hit: UserSearchItem) {
   form.userLabel = [hit.name, hit.username, hit.publicId].filter(Boolean).join(' · ')
   form.userQuery = form.userLabel
   searchHits.value = []
+  selectedTreasuryUserId.value = treasuryHouseAccounts.value.some((a) => a.userId === id) ? id : ''
   void loadAdjustments(false)
 }
 
@@ -799,6 +853,7 @@ function clearSelectedUser() {
   form.userLabel = ''
   form.userQuery = ''
   searchHits.value = []
+  selectedTreasuryUserId.value = ''
   void loadAdjustments(false)
 }
 
@@ -925,6 +980,15 @@ async function submitCash() {
 
 watch(grain, () => {
   void refreshAll()
+})
+
+watch(treasuryHouseAccounts, (list) => {
+  if (includeNonTreasuryUsers.value || !list.length) return
+  if (!form.userId || !list.some((a) => a.userId === form.userId)) {
+    applyTreasurySelection(list[0]!.userId)
+  } else if (!selectedTreasuryUserId.value) {
+    selectedTreasuryUserId.value = form.userId
+  }
 })
 
 onMounted(() => {
@@ -1345,32 +1409,76 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         </div>
       </div>
 
-      <div class="relative">
-        <input
-          v-model="form.userQuery"
-          type="search"
-          class="admin-input w-full"
-          placeholder="Search user by name, username, or public ID…"
-          @keydown.enter.prevent="searchUsers"
-          @input="searchUsers"
-        />
-        <div
-          v-if="searchHits.length"
-          class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-admin-border bg-admin-surface shadow-lg"
-        >
-          <button
-            v-for="hit in searchHits"
-            :key="hit.userId"
-            type="button"
-            class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-admin-bg"
-            @click="pickUser(hit)"
-          >
-            <span class="font-medium">{{ hit.name || hit.username }}</span>
-            <span class="text-xs text-admin-muted">#{{ hit.publicId }}</span>
-          </button>
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="min-w-[min(100%,280px)] flex-1">
+            <label class="mb-1 block text-xs text-admin-subtext">Treasury account</label>
+            <select
+              v-model="selectedTreasuryUserId"
+              class="admin-input w-full"
+              :disabled="includeNonTreasuryUsers && Boolean(form.userId) && !selectedTreasuryUserId"
+              @change="onTreasuryDropdownChange"
+            >
+              <option value="">
+                {{ treasuryHouseAccounts.length ? 'Select treasury account…' : 'No treasury accounts registered' }}
+              </option>
+              <option v-for="acc in treasuryHouseAccounts" :key="acc.userId" :value="acc.userId">
+                {{ treasuryAccountLabel(acc) }}
+              </option>
+            </select>
+          </div>
+          <label class="flex items-center gap-2 pb-2 text-sm text-admin-subtext">
+            <input
+              v-model="includeNonTreasuryUsers"
+              type="checkbox"
+              @change="onIncludeNonTreasuryChange"
+            />
+            Include non-treasury users
+          </label>
         </div>
-        <p v-if="form.userId" class="mt-1 text-xs text-admin-subtext">
+
+        <p
+          v-if="!includeNonTreasuryUsers && !treasuryHouseAccounts.length"
+          class="text-xs text-admin-warn"
+        >
+          Register a treasury account above, or enable non-treasury search to mint into any user.
+        </p>
+
+        <div v-if="includeNonTreasuryUsers" class="relative">
+          <input
+            v-model="form.userQuery"
+            type="search"
+            class="admin-input w-full"
+            placeholder="Search user by name, username, or public ID…"
+            @keydown.enter.prevent="searchUsers"
+            @input="searchUsers"
+          />
+          <div
+            v-if="searchHits.length"
+            class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-admin-border bg-admin-surface shadow-lg"
+          >
+            <button
+              v-for="hit in searchHits"
+              :key="hit.userId"
+              type="button"
+              class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-admin-bg"
+              @click="pickUser(hit)"
+            >
+              <span class="font-medium">{{ hit.name || hit.username }}</span>
+              <span class="text-xs text-admin-muted">#{{ hit.publicId }}</span>
+            </button>
+          </div>
+          <p v-if="searching" class="mt-1 text-xs text-admin-muted">Searching…</p>
+        </div>
+
+        <p v-if="form.userId" class="text-xs text-admin-subtext">
           Assign to: {{ form.userLabel }}
+          <span
+            v-if="selectedTreasuryUserId && selectedTreasuryUserId === form.userId"
+            class="ml-1 rounded bg-admin-bg px-1.5 py-0.5 text-[10px] uppercase text-admin-muted"
+          >
+            Treasury
+          </span>
           <RouterLink class="ml-2 text-admin-accent underline" :to="`/admin/users/${form.userId}`">
             Open profile
           </RouterLink>
@@ -1378,7 +1486,6 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
             Clear
           </button>
         </p>
-        <p v-if="searching" class="mt-1 text-xs text-admin-muted">Searching…</p>
       </div>
 
       <div class="grid gap-2 sm:grid-cols-4">

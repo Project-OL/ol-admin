@@ -6,6 +6,7 @@ import type { FaceMatchedUser, UserProfile } from '@/types/user'
 import type { PushPayload } from '@/types/pushNotifications'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import ResetPasswordDialog from '@/components/shared/ResetPasswordDialog.vue'
+import SetSecurityPasswordDialog from '@/components/shared/SetSecurityPasswordDialog.vue'
 import TemporaryPasswordDialog from '@/components/shared/TemporaryPasswordDialog.vue'
 import SendPlatformMessageDialog from '@/components/shared/SendPlatformMessageDialog.vue'
 import SendPushDialog from '@/components/push/SendPushDialog.vue'
@@ -36,6 +37,7 @@ const postingSuspendedActive = computed(() => {
 })
 
 const showResetPassword = ref(false)
+const showSetSecurityPassword = ref(false)
 const showRevokeFace = ref(false)
 const showTakeDownLivePhoto = ref(false)
 const showSystemMessage = ref(false)
@@ -73,6 +75,11 @@ function relatedFaceLabel(user: FaceMatchedUser) {
 async function handleResetPassword(password: string) {
   await store.resetPassword(props.user.id, password)
   showResetPassword.value = false
+}
+
+async function handleSetSecurityPassword(pin: string) {
+  await store.setSecurityPassword(props.user.id, pin)
+  showSetSecurityPassword.value = false
 }
 
 async function handleAutoReset() {
@@ -205,6 +212,13 @@ async function handleUnbar() {
       </button>
       <button type="button" class="admin-btn-secondary w-full text-sm" @click="autoResetOpen = true">
         Reset Password (auto-generate)
+      </button>
+      <button
+        type="button"
+        class="admin-btn-secondary w-full text-sm"
+        @click="showSetSecurityPassword = true"
+      >
+        Set Security Password
       </button>
       <button type="button" class="admin-btn-warn w-full text-sm" @click="showUnbar = true">
         Unbar agency apply
@@ -448,6 +462,12 @@ async function handleUnbar() {
       :open="showResetPassword"
       @close="showResetPassword = false"
       @confirm="handleResetPassword"
+    />
+
+    <SetSecurityPasswordDialog
+      :open="showSetSecurityPassword"
+      @close="showSetSecurityPassword = false"
+      @confirm="handleSetSecurityPassword"
     />
 
     <ConfirmActionDialog

@@ -9,6 +9,7 @@ import type {
   FaceVerificationResponse,
   LivePhotoResponse,
   PasswordResetResponse,
+  SecurityPasswordSetResponse,
   PatchUserPayload,
   TagsResponse,
   TransactionFilterTypes,
@@ -242,6 +243,10 @@ export const userAdminApi = {
       `/admin/users/${id}/password/reset`,
       newPassword ? { newPassword } : {},
     )
+  },
+
+  setSecurityPassword(id: string, pin: string) {
+    return api.post<SecurityPasswordSetResponse>(`/admin/users/${id}/security-password`, { pin })
   },
 
   getFaceVerification(id: string) {
