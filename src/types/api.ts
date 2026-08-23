@@ -396,6 +396,15 @@ export interface PasswordResetResponse {
   temporaryPassword?: string
 }
 
+export interface SecurityPasswordSetResponse {
+  ok: true
+  userId: string
+  overwritten: boolean
+  setAt: string
+  updatedAt: string
+  message: string
+}
+
 export interface AdminPasswordResetResponse {
   ok: true
   adminId: string

@@ -721,6 +721,17 @@ export const useUserDetailStore = defineStore('userDetail', {
       return data.temporaryPassword
     },
 
+    async setSecurityPassword(id: string, pin: string) {
+      if (useMock) {
+        await delay()
+        showToast('Security password set', 'success')
+        return
+      }
+
+      const { data } = await userAdminApi.setSecurityPassword(id, pin)
+      showToast(data.message || 'Security password set', 'success')
+    },
+
 
 
     async revokeFaceVerification(id: string, options: FaceRevokeOptions = {}) {
