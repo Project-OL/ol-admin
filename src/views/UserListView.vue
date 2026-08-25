@@ -197,6 +197,39 @@ onMounted(() => {
         </button>
       </div>
 
+      <div v-if="recent.length || loadingHistory" class="mt-6">
+        <p class="mb-2 text-xs font-medium uppercase tracking-wide text-admin-subtext">Recent</p>
+        <p v-if="loadingHistory && !recent.length" class="text-xs text-admin-muted">Loading…</p>
+        <div v-else class="flex flex-wrap gap-2">
+          <RouterLink
+            v-for="user in recent"
+            :key="user.id"
+            :to="`/admin/users/${user.id}`"
+            class="inline-flex max-w-full items-center gap-2 rounded-md border border-admin-border bg-admin-bg/60 px-2.5 py-1.5 text-left text-sm transition-colors hover:border-admin-accent/40"
+          >
+            <img
+              v-if="user.avatar"
+              :src="user.avatar"
+              :alt="chipLabel(user)"
+              class="h-6 w-6 shrink-0 rounded-full object-cover"
+            />
+            <span
+              v-else
+              class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-admin-accent/20 text-[10px] font-bold text-admin-accent"
+            >
+              {{ chipInitial(user) }}
+            </span>
+            <span class="min-w-0 truncate font-medium">{{ chipLabel(user) }}</span>
+            <span v-if="user.username && chipLabel(user) !== user.username" class="shrink-0 text-xs text-admin-muted">
+              @{{ user.username }}
+            </span>
+            <span class="shrink-0 font-mono text-xs text-admin-muted">
+              {{ user.publicId ?? user.id.slice(0, 8) }}
+            </span>
+          </RouterLink>
+        </div>
+      </div>
+
       <div v-if="registeredTodayUsers.length" class="mt-6">
         <p class="mb-2 text-xs font-medium uppercase tracking-wide text-admin-subtext">
           Registered today
@@ -259,39 +292,6 @@ onMounted(() => {
               </tr>
             </tbody>
           </table>
-        </div>
-      </div>
-
-      <div v-if="recent.length || loadingHistory" class="mt-4">
-        <p class="mb-2 text-xs font-medium uppercase tracking-wide text-admin-subtext">Recent</p>
-        <p v-if="loadingHistory && !recent.length" class="text-xs text-admin-muted">Loading…</p>
-        <div v-else class="flex flex-wrap gap-2">
-          <RouterLink
-            v-for="user in recent"
-            :key="user.id"
-            :to="`/admin/users/${user.id}`"
-            class="inline-flex max-w-full items-center gap-2 rounded-md border border-admin-border bg-admin-bg/60 px-2.5 py-1.5 text-left text-sm transition-colors hover:border-admin-accent/40"
-          >
-            <img
-              v-if="user.avatar"
-              :src="user.avatar"
-              :alt="chipLabel(user)"
-              class="h-6 w-6 shrink-0 rounded-full object-cover"
-            />
-            <span
-              v-else
-              class="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-admin-accent/20 text-[10px] font-bold text-admin-accent"
-            >
-              {{ chipInitial(user) }}
-            </span>
-            <span class="min-w-0 truncate font-medium">{{ chipLabel(user) }}</span>
-            <span v-if="user.username && chipLabel(user) !== user.username" class="shrink-0 text-xs text-admin-muted">
-              @{{ user.username }}
-            </span>
-            <span class="shrink-0 font-mono text-xs text-admin-muted">
-              {{ user.publicId ?? user.id.slice(0, 8) }}
-            </span>
-          </RouterLink>
         </div>
       </div>
 
