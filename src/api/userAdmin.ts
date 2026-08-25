@@ -115,6 +115,20 @@ export const userAdminApi = {
     return api.get<ApiWallet>(`/admin/users/${id}/wallet`)
   },
 
+  getLiveSummary(id: string) {
+    return api.get<{
+      userId: string
+      liveHours: number
+      liveHoursSeconds: number
+      liveHoursFormatted: string
+      receivingCount: number
+      wonPoints: string
+      newFollowers: number
+      weekStart: string
+      weekEnd: string
+    }>(`/admin/users/${id}/live-summary`)
+  },
+
   getDevices(id: string) {
     return api.get<ApiDevicesResponse>(`/admin/users/${id}/devices`)
   },
