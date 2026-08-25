@@ -33,9 +33,16 @@ const ACTION_LABELS: Record<string, string> = {
   ADMIN_AGENCY_KYC_CONTACT_UPDATED: 'Updated KYC phone/email',
   ADMIN_AGENCY_KYC_GOVT_ID_UPDATED: 'Updated KYC government ID',
   ADMIN_AGENCY_APPLICATION_REOPENED: 'Cleared rejected application (allow reapply)',
+  ADMIN_AGENCY_APPLICATION_STATUS_CHANGED: 'Changed agency application status',
+  ADMIN_AGENCY_TIER_RECOMPUTED: 'Recomputed agency commission tier',
+  ADMIN_AGENCY_TIER_RECOMPUTE_MASTER: 'Queued all-agency tier recompute',
+  ADMIN_AGENCY_HOST_TAG_SET: 'Set host tagged flag',
+  ADMIN_AGENCY_HOST_FORCE_EXIT: 'Force-exited host from agency (CS)',
+  ADMIN_COIN_TRADING_TRANSFER_REVERSED: 'Reversed coin trading transfer',
   WITHDRAWAL_MANUAL_ASSIGN: 'Assigned payroll to agency',
   WITHDRAWAL_REVERSED: 'Reverted withdrawal',
   WITHDRAWAL_PLATFORM_PAID_PROOF: 'Admin paid withdrawal (EPAY)',
+  WITHDRAWAL_PAYROLL_TAKEOVER_PROOF: 'Completed payroll takeover (platform paid host)',
   WITHDRAWAL_DISPUTE_RESOLVED_AGENT: 'Resolved dispute (favour agent)',
   WITHDRAWAL_DISPUTE_RESOLVED_HOST: 'Resolved dispute (favour host)',
   ADMIN_SYSTEM_MESSAGE: 'Sent system message',
@@ -112,7 +119,8 @@ function groupForAction(actionType: string): (typeof GROUP_ORDER)[number] {
   ) {
     return 'Users'
   }
-  if (actionType.startsWith('ADMIN_AGENCY_')) return 'Agency'
+  if (actionType.startsWith('ADMIN_AGENCY_') || actionType === 'ADMIN_COIN_TRADING_TRANSFER_REVERSED')
+    return 'Agency'
   if (actionType.startsWith('WITHDRAWAL_')) return 'Payroll'
   if (
     actionType.startsWith('ADMIN_SYSTEM_MESSAGE') ||
