@@ -4,7 +4,9 @@ import { RouterLink } from 'vue-router'
 import { format } from 'date-fns'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
+import AgencyGovtIdPanel from '@/components/agency/AgencyGovtIdPanel.vue'
 import { useAgencyAdminStore } from '@/stores/agencyAdmin'
+import { showToast } from '@/utils/toast'
 import type {
   AgencyApplicationKyc,
   AgencyApplicationListItem,
@@ -20,10 +22,12 @@ const emit = defineEmits<{
   close: []
   approve: [app: AgencyApplicationListItem]
   reject: [app: AgencyApplicationListItem]
+  reopen: [app: AgencyApplicationListItem]
 }>()
 
 const store = useAgencyAdminStore()
 const loadingKyc = ref(false)
+const uploadingGovtId = ref(false)
 
 /** Merged display KYC — list row as base, enriched by GET …/kyc */
 const displayKyc = ref<AgencyApplicationKyc | null>(null)
@@ -113,6 +117,38 @@ function onReject() {
   if (!props.application) return
   emit('reject', props.application)
 }
+
+async function onReplaceGovtId(file: File) {
+  const app = props.application
+  if (!app || uploadingGovtId.value) return
+  uploadingGovtId.value = true
+  try {
+    const data = await store.uploadApplicantGovtId(app.applicantUserId, file)
+    if (displayKyc.value) {
+      displayKyc.value = {
+        ...displayKyc.value,
+        govtIdUploaded: Boolean(data.govtIdUrl),
+        govtIdUrl: data.govtIdUrl,
+        govtIdSubmittedAt: data.govtIdSubmittedAt,
+        isComplete:
+          Boolean(data.govtIdUrl) &&
+          Boolean(displayKyc.value.contactSubmitted) &&
+          Boolean(displayKyc.value.faceVerified),
+      }
+    }
+    await loadKycEnrichment()
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Failed to update government ID'
+    showToast(message, 'error')
+  } finally {
+    uploadingGovtId.value = false
+  }
+}
+
+function onReopen() {
+  if (!props.application) return
+  emit('reopen', props.application)
+}
 </script>
 
 <template>
@@ -174,39 +210,12 @@ function onReject() {
           <!-- Govt ID -->
           <div class="space-y-2">
             <p class="text-xs font-medium uppercase tracking-wide text-admin-subtext">Government ID</p>
-            <div
-              class="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-lg border border-admin-border bg-admin-bg"
-            >
-              <a
-                v-if="displayKyc?.govtIdUrl"
-                :href="displayKyc.govtIdUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="block h-full w-full"
-              >
-                <img
-                  :src="displayKyc.govtIdUrl"
-                  alt="Government ID"
-                  class="h-full w-full object-contain"
-                />
-              </a>
-              <span v-else class="text-sm text-admin-muted">Not uploaded</span>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 text-xs text-admin-muted">
-              <span>{{ displayKyc?.govtIdUploaded ? 'Uploaded' : 'Missing' }}</span>
-              <a
-                v-if="displayKyc?.govtIdUrl"
-                :href="displayKyc.govtIdUrl"
-                target="_blank"
-                rel="noopener noreferrer"
-                class="text-admin-accent hover:underline"
-              >
-                Open document
-              </a>
-              <span v-if="displayKyc?.govtIdSubmittedAt">
-                · {{ formatDate(displayKyc.govtIdSubmittedAt) }}
-              </span>
-            </div>
+            <AgencyGovtIdPanel
+              :govt-id-url="displayKyc?.govtIdUrl"
+              :govt-id-submitted-at="displayKyc?.govtIdSubmittedAt"
+              :uploading="uploadingGovtId"
+              @replace="onReplaceGovtId"
+            />
           </div>
         </div>
 
@@ -280,6 +289,14 @@ function onReject() {
         >
           Open user
         </RouterLink>
+        <button
+          v-if="mode === 'rejected'"
+          type="button"
+          class="admin-btn-warn"
+          @click="onReopen"
+        >
+          Allow reapply
+        </button>
         <button type="button" class="admin-btn-primary" @click="emit('close')">Close</button>
       </template>
     </template>
