@@ -129,7 +129,7 @@ const allNavItems: NavItem[] = [
     to: '/admin/activity',
     label: 'Activity',
     icon: 'ledger',
-    roles: ['SUPER_ADMIN'],
+    roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT'],
     viewName: 'AdminActivityView',
   },
   {
