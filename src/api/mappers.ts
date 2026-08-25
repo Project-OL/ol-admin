@@ -87,6 +87,8 @@ export function mapUserDetail(user: ApiUserDetail, wallet?: ApiWallet | null): U
     lastActive: user.lastActiveAt ?? user.lastLoggedInAt ?? new Date().toISOString(),
     mobile: user.phone ?? undefined,
     email: user.email ?? undefined,
+    kycContact: user.kycContact ?? null,
+    agencyApplication: user.agencyApplication ?? null,
     gender: user.gender ?? undefined,
     country: user.country ?? undefined,
     tags: user.tags ?? [],

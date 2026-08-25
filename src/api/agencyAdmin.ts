@@ -54,6 +54,16 @@ export const agencyAdminApi = {
     return api.get<AgencyDetail>(`/admin/agency/${encodeURIComponent(identifier)}`)
   },
 
+  updateKycContact(identifier: string, payload: { phone?: string; email?: string }) {
+    return api.patch<{
+      ok: boolean
+      userId: string
+      contactPhone: string | null
+      contactEmail: string | null
+      contactSubmittedAt: string | null
+    }>(`/admin/agency/${encodeURIComponent(identifier)}/kyc-contact`, payload)
+  },
+
   approveApplication(applicantUserId: string, payload: ApproveApplicationPayload) {
     return api.post<{ ok: boolean; created: boolean; agencyPublicId: string }>(
       `/admin/agency/${applicantUserId}/approve`,
