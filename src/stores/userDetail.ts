@@ -554,17 +554,13 @@ export const useUserDetailStore = defineStore('userDetail', {
 
         }
 
-        // Levels & activity come from user profile — derive from loaded user
+        const { data } = await userAdminApi.getLiveSummary(id)
 
-        if (this.user) {
+        this.liveSummary = {
 
-          this.liveSummary = {
+          liveHours: data.liveHours ?? 0,
 
-            liveHours: this.user.streamLevel,
-
-            receivingCount: this.user.wealthLevel,
-
-          }
+          receivingCount: data.receivingCount ?? 0,
 
         }
 
