@@ -1,0 +1,105 @@
+name: Staging build and deploy
+
+on:
+  push:
+    branches: [staging]
+  workflow_dispatch:
+
+concurrency:
+  group: staging-ec2-ol-admin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: https://api-staging.offoolive.com/api/v1
+          VITE_LIVE_API_BASE_URL: https://live-staging.offoolive.com/api
+          VITE_USE_MOCK: 'false'
+
+      - name: Pack artifact
+        run: |
+          tar -czf admin-artifact.tgz -C dist .
+          ls -lh admin-artifact.tgz
+          tar -tzf admin-artifact.tgz | head
+
+      - name: Upload GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ol-admin-staging-${{ github.sha }}
+          path: admin-artifact.tgz
+          retention-days: 14
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ol-admin-staging-${{ github.sha }}
+
+      - name: Check staging EC2 secrets
+        env:
+          KEY: ${{ secrets.STAGING_EC2_SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.STAGING_EC2_HOST }}
+          USER: ${{ secrets.STAGING_EC2_USER }}
+        run: |
+          if [ -z "$KEY" ] || [ -z "$HOST" ] || [ -z "$USER" ]; then
+            echo "Set GitHub Environment (staging) or repo secrets:"
+            echo "  STAGING_EC2_HOST, STAGING_EC2_USER, STAGING_EC2_SSH_PRIVATE_KEY"
+            exit 1
+          fi
+
+      - name: Deploy artifact to ol-stag
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.STAGING_EC2_SSH_PRIVATE_KEY }}
+          EC2_HOST: ${{ secrets.STAGING_EC2_HOST }}
+          EC2_USER: ${{ secrets.STAGING_EC2_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts
+          scp -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            admin-artifact.tgz \
+            .github/deploy/ec2-unpack-admin.sh \
+            "$EC2_USER@$EC2_HOST:/tmp/"
+          ssh -i ~/.ssh/id_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+            "$EC2_USER@$EC2_HOST" bash -lc '
+              set -euo pipefail
+              chmod 700 /tmp/ec2-unpack-admin.sh
+              export APP_USER=ec2-user
+              export APP_DIR=/var/www/admins3jinyu.offoolive.com
+              export ARTIFACT=/tmp/admin-artifact.tgz
+              bash /tmp/ec2-unpack-admin.sh
+            '
+
+      - name: Smoke admin
+        run: |
+          curl -fsS --max-time 20 -o /dev/null -w "%{http_code}\n" https://admin-staging.offoolive.com/
+# Required GitHub secrets (Environment "staging" or repo):
+#   STAGING_EC2_HOST              3.110.118.179
+#   STAGING_EC2_USER              ec2-user
+#   STAGING_EC2_SSH_PRIVATE_KEY   PEM for ssh ol-stag
+# Nginx root on ol-stag: /var/www/admins3jinyu.offoolive.com
+#   https://admin-staging.offoolive.com
