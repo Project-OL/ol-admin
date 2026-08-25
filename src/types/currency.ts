@@ -1,6 +1,12 @@
 export type AdminCurrencyKind = 'COIN' | 'POINT' | 'TRADING_COIN'
 export type AdminCurrencyDirection = 'credit' | 'debit'
-export type LedgerGrain = 'month' | 'quarter' | 'year' | 'custom'
+export type LedgerGrain =
+  | 'today'
+  | 'yesterday'
+  | 'month'
+  | 'quarter'
+  | 'year'
+  | 'custom'
 export type CompanyCashDirection = 'IN' | 'OUT'
 export type CompanyCashReason = 'AGENCY_TRADING_PURCHASE' | 'EPAY_PAYOUT' | 'PAYROLL_TAKEOVER_PAYOUT'
 export type LedgerAccountRoleType = 'TREASURY' | 'COMPANY_AGENCY'
@@ -269,4 +275,71 @@ export type CompanyCashCreateBody = {
   counterpartyUserId?: string
   description?: string
   unitsAmount?: string
+}
+
+export type LedgerInvestigateUser = {
+  userId: string
+  publicId: string
+  username: string
+  name: string
+  isAgent: boolean
+  houseRole: LedgerAccountRoleType | null
+}
+
+export type LedgerBreakageWallet = {
+  walletId: string
+  currency: string
+  gap: string
+  balance: string
+  ledgerNet: string
+  user: LedgerInvestigateUser
+  recentEntries: {
+    id: string
+    txType: string
+    direction: string
+    amount: string
+    balanceAfter: string
+    createdAt: string
+    idempotencyKey: string
+  }[]
+}
+
+export type LedgerBreakageInvestigateResponse = {
+  at: string
+  identityDelta: string
+  walletGapSum: string
+  truncated: boolean
+  walletCount: number
+  wallets: LedgerBreakageWallet[]
+}
+
+export type LedgerReconciliationSuspect = {
+  kind: string
+  units: string
+  transferCount?: number
+  entryCount?: number
+  flowKind?: string
+  hint: string
+  user: LedgerInvestigateUser
+  samples: Record<string, unknown>[]
+}
+
+export type LedgerReconciliationInvestigateResponse = {
+  period: { grain: LedgerGrain; from: string; to: string }
+  reconciliation: MasterLedgerReconciliation
+  delta: string
+  deltaUsd: string
+  equation: {
+    grossSaleUnits: string
+    companyPayoutUnits: string
+    deltaCustomerFloatUnits: string
+    operatingProfitUnits: string
+  }
+  note: string
+  suspects: {
+    unregisteredTreasurySenders: LedgerReconciliationSuspect[]
+    unregisteredPointSenders: LedgerReconciliationSuspect[]
+    returnsToHouse: LedgerReconciliationSuspect[]
+    largeCustomerAdjustments: LedgerReconciliationSuspect[]
+  }
 }

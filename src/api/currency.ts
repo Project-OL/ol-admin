@@ -10,7 +10,9 @@ import type {
   CompanyCashReason,
   HouseAccountUpsertBody,
   HouseAccountsResponse,
+  LedgerBreakageInvestigateResponse,
   LedgerGrain,
+  LedgerReconciliationInvestigateResponse,
   MasterLedgerDashboard,
   MasterLedgerStock,
   TreasuryFlowClassifyBody,
@@ -54,6 +56,25 @@ export const currencyApi = {
     } = {},
   ) {
     return api.get<MasterLedgerDashboard>('/admin/ledger/pnl', { params })
+  },
+
+  investigateBreakage(params: { at?: string } = {}) {
+    return api.get<LedgerBreakageInvestigateResponse>('/admin/ledger/investigate/breakage', {
+      params,
+    })
+  },
+
+  investigateReconciliation(
+    params: {
+      from?: string
+      to?: string
+      grain?: LedgerGrain
+    } = {},
+  ) {
+    return api.get<LedgerReconciliationInvestigateResponse>(
+      '/admin/ledger/investigate/reconciliation',
+      { params },
+    )
   },
 
   listHouseAccounts(params: { includeInactive?: boolean } = {}) {

@@ -14,8 +14,10 @@ import type {
   CompanyCashReason,
   HouseAccountEntry,
   LedgerAccountRoleType,
+  LedgerBreakageInvestigateResponse,
   LedgerGrain,
   LedgerLine,
+  LedgerReconciliationInvestigateResponse,
   MasterLedgerDashboard,
   TreasuryFlowEntry,
 } from '@/types/currency'
@@ -30,6 +32,33 @@ const loading = ref(false)
 const grain = ref<LedgerGrain>('month')
 const customFrom = ref('')
 const customTo = ref('')
+const MAX_CUSTOM_PERIOD_DAYS = 730
+
+const PERIOD_GRAINS: LedgerGrain[] = [
+  'today',
+  'yesterday',
+  'month',
+  'quarter',
+  'year',
+  'custom',
+]
+
+function grainLabel(g: LedgerGrain): string {
+  switch (g) {
+    case 'today':
+      return 'Today'
+    case 'yesterday':
+      return 'Yesterday'
+    case 'month':
+      return 'This month'
+    case 'quarter':
+      return 'This quarter'
+    case 'year':
+      return 'This year'
+    case 'custom':
+      return 'Custom'
+  }
+}
 
 const cashEntries = ref<CompanyCashEntry[]>([])
 const cashCursor = ref<string | null>(null)
@@ -215,6 +244,7 @@ const METRIC_HELP: Record<
     ],
     excludes: [
       'Does not measure sales or profit — only whether wallets and ledger entries agree',
+      'When BREAKAGE appears, use Investigate on the hero card to list wallets and users with balance vs ledger gaps.',
     ],
   },
   salesVsUsage: {
@@ -233,6 +263,7 @@ const METRIC_HELP: Record<
     excludes: [
       'House inventory changes (unsold stock does not affect this equation)',
       'Promotional grants cancel inside the equation — they raise customer balances and lower operating profit by the same amount',
+      'When DELTA appears, use Investigate to list unregistered treasury senders and other leads for the period.',
     ],
   },
 }
@@ -496,11 +527,91 @@ const periodParams = computed(() => {
     return {
       grain: 'custom' as const,
       from: customFrom.value ? new Date(customFrom.value).toISOString() : undefined,
-      to: customTo.value ? new Date(`${customTo.value}T23:59:59.999`).toISOString() : undefined,
+      to: customTo.value ? new Date(`${customTo.value}T23:59:59.999Z`).toISOString() : undefined,
     }
   }
   return { grain: grain.value }
 })
+
+function validateCustomPeriod(): boolean {
+  if (!customFrom.value || !customTo.value) {
+    showToast('Select both from and to dates', 'error')
+    return false
+  }
+  const from = new Date(`${customFrom.value}T00:00:00.000Z`)
+  const to = new Date(`${customTo.value}T23:59:59.999Z`)
+  const spanMs = to.getTime() - from.getTime()
+  if (spanMs <= 0) {
+    showToast('End date must be after start date', 'error')
+    return false
+  }
+  if (spanMs > MAX_CUSTOM_PERIOD_DAYS * 24 * 60 * 60 * 1000) {
+    showToast('Custom range cannot exceed 730 days (2 years)', 'error')
+    return false
+  }
+  return true
+}
+
+function applyCustomPeriod() {
+  if (!validateCustomPeriod()) return
+  void refreshAll()
+}
+
+const breakageInvestigateOpen = ref(false)
+const reconciliationInvestigateOpen = ref(false)
+const breakageInvestigateLoading = ref(false)
+const reconciliationInvestigateLoading = ref(false)
+const breakageInvestigate = ref<LedgerBreakageInvestigateResponse | null>(null)
+const reconciliationInvestigate = ref<LedgerReconciliationInvestigateResponse | null>(null)
+const expandedBreakageWalletId = ref<string | null>(null)
+
+async function openBreakageInvestigate() {
+  breakageInvestigateOpen.value = true
+  breakageInvestigateLoading.value = true
+  breakageInvestigate.value = null
+  try {
+    const at = dashboard.value?.period.to
+    const { data } = await currencyApi.investigateBreakage(at ? { at } : {})
+    breakageInvestigate.value = data
+  } catch (err) {
+    showToast(
+      axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to load breakage investigation'
+        : 'Failed to load breakage investigation',
+      'error',
+    )
+  } finally {
+    breakageInvestigateLoading.value = false
+  }
+}
+
+async function openReconciliationInvestigate() {
+  reconciliationInvestigateOpen.value = true
+  reconciliationInvestigateLoading.value = true
+  reconciliationInvestigate.value = null
+  try {
+    const { data } = await currencyApi.investigateReconciliation(periodParams.value)
+    reconciliationInvestigate.value = data
+  } catch (err) {
+    showToast(
+      axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to load reconciliation investigation'
+        : 'Failed to load reconciliation investigation',
+      'error',
+    )
+  } finally {
+    reconciliationInvestigateLoading.value = false
+  }
+}
+
+function toggleBreakageWallet(walletId: string) {
+  expandedBreakageWalletId.value =
+    expandedBreakageWalletId.value === walletId ? null : walletId
+}
+
+function userAdminLink(userId: string) {
+  return { name: 'user-detail', params: { id: userId } }
+}
 
 function formatDt(iso: string) {
   try {
@@ -978,7 +1089,8 @@ async function submitCash() {
   }
 }
 
-watch(grain, () => {
+watch(grain, (g) => {
+  if (g === 'custom' && (!customFrom.value || !customTo.value)) return
   void refreshAll()
 })
 
@@ -1065,19 +1177,19 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
 
     <div class="admin-filter-bar">
       <button
-        v-for="g in (['month', 'quarter', 'year', 'custom'] as LedgerGrain[])"
+        v-for="g in PERIOD_GRAINS"
         :key="g"
         type="button"
-        class="admin-btn-secondary text-sm capitalize"
+        class="admin-btn-secondary text-sm"
         :class="grain === g ? '!border-admin-accent text-admin-accent' : ''"
         @click="grain = g"
       >
-        {{ g === 'custom' ? 'Custom' : `This ${g}` }}
+        {{ grainLabel(g) }}
       </button>
       <template v-if="grain === 'custom'">
         <input v-model="customFrom" type="date" class="admin-input" title="From" />
         <input v-model="customTo" type="date" class="admin-input" title="To" />
-        <button type="button" class="admin-btn-primary text-sm" @click="refreshAll">Apply</button>
+        <button type="button" class="admin-btn-primary text-sm" @click="applyCustomPeriod">Apply</button>
       </template>
       <p v-if="dashboard" class="text-xs text-admin-subtext">
         {{ formatDt(dashboard.period.from) }} → {{ formatDt(dashboard.period.to) }}
@@ -1176,6 +1288,14 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <p class="text-xs text-admin-muted tabular-nums">
           Δ {{ loading || !hero ? '…' : hero.identityDelta }} units
         </p>
+        <button
+          v-if="hero?.identityOk === false"
+          type="button"
+          class="mt-2 text-xs font-medium text-admin-accent hover:underline"
+          @click="openBreakageInvestigate"
+        >
+          Investigate →
+        </button>
       </div>
       <div class="admin-card !p-3 text-left">
         <p class="flex items-center justify-between text-xs text-admin-subtext">
@@ -1198,6 +1318,14 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <p class="text-xs text-admin-muted tabular-nums">
           Δ {{ loading || !hero ? '…' : hero.reconciliationDelta }} units
         </p>
+        <button
+          v-if="hero?.reconciliationOk === false"
+          type="button"
+          class="mt-2 text-xs font-medium text-admin-accent hover:underline"
+          @click="openReconciliationInvestigate"
+        >
+          Investigate →
+        </button>
       </div>
     </div>
 
@@ -1977,6 +2105,196 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
       </template>
       <template #footer>
         <button type="button" class="admin-btn-primary" @click="helpOpen = false">Close</button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      title="Books balanced — investigation"
+      :open="breakageInvestigateOpen"
+      size="lg"
+      @close="breakageInvestigateOpen = false"
+    >
+      <template #body>
+        <p v-if="breakageInvestigateLoading" class="text-sm text-admin-muted">Loading…</p>
+        <template v-else-if="breakageInvestigate">
+          <p class="text-sm text-admin-subtext">
+            Identity gap {{ breakageInvestigate.identityDelta }} units · wallet gaps sum
+            {{ breakageInvestigate.walletGapSum }} units
+            <span v-if="breakageInvestigate.truncated"> (showing top 50)</span>
+          </p>
+          <div class="admin-table-wrap mt-4 max-h-[28rem] overflow-auto">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Currency</th>
+                  <th>Gap</th>
+                  <th>Balance</th>
+                  <th>Ledger net</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                <template v-for="w in breakageInvestigate.wallets" :key="w.walletId">
+                  <tr>
+                    <td>
+                      <RouterLink
+                        :to="userAdminLink(w.user.userId)"
+                        class="text-sm text-admin-accent hover:underline"
+                      >
+                        {{ w.user.name || w.user.username || w.user.userId }}
+                      </RouterLink>
+                      <p v-if="w.user.publicId" class="text-xs text-admin-muted">
+                        #{{ w.user.publicId }}
+                        <span v-if="w.user.houseRole"> · {{ w.user.houseRole }}</span>
+                      </p>
+                    </td>
+                    <td>{{ w.currency }}</td>
+                    <td class="tabular-nums text-admin-warn">{{ formatCoins(Number(w.gap)) }}</td>
+                    <td class="tabular-nums">{{ formatCoins(Number(w.balance)) }}</td>
+                    <td class="tabular-nums">{{ formatCoins(Number(w.ledgerNet)) }}</td>
+                    <td>
+                      <button
+                        type="button"
+                        class="text-xs text-admin-accent hover:underline"
+                        @click="toggleBreakageWallet(w.walletId)"
+                      >
+                        {{ expandedBreakageWalletId === w.walletId ? 'Hide' : 'Entries' }}
+                      </button>
+                    </td>
+                  </tr>
+                  <tr v-if="expandedBreakageWalletId === w.walletId">
+                    <td colspan="6" class="bg-admin-bg/50">
+                      <table class="admin-table text-xs">
+                        <thead>
+                          <tr>
+                            <th>Time</th>
+                            <th>Type</th>
+                            <th>Dir</th>
+                            <th>Amount</th>
+                            <th>Balance after</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          <tr v-for="e in w.recentEntries" :key="e.id">
+                            <td>{{ formatDt(e.createdAt) }}</td>
+                            <td>{{ e.txType }}</td>
+                            <td>{{ e.direction }}</td>
+                            <td class="tabular-nums">{{ formatCoins(Number(e.amount)) }}</td>
+                            <td class="tabular-nums">{{ formatCoins(Number(e.balanceAfter)) }}</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </td>
+                  </tr>
+                </template>
+                <tr v-if="!breakageInvestigate.wallets.length">
+                  <td colspan="6" class="py-6 text-center text-admin-muted">
+                    No per-wallet gaps found (global identity delta may be transient).
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </template>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-primary" @click="breakageInvestigateOpen = false">
+          Close
+        </button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      title="Sales vs usage — investigation"
+      :open="reconciliationInvestigateOpen"
+      size="lg"
+      @close="reconciliationInvestigateOpen = false"
+    >
+      <template #body>
+        <p v-if="reconciliationInvestigateLoading" class="text-sm text-admin-muted">Loading…</p>
+        <template v-else-if="reconciliationInvestigate">
+          <p class="text-sm text-admin-subtext">
+            Period delta {{ reconciliationInvestigate.delta }} units ({{
+              usdLabel(reconciliationInvestigate.deltaUsd)
+            }}). {{ reconciliationInvestigate.note }}
+          </p>
+          <div
+            class="mt-3 rounded-md border border-admin-border px-3 py-2 text-xs text-admin-muted"
+          >
+            <p>
+              Gross sales {{ reconciliationInvestigate.equation.grossSaleUnits }} − payouts
+              {{ reconciliationInvestigate.equation.companyPayoutUnits }} vs Δ float
+              {{ reconciliationInvestigate.equation.deltaCustomerFloatUnits }} + operating
+              {{ reconciliationInvestigate.equation.operatingProfitUnits }}
+            </p>
+          </div>
+
+          <section
+            v-for="section in [
+              {
+                title: 'Unregistered trading senders',
+                rows: reconciliationInvestigate.suspects.unregisteredTreasurySenders,
+              },
+              {
+                title: 'Unregistered point senders',
+                rows: reconciliationInvestigate.suspects.unregisteredPointSenders,
+              },
+              {
+                title: 'Returns to house',
+                rows: reconciliationInvestigate.suspects.returnsToHouse,
+              },
+              {
+                title: 'Large customer Adjustments',
+                rows: reconciliationInvestigate.suspects.largeCustomerAdjustments,
+              },
+            ]"
+            :key="section.title"
+            class="mt-4"
+          >
+            <h3 class="text-sm font-semibold">{{ section.title }}</h3>
+            <div v-if="!section.rows.length" class="mt-1 text-xs text-admin-muted">None in period</div>
+            <div v-else class="admin-table-wrap mt-2 max-h-48 overflow-auto">
+              <table class="admin-table text-sm">
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Units</th>
+                    <th>Count</th>
+                    <th>Hint</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(row, idx) in section.rows" :key="`${section.title}-${idx}`">
+                    <td>
+                      <RouterLink
+                        :to="userAdminLink(row.user.userId)"
+                        class="text-admin-accent hover:underline"
+                      >
+                        {{ row.user.name || row.user.username }}
+                      </RouterLink>
+                      <p class="text-xs text-admin-muted">#{{ row.user.publicId }}</p>
+                    </td>
+                    <td class="tabular-nums">{{ formatCoins(Number(row.units)) }}</td>
+                    <td class="tabular-nums">
+                      {{ row.transferCount ?? row.entryCount ?? '—' }}
+                    </td>
+                    <td class="text-xs text-admin-muted">{{ row.hint }}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </template>
+      </template>
+      <template #footer>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          @click="reconciliationInvestigateOpen = false"
+        >
+          Close
+        </button>
       </template>
     </BaseDialog>
   </div>
