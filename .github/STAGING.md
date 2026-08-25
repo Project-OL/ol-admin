@@ -1,9 +1,5 @@
 # Staging deploy (ol-stag)
 
-Same as `production.yml`: Vite build, pack `dist`, SCP, `ssh 'bash -s' < ec2-unpack-admin.sh`.
+Uses the same GitHub → S3 → SSM path as ol-node `production.yml` (no SSH port 22).
 
-Build env points at staging API/live. Unpack uses `APP_USER=ec2-user` and `APP_DIR=/var/www/admins3jinyu.offoolive.com`.
-
-Secrets on Environment `staging`: `STAGING_EC2_HOST`, `STAGING_EC2_USER`, `STAGING_EC2_SSH_PRIVATE_KEY`.
-
-_Redeploy: 2026-08-25T11:42+05:30_
+Instance `i-04b31dbda6ed0edc4` must have an IAM instance profile with SSM + S3 read on `ol-production-deploy-artifacts-465457334877`. See ol-node `.github/STAGING.md`.
