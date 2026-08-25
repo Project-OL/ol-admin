@@ -67,6 +67,14 @@ export interface UserSearchResponse {
   users: UserSearchItem[]
 }
 
+export interface AdminUserRegistrationStats {
+  totalUsers: number
+  registeredToday: number
+  todayStartsAt: string
+  users: UserSearchItem[]
+  usersTruncated?: boolean
+}
+
 export interface ApiUserDetail {
   userId: string
   username: string
@@ -90,6 +98,18 @@ export interface ApiUserDetail {
   phone?: string | null
   gender?: string | null
   country?: string | null
+  /** Agency KYC contact when the user has a KYC row. Distinct from login `email`/`phone`. */
+  kycContact?: {
+    phone: string | null
+    email: string | null
+    submittedAt: string | null
+    govtIdUrl?: string | null
+    govtIdSubmittedAt?: string | null
+  } | null
+  agencyApplication?: {
+    id: string
+    status: string
+  } | null
   /** Face INDEXED or KYC face flag — gates gender edits. */
   faceVerified?: boolean
   /** `!faceVerified` — enable gender control when true. */

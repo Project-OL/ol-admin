@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import axios from 'axios'
 import { agencyAdminApi } from '@/api/agencyAdmin'
+import { reopenAgencyApplication, uploadAdminGovtId } from '@/api/agencyKycGovtId'
 import { usePlatformMessagesStore } from '@/stores/platformMessages'
 import type {
   AgencyBanPayload,
@@ -118,6 +119,48 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
 
     clearDetail() {
       this.detail = null
+    },
+
+    async updateKycContact(identifier: string, payload: { phone?: string; email?: string }) {
+      const { data } = await agencyAdminApi.updateKycContact(identifier, payload)
+      if (this.detail) {
+        this.detail.contactPhone = data.contactPhone
+        this.detail.contactEmail = data.contactEmail
+      }
+      showToast('KYC contact updated', 'success')
+      await this.fetchDetail(identifier)
+      return data
+    },
+
+    async uploadGovtId(identifier: string, file: File) {
+      const data = await uploadAdminGovtId({ via: 'agency', identifier }, file)
+      if (this.detail) {
+        this.detail = {
+          ...this.detail,
+          kycDocuments: {
+            ...this.detail.kycDocuments,
+            govtIdUrl: data.govtIdUrl,
+            govtIdSubmittedAt: data.govtIdSubmittedAt,
+            govtIdUploaded: Boolean(data.govtIdUrl),
+          },
+        }
+      }
+      showToast('Government ID updated', 'success')
+      await this.fetchDetail(identifier)
+      return data
+    },
+
+    async uploadApplicantGovtId(userId: string, file: File) {
+      const data = await uploadAdminGovtId({ via: 'application', userId }, file)
+      showToast('Government ID updated', 'success')
+      await Promise.all([this.fetchPending(), this.fetchRejected()])
+      return data
+    },
+
+    async reopenApplication(userId: string) {
+      await reopenAgencyApplication(userId, 'application')
+      showToast('Rejected status cleared — user can apply again', 'success')
+      await Promise.all([this.fetchPending(), this.fetchRejected()])
     },
 
     async approveApplication(applicantUserId: string, payload: ApproveApplicationPayload) {

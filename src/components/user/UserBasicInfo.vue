@@ -6,6 +6,7 @@ import type { UpdateUserPayload, UserProfile } from '@/types/user'
 import { getInitials } from '@/utils/format'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import AgencyGovtIdPanel from '@/components/agency/AgencyGovtIdPanel.vue'
 import { useUserDetailStore } from '@/stores/userDetail'
 import { showToast } from '@/utils/toast'
 
@@ -16,6 +17,9 @@ const editing = ref(false)
 const saving = ref(false)
 const showRevokeFace = ref(false)
 const revokingFace = ref(false)
+const uploadingGovtId = ref(false)
+const showReopen = ref(false)
+const reopening = ref(false)
 
 const form = reactive({
   username: '',
@@ -23,6 +27,8 @@ const form = reactive({
   lastName: '',
   mobile: '',
   email: '',
+  kycPhone: '',
+  kycEmail: '',
   gender: '',
   country: '',
   tags: [] as string[],
@@ -48,6 +54,8 @@ const displayLegalName = computed(() => {
 })
 
 const genderLocked = computed(() => props.user.genderEditable === false)
+const hasKyc = computed(() => props.user.kycContact != null)
+const isRejectedApplication = computed(() => props.user.agencyApplication?.status === 'REJECTED')
 
 function tagsEqual(a: string[], b: string[]) {
   if (a.length !== b.length) return false
@@ -62,6 +70,8 @@ function startEdit() {
   form.lastName = props.user.lastName ?? ''
   form.mobile = props.user.mobile ?? ''
   form.email = props.user.email ?? ''
+  form.kycPhone = props.user.kycContact?.phone ?? ''
+  form.kycEmail = props.user.kycContact?.email ?? ''
   form.gender = (props.user.gender ?? '').toLowerCase()
   form.country = props.user.country ?? ''
   form.tags = [...props.user.tags]
@@ -74,6 +84,7 @@ function cancelEdit() {
 
 /** Map API / network failures to a user-facing toast. */
 function userUpdateErrorMessage(err: unknown): string {
+  if (err instanceof Error && !axios.isAxiosError(err)) return err.message
   if (!axios.isAxiosError(err)) return 'Failed to update user'
   const body = err.response?.data as
     | { code?: string; message?: string; error?: string }
@@ -85,6 +96,12 @@ function userUpdateErrorMessage(err: unknown): string {
       return 'Email is already in use'
     case 'PHONE_TAKEN':
       return 'Phone is already in use'
+    case 'KYC_NOT_FOUND':
+      return 'This user has no KYC application to update'
+    case 'APPLICATION_NOT_FOUND':
+      return 'No agency application found'
+    case 'APPLICATION_NOT_REJECTED':
+      return 'Only a rejected application can be reopened'
     case 'INVALID_PHONE':
       return body.message || 'Invalid phone format (E.164, e.g. +919876543210)'
     case 'USER_NOT_FOUND':
@@ -196,28 +213,66 @@ function buildDirtyPayload(): UpdateUserPayload | null {
   return Object.keys(payload).length ? payload : null
 }
 
-async function saveEdit() {
-  const payload = buildDirtyPayload()
-  if (!payload) {
-    // Stay in edit mode (validation toast may already be shown).
-    if (
-      form.firstName.trim() === (props.user.firstName ?? '').trim() &&
-      form.lastName.trim() === (props.user.lastName ?? '').trim() &&
-      form.username.trim() === (props.user.username ?? '').trim() &&
-      form.mobile.trim() === (props.user.mobile ?? '').trim() &&
-      form.email.trim() === (props.user.email ?? '').trim() &&
-      form.country.trim() === (props.user.country ?? '').trim() &&
-      form.gender.trim().toLowerCase() === (props.user.gender ?? '').toLowerCase() &&
-      tagsEqual(form.tags, props.user.tags)
-    ) {
-      showToast('No changes to save', 'info')
+function isProfileUnchanged() {
+  return (
+    form.firstName.trim() === (props.user.firstName ?? '').trim() &&
+    form.lastName.trim() === (props.user.lastName ?? '').trim() &&
+    form.username.trim() === (props.user.username ?? '').trim() &&
+    form.mobile.trim() === (props.user.mobile ?? '').trim() &&
+    form.email.trim() === (props.user.email ?? '').trim() &&
+    form.country.trim() === (props.user.country ?? '').trim() &&
+    form.gender.trim().toLowerCase() === (props.user.gender ?? '').toLowerCase() &&
+    tagsEqual(form.tags, props.user.tags)
+  )
+}
+
+function isKycUnchanged() {
+  if (!hasKyc.value) return true
+  return (
+    form.kycPhone.trim() === (props.user.kycContact?.phone ?? '').trim() &&
+    form.kycEmail.trim() === (props.user.kycContact?.email ?? '').trim()
+  )
+}
+
+function buildKycDirtyPayload(): { phone?: string; email?: string } | null {
+  const payload: { phone?: string; email?: string } = {}
+  const phone = form.kycPhone.trim()
+  const currentPhone = (props.user.kycContact?.phone ?? '').trim()
+  if (phone !== currentPhone) {
+    if (!phone) {
+      showToast('KYC phone cannot be cleared', 'error')
+      return null
     }
+    payload.phone = phone
+  }
+  const email = form.kycEmail.trim()
+  const currentEmail = (props.user.kycContact?.email ?? '').trim()
+  if (email !== currentEmail) {
+    if (!email) {
+      showToast('KYC email cannot be cleared', 'error')
+      return null
+    }
+    payload.email = email
+  }
+  return Object.keys(payload).length ? payload : null
+}
+
+async function saveEdit() {
+  if (isProfileUnchanged() && isKycUnchanged()) {
+    showToast('No changes to save', 'info')
     return
   }
 
+  const payload = isProfileUnchanged() ? null : buildDirtyPayload()
+  if (!isProfileUnchanged() && !payload) return
+
+  const kycPayload = isKycUnchanged() ? null : buildKycDirtyPayload()
+  if (!isKycUnchanged() && !kycPayload) return
+
   saving.value = true
   try {
-    await store.updateUser(props.user.id, payload)
+    if (payload) await store.updateUser(props.user.id, payload)
+    if (kycPayload) await store.updateKycContact(props.user.id, kycPayload)
     editing.value = false
   } catch (err) {
     showToast(userUpdateErrorMessage(err), 'error')
@@ -240,6 +295,31 @@ async function confirmRevokeFace(payload: { reason?: string }) {
     showToast(userUpdateErrorMessage(err), 'error')
   } finally {
     revokingFace.value = false
+  }
+}
+
+async function onReplaceGovtId(file: File) {
+  if (uploadingGovtId.value) return
+  uploadingGovtId.value = true
+  try {
+    await store.uploadGovtId(props.user.id, file)
+  } catch (err) {
+    showToast(userUpdateErrorMessage(err), 'error')
+  } finally {
+    uploadingGovtId.value = false
+  }
+}
+
+async function confirmReopen() {
+  if (reopening.value) return
+  reopening.value = true
+  try {
+    await store.reopenAgencyApplication(props.user.id)
+    showReopen.value = false
+  } catch (err) {
+    showToast(userUpdateErrorMessage(err), 'error')
+  } finally {
+    reopening.value = false
   }
 }
 </script>
@@ -310,13 +390,24 @@ async function confirmRevokeFace(payload: { reason?: string }) {
           <input v-model="form.username" class="admin-input" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-admin-subtext">Mobile</label>
+          <label class="mb-1 block text-xs text-admin-subtext">Mobile (login)</label>
           <input v-model="form.mobile" class="admin-input" />
         </div>
         <div>
-          <label class="mb-1 block text-xs text-admin-subtext">Email</label>
+          <label class="mb-1 block text-xs text-admin-subtext">Email (login)</label>
           <input v-model="form.email" type="email" class="admin-input" />
         </div>
+        <template v-if="hasKyc">
+          <p class="text-xs font-medium uppercase tracking-wide text-admin-subtext">KYC contact</p>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">KYC phone</label>
+            <input v-model="form.kycPhone" class="admin-input" placeholder="+919876543210" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">KYC email</label>
+            <input v-model="form.kycEmail" type="email" class="admin-input" />
+          </div>
+        </template>
         <div>
           <label class="mb-1 block text-xs text-admin-subtext">Gender</label>
           <select v-model="form.gender" class="admin-input" :disabled="genderLocked">
@@ -396,6 +487,16 @@ async function confirmRevokeFace(payload: { reason?: string }) {
           <span class="admin-kv-label">Email</span>
           <span class="admin-kv-value break-all">{{ user.email ?? '—' }}</span>
         </div>
+        <template v-if="hasKyc">
+          <div class="admin-kv-row">
+            <span class="admin-kv-label">KYC phone</span>
+            <span class="admin-kv-value">{{ user.kycContact?.phone ?? '—' }}</span>
+          </div>
+          <div class="admin-kv-row">
+            <span class="admin-kv-label">KYC email</span>
+            <span class="admin-kv-value break-all">{{ user.kycContact?.email ?? '—' }}</span>
+          </div>
+        </template>
         <div class="admin-kv-row">
           <span class="admin-kv-label">Gender</span>
           <span class="admin-kv-value">
@@ -470,6 +571,29 @@ async function confirmRevokeFace(payload: { reason?: string }) {
           <div class="admin-kv-value sm:flex sm:justify-end"><StatusBadge :status="user.status" /></div>
         </div>
       </template>
+
+      <div v-if="hasKyc" class="mt-4 space-y-2 border-t border-admin-border pt-4">
+        <p class="text-xs font-medium uppercase tracking-wide text-admin-subtext">Government ID</p>
+        <AgencyGovtIdPanel
+          :govt-id-url="user.kycContact?.govtIdUrl"
+          :govt-id-submitted-at="user.kycContact?.govtIdSubmittedAt"
+          :uploading="uploadingGovtId"
+          @replace="onReplaceGovtId"
+        />
+      </div>
+      <div
+        v-if="isRejectedApplication"
+        class="mt-4 space-y-2 rounded-md border border-admin-warn/40 bg-admin-warn/5 p-3"
+      >
+        <p class="text-sm font-medium text-admin-warn">Agency application rejected</p>
+        <p class="text-xs text-admin-subtext">
+          Clear the rejection so this user can submit a new agency application. KYC contact and
+          government ID are kept.
+        </p>
+        <button type="button" class="admin-btn-warn text-xs" @click="showReopen = true">
+          Allow reapply
+        </button>
+      </div>
     </div>
 
     <ConfirmActionDialog
@@ -481,6 +605,15 @@ async function confirmRevokeFace(payload: { reason?: string }) {
       require-reason
       @close="showRevokeFace = false"
       @confirm="confirmRevokeFace"
+    />
+    <ConfirmActionDialog
+      :open="showReopen"
+      title="Allow reapply"
+      message="Remove the rejected application so this user can apply for an agency again. Their KYC contact and government ID are kept."
+      confirm-label="Allow reapply"
+      variant="warn"
+      @close="showReopen = false"
+      @confirm="confirmReopen"
     />
   </div>
 </template>

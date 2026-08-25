@@ -14,6 +14,7 @@ import type {
   TagsResponse,
   TransactionFilterTypes,
   UserSearchResponse,
+  AdminUserRegistrationStats,
   WalletAdjustPayload,
   ApplyUserRestrictionPayload,
   ApiUserRestriction,
@@ -79,6 +80,10 @@ export const userAdminApi = {
     return api.get<UserSearchResponse>('/admin/users/search', { params: { q, type, limit } })
   },
 
+  getRegistrationStats() {
+    return api.get<AdminUserRegistrationStats>('/admin/users/stats')
+  },
+
   /** Last 10 profiles opened / exact-matched by this admin. */
   getSearchHistory() {
     return api.get<UserSearchResponse>('/admin/users/search/history')
@@ -90,6 +95,16 @@ export const userAdminApi = {
 
   updateUser(id: string, payload: PatchUserPayload) {
     return api.patch<ApiUserDetail>(`/admin/users/${id}`, payload)
+  },
+
+  updateKycContact(id: string, payload: { phone?: string; email?: string }) {
+    return api.patch<{
+      ok: boolean
+      userId: string
+      contactPhone: string | null
+      contactEmail: string | null
+      contactSubmittedAt: string | null
+    }>(`/admin/users/${id}/kyc-contact`, payload)
   },
 
   updateTags(id: string, tags: string[]) {

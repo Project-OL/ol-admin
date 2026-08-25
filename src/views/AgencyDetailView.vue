@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import axios from 'axios'
@@ -9,6 +9,7 @@ import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import AgencyHostEarningsPanel from '@/components/agency/AgencyHostEarningsPanel.vue'
 import AgencyCommissionHistoryPanel from '@/components/agency/AgencyCommissionHistoryPanel.vue'
+import AgencyGovtIdPanel from '@/components/agency/AgencyGovtIdPanel.vue'
 import { COMMISSION_TIERS, type AgencyRecomputeLevelResponse } from '@/types/agency'
 import { formatPoints, formatUsd } from '@/utils/format'
 import { showToast } from '@/utils/toast'
@@ -46,6 +47,10 @@ const useSuspendUntil = ref(false)
 const acting = ref(false)
 const recomputing = ref(false)
 const togglingPayroll = ref(false)
+const editingContact = ref(false)
+const savingContact = ref(false)
+const uploadingGovtId = ref(false)
+const contactForm = reactive({ phone: '', email: '' })
 
 function usdLabel(usd: string | undefined, points: string) {
   if (usd != null && usd !== '') return formatUsd(Number(usd))
@@ -98,6 +103,78 @@ function openHostCommission(host: { hostPublicId: string; displayName: string })
 async function reload() {
   await store.fetchDetail(identifier.value)
   if (agency.value) newTier.value = agency.value.commissionTier
+}
+
+function startContactEdit() {
+  contactForm.phone = agency.value?.contactPhone ?? ''
+  contactForm.email = agency.value?.contactEmail ?? ''
+  editingContact.value = true
+}
+
+function cancelContactEdit() {
+  editingContact.value = false
+}
+
+function kycContactErrorMessage(err: unknown): string {
+  if (!axios.isAxiosError(err)) return 'Failed to update KYC contact'
+  const body = err.response?.data as { code?: string; message?: string } | undefined
+  if (body?.code === 'KYC_NOT_FOUND') return 'No KYC application found for this agency'
+  if (body?.code === 'INVALID_PHONE') return body.message || 'Invalid phone format (E.164, e.g. +919876543210)'
+  if (body?.code === 'INVALID_REQUEST') return body.message || 'Invalid update request'
+  if (body?.message) return body.message
+  return 'Failed to update KYC contact'
+}
+
+async function saveContact() {
+  if (!agency.value) return
+  const payload: { phone?: string; email?: string } = {}
+  const phone = contactForm.phone.trim()
+  const email = contactForm.email.trim()
+  const currentPhone = (agency.value.contactPhone ?? '').trim()
+  const currentEmail = (agency.value.contactEmail ?? '').trim()
+  if (phone !== currentPhone) {
+    if (!phone) {
+      showToast('KYC phone cannot be cleared', 'error')
+      return
+    }
+    payload.phone = phone
+  }
+  if (email !== currentEmail) {
+    if (!email) {
+      showToast('KYC email cannot be cleared', 'error')
+      return
+    }
+    payload.email = email
+  }
+  if (!Object.keys(payload).length) {
+    showToast('No changes to save', 'info')
+    return
+  }
+  savingContact.value = true
+  try {
+    await store.updateKycContact(identifier.value, payload)
+    editingContact.value = false
+  } catch (err) {
+    showToast(kycContactErrorMessage(err), 'error')
+  } finally {
+    savingContact.value = false
+  }
+}
+
+async function onReplaceGovtId(file: File) {
+  if (!agency.value || uploadingGovtId.value) return
+  uploadingGovtId.value = true
+  try {
+    await store.uploadGovtId(identifier.value, file)
+  } catch (err) {
+    const msg =
+      err instanceof Error && !axios.isAxiosError(err)
+        ? err.message
+        : kycContactErrorMessage(err)
+    showToast(msg === 'Failed to update KYC contact' ? 'Failed to update government ID' : msg, 'error')
+  } finally {
+    uploadingGovtId.value = false
+  }
 }
 
 async function saveTier() {
@@ -378,16 +455,53 @@ async function recomputeTier() {
       <div v-show="activeTab === 'overview'" class="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <!-- Contact & KYC -->
         <div class="admin-card space-y-4">
-          <h2 class="text-sm font-semibold uppercase tracking-wide text-admin-subtext">Contact & KYC</h2>
+          <div class="flex items-center justify-between gap-2">
+            <h2 class="text-sm font-semibold uppercase tracking-wide text-admin-subtext">Contact & KYC</h2>
+            <button
+              v-if="!editingContact"
+              type="button"
+              class="admin-btn-secondary py-1 text-xs"
+              @click="startContactEdit"
+            >
+              Edit contact
+            </button>
+            <div v-else class="flex gap-2">
+              <button type="button" class="admin-btn-secondary py-1 text-xs" @click="cancelContactEdit">
+                Cancel
+              </button>
+              <button
+                type="button"
+                class="admin-btn-primary py-1 text-xs"
+                :disabled="savingContact"
+                @click="saveContact"
+              >
+                {{ savingContact ? 'Saving...' : 'Save' }}
+              </button>
+            </div>
+          </div>
           <div class="space-y-1 text-sm">
-            <div class="admin-kv-row">
-              <span class="admin-kv-label">Phone</span>
-              <span class="admin-kv-value">{{ agency.contactPhone ?? '—' }}</span>
-            </div>
-            <div class="admin-kv-row">
-              <span class="admin-kv-label">Email</span>
-              <span class="admin-kv-value break-all">{{ agency.contactEmail ?? '—' }}</span>
-            </div>
+            <template v-if="editingContact">
+              <div class="space-y-3 pb-2">
+                <div>
+                  <label class="mb-1 block text-xs text-admin-subtext">KYC phone</label>
+                  <input v-model="contactForm.phone" class="admin-input" placeholder="+919876543210" />
+                </div>
+                <div>
+                  <label class="mb-1 block text-xs text-admin-subtext">KYC email</label>
+                  <input v-model="contactForm.email" type="email" class="admin-input" />
+                </div>
+              </div>
+            </template>
+            <template v-else>
+              <div class="admin-kv-row">
+                <span class="admin-kv-label">Phone</span>
+                <span class="admin-kv-value">{{ agency.contactPhone ?? '—' }}</span>
+              </div>
+              <div class="admin-kv-row">
+                <span class="admin-kv-label">Email</span>
+                <span class="admin-kv-value break-all">{{ agency.contactEmail ?? '—' }}</span>
+              </div>
+            </template>
             <div class="admin-kv-row">
               <span class="admin-kv-label">Country</span>
               <span class="admin-kv-value">{{ agency.country ?? '—' }}</span>
@@ -409,15 +523,13 @@ async function recomputeTier() {
               <span class="admin-kv-value text-xs">{{ format(new Date(agency.approvedAt), 'dd MMM yyyy') }}</span>
             </div>
           </div>
-          <a
-            v-if="agency.kycDocuments.govtIdUrl"
-            :href="agency.kycDocuments.govtIdUrl"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="admin-btn-secondary inline-flex text-xs"
-          >
-            View Govt ID Document
-          </a>
+          <AgencyGovtIdPanel
+            class="pt-2"
+            :govt-id-url="agency.kycDocuments.govtIdUrl"
+            :govt-id-submitted-at="agency.kycDocuments.govtIdSubmittedAt"
+            :uploading="uploadingGovtId"
+            @replace="onReplaceGovtId"
+          />
         </div>
 
         <!-- Actions -->

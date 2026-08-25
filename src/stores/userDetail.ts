@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 
 import { userAdminApi } from '@/api/userAdmin'
+import { reopenAgencyApplication, uploadAdminGovtId } from '@/api/agencyKycGovtId'
 
 import {
 
@@ -667,7 +668,63 @@ export const useUserDetailStore = defineStore('userDetail', {
 
     },
 
+    async updateKycContact(id: string, payload: { phone?: string; email?: string }) {
+      if (useMock) {
+        await delay()
+        if (this.user?.kycContact) {
+          this.user = {
+            ...this.user,
+            kycContact: {
+              phone: payload.phone ?? this.user.kycContact.phone,
+              email: payload.email ?? this.user.kycContact.email,
+              submittedAt: this.user.kycContact.submittedAt,
+              govtIdUrl: this.user.kycContact.govtIdUrl,
+              govtIdSubmittedAt: this.user.kycContact.govtIdSubmittedAt,
+            },
+          }
+        }
+        showToast('KYC contact updated', 'success')
+        return
+      }
+      await userAdminApi.updateKycContact(id, payload)
+      await this.fetchUser(id)
+      showToast('KYC contact updated', 'success')
+    },
 
+    async uploadGovtId(id: string, file: File) {
+      if (useMock) {
+        await delay()
+        if (this.user?.kycContact) {
+          this.user = {
+            ...this.user,
+            kycContact: {
+              ...this.user.kycContact,
+              govtIdUrl: URL.createObjectURL(file),
+              govtIdSubmittedAt: new Date().toISOString(),
+            },
+          }
+        }
+        showToast('Government ID updated', 'success')
+        return
+      }
+      await uploadAdminGovtId({ via: 'user', userId: id }, file)
+      await this.fetchUser(id)
+      showToast('Government ID updated', 'success')
+    },
+
+    async reopenAgencyApplication(id: string) {
+      if (useMock) {
+        await delay()
+        if (this.user) {
+          this.user = { ...this.user, agencyApplication: null }
+        }
+        showToast('Rejected status cleared — user can apply again', 'success')
+        return
+      }
+      await reopenAgencyApplication(id, 'user')
+      await this.fetchUser(id)
+      showToast('Rejected status cleared — user can apply again', 'success')
+    },
 
     async setUserStatus(id: string, options: StatusActionOptions) {
 

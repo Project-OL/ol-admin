@@ -23,6 +23,7 @@ const countryFilter = ref('')
 
 const approveTarget = ref<AgencyApplicationListItem | null>(null)
 const rejectTarget = ref<AgencyApplicationListItem | null>(null)
+const reopenTarget = ref<AgencyApplicationListItem | null>(null)
 const reviewTarget = ref<AgencyApplicationListItem | null>(null)
 const reviewMode = ref<'pending' | 'rejected'>('pending')
 const recomputeMasterDialog = ref(false)
@@ -63,6 +64,11 @@ function onReviewApprove(app: AgencyApplicationListItem) {
 function onReviewReject(app: AgencyApplicationListItem) {
   closeReview()
   rejectTarget.value = app
+}
+
+function onReviewReopen(app: AgencyApplicationListItem) {
+  closeReview()
+  reopenTarget.value = app
 }
 
 async function loadAgencies(page = 0) {
@@ -156,6 +162,26 @@ async function handleReject(payload: { reason?: string }) {
     rejectTarget.value = null
     rejectAdminNote.value = ''
     rejectUserNote.value = ''
+  } finally {
+    acting.value = false
+  }
+}
+
+async function handleReopen() {
+  if (!reopenTarget.value) return
+  acting.value = true
+  try {
+    await store.reopenApplication(reopenTarget.value.applicantUserId)
+    reopenTarget.value = null
+  } catch (err) {
+    const body = axios.isAxiosError(err)
+      ? (err.response?.data as { code?: string; message?: string } | undefined)
+      : undefined
+    if (body?.code === 'APPLICATION_NOT_REJECTED') {
+      showToast('Only a rejected application can be reopened', 'error')
+    } else if (body?.message) {
+      showToast(body.message, 'error')
+    }
   } finally {
     acting.value = false
   }
@@ -466,6 +492,8 @@ onMounted(async () => {
               <tr>
                 <th>Face</th>
                 <th>Applicant</th>
+                <th>Phone</th>
+                <th>Email</th>
                 <th>Country</th>
                 <th>KYC</th>
                 <th>Status</th>
@@ -493,6 +521,8 @@ onMounted(async () => {
                   <p class="font-medium">{{ app.applicantUserName }}</p>
                   <p class="font-mono text-xs text-admin-subtext">{{ app.userPublicId }}</p>
                 </td>
+                <td class="text-xs whitespace-nowrap">{{ app.kyc.contactPhone || '—' }}</td>
+                <td class="max-w-[12rem] break-all text-xs">{{ app.kyc.contactEmail || '—' }}</td>
                 <td>{{ app.country ?? '—' }}</td>
                 <td>
                   <div class="flex flex-wrap gap-1">
@@ -561,7 +591,7 @@ onMounted(async () => {
                 </td>
               </tr>
               <tr v-if="!store.pending.length && !store.loadingPending">
-                <td colspan="7" class="py-10 text-center text-admin-muted">No pending applications</td>
+                <td colspan="9" class="py-10 text-center text-admin-muted">No pending applications</td>
               </tr>
             </tbody>
           </table>
@@ -593,6 +623,8 @@ onMounted(async () => {
               <tr>
                 <th>Face</th>
                 <th>Applicant</th>
+                <th>Phone</th>
+                <th>Email</th>
                 <th>Country</th>
                 <th>KYC</th>
                 <th>Applied</th>
@@ -621,6 +653,8 @@ onMounted(async () => {
                   <p class="font-medium">{{ app.applicantUserName }}</p>
                   <p class="font-mono text-xs text-admin-subtext">{{ app.userPublicId }}</p>
                 </td>
+                <td class="text-xs whitespace-nowrap">{{ app.kyc.contactPhone || '—' }}</td>
+                <td class="max-w-[12rem] break-all text-xs">{{ app.kyc.contactEmail || '—' }}</td>
                 <td>{{ app.country ?? '—' }}</td>
                 <td>
                   <div class="flex flex-wrap gap-1">
@@ -682,6 +716,13 @@ onMounted(async () => {
                     </button>
                     <button
                       type="button"
+                      class="admin-btn-warn text-xs"
+                      @click="reopenTarget = app"
+                    >
+                      Allow reapply
+                    </button>
+                    <button
+                      type="button"
                       class="admin-btn-secondary text-xs"
                       @click="openUser(app.applicantUserId)"
                     >
@@ -691,10 +732,10 @@ onMounted(async () => {
                 </td>
               </tr>
               <tr v-if="!store.rejected.length && !store.loadingRejected">
-                <td colspan="8" class="py-10 text-center text-admin-muted">No rejected applications</td>
+                <td colspan="10" class="py-10 text-center text-admin-muted">No rejected applications</td>
               </tr>
               <tr v-else-if="store.loadingRejected && !store.rejected.length">
-                <td colspan="8" class="py-10 text-center text-admin-muted">Loading…</td>
+                <td colspan="10" class="py-10 text-center text-admin-muted">Loading…</td>
               </tr>
             </tbody>
           </table>
@@ -731,6 +772,7 @@ onMounted(async () => {
       @close="closeReview"
       @approve="onReviewApprove"
       @reject="onReviewReject"
+      @reopen="onReviewReopen"
     />
 
     <BaseDialog
@@ -796,6 +838,16 @@ onMounted(async () => {
       :require-reason="true"
       @close="rejectTarget = null"
       @confirm="handleReject"
+    />
+
+    <ConfirmActionDialog
+      :open="!!reopenTarget"
+      title="Allow reapply"
+      message="Remove the rejected application so this user can apply again. Their KYC contact and government ID are kept."
+      confirm-label="Allow reapply"
+      variant="warn"
+      @close="reopenTarget = null"
+      @confirm="handleReopen"
     />
 
     <ConfirmActionDialog

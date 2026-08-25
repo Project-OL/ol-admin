@@ -72,6 +72,19 @@ export interface UserProfile {
   lastActive: string
   mobile?: string
   email?: string
+  /** Agency KYC contact when the user applied. Distinct from login `mobile`/`email`. */
+  kycContact?: {
+    phone: string | null
+    email: string | null
+    submittedAt: string | null
+    govtIdUrl?: string | null
+    govtIdSubmittedAt?: string | null
+  } | null
+  /** Present while an agency agent application row exists. */
+  agencyApplication?: {
+    id: string
+    status: string
+  } | null
   gender?: string
   country?: string
   city?: string

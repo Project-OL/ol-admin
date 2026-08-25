@@ -49,6 +49,14 @@ export const mockUser: UserProfile = {
   faceVerified: true,
   genderEditable: false,
   faceVerificationStatus: 'verified',
+  kycContact: {
+    phone: '+919876543210',
+    email: 'riya.kyc@example.com',
+    submittedAt: '2026-04-01T10:00:00Z',
+    govtIdUrl: 'https://i.pravatar.cc/400?u=govt-id',
+    govtIdSubmittedAt: '2026-04-01T10:05:00Z',
+  },
+  agencyApplication: null,
   livePhotoStatus: 'verified',
   livePhotoDetail: {
     hasLivePhoto: true,
