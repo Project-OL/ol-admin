@@ -147,6 +147,13 @@ const allNavItems: NavItem[] = [
     viewName: 'AccountDeletionsView',
   },
   {
+    to: '/admin/face-verification-sessions',
+    label: 'Stuck Face Verif.',
+    icon: 'support',
+    roles: ['SUPER_ADMIN'],
+    viewName: 'FaceVerificationSessionsView',
+  },
+  {
     to: '/admin/views',
     label: 'Admin Views',
     icon: 'views',

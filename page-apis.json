@@ -17,6 +17,9 @@
     "GET /admin/users/:id/devices",
     "GET /admin/users/:id/face-verification",
     "DELETE /admin/users/:id/face-verification",
+    "GET /admin/face-verification/:userId/registration-sessions",
+    "POST /admin/face-verification/:userId/registration-sessions/:sessionId/recheck",
+    "POST /admin/face-verification/:userId/registration-sessions/clear",
     "GET /admin/users/transactions/filter-types",
     "GET /admin/users/:id/transactions/coins",
     "GET /admin/users/:id/transactions/points",
@@ -154,5 +157,10 @@
     "GET /admin/views",
     "POST /admin/views",
     "PUT /admin/views/:viewName"
+  ],
+  "FaceVerificationSessionsView": [
+    "GET /admin/face-verification/registration-sessions/stuck",
+    "POST /admin/face-verification/:userId/registration-sessions/:sessionId/recheck",
+    "POST /admin/face-verification/:userId/registration-sessions/clear"
   ]
 }

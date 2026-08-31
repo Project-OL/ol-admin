@@ -29,6 +29,11 @@ import type {
   LiveModerationListQuery,
 } from '@/types/api'
 import type {
+  UserRegistrationSessionsResponse,
+  RecheckRegistrationSessionResponse,
+  ClearRegistrationSessionsResponse,
+} from '@/types/faceVerificationSessions'
+import type {
   AdminUserGuardianDossier,
   AdminUserVipDossier,
   GuardianDossierQuery,
@@ -280,6 +285,25 @@ export const userAdminApi = {
 
   getFaceVerification(id: string) {
     return api.get<FaceVerificationResponse>(`/admin/users/${id}/face-verification`)
+  },
+
+  listUserRegistrationSessions(id: string) {
+    return api.get<UserRegistrationSessionsResponse>(
+      `/admin/face-verification/${id}/registration-sessions`,
+    )
+  },
+
+  recheckRegistrationSession(id: string, sessionId: string) {
+    return api.post<RecheckRegistrationSessionResponse>(
+      `/admin/face-verification/${id}/registration-sessions/${sessionId}/recheck`,
+    )
+  },
+
+  clearRegistrationSessions(id: string, reason?: string) {
+    return api.post<ClearRegistrationSessionsResponse>(
+      `/admin/face-verification/${id}/registration-sessions/clear`,
+      { reason },
+    )
   },
 
   getLivePhoto(id: string) {

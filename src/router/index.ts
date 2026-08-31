@@ -232,6 +232,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/face-verification-sessions',
+          name: 'face-verification-sessions',
+          component: () => import('../views/FaceVerificationSessionsView.vue'),
+          meta: {
+            title: 'Face Verification Sessions',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'FaceVerificationSessionsView',
+          },
+        },
+        {
           path: 'admin/views',
           name: 'admin-views',
           component: () => import('../views/AdminViewsView.vue'),
