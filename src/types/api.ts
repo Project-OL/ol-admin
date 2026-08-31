@@ -357,6 +357,10 @@ export interface FaceVerificationResponse {
   statusLabel?: string
   statusDetail?: string
   notIndexedReason?: string | null
+  /** Open (non-terminal) face_registration_sessions rows — a session stuck here
+   * (worker outage, or a client that never called /verify) blocks re-registration
+   * even though `profile` below may look fine or empty. */
+  pendingRegistrationSessions?: import('./faceVerificationSessions').RegistrationSessionRow[]
   profile?: {
     faceProfileId?: string
     status?: string

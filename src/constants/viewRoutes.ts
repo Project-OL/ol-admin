@@ -28,6 +28,7 @@ export const VIEW_ROUTES: Record<string, string> = {
   AdminActivityView: '/admin/activity',
   SystemSettingsView: '/admin/system-settings',
   AccountDeletionsView: '/admin/account-deletions',
+  FaceVerificationSessionsView: '/admin/face-verification-sessions',
 }
 
 /**
@@ -76,6 +77,7 @@ export const VIEW_NAV_PATHS: Record<string, string> = {
   AdminActivityView: '/admin/activity',
   SystemSettingsView: '/admin/system-settings',
   AccountDeletionsView: '/admin/account-deletions',
+  FaceVerificationSessionsView: '/admin/face-verification-sessions',
 }
 
 export function isViewAllowed(viewName: string, assigned: Set<string>): boolean {

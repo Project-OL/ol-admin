@@ -17,6 +17,7 @@ import UserLevelControls from '@/components/user/UserLevelControls.vue'
 import UserRestrictions from '@/components/user/UserRestrictions.vue'
 import UserActiveLiveStreams from '@/components/user/UserActiveLiveStreams.vue'
 import UserLiveModeration from '@/components/user/UserLiveModeration.vue'
+import UserRegistrationSessions from '@/components/user/UserRegistrationSessions.vue'
 import UserVipPanel from '@/components/user/UserVipPanel.vue'
 import UserGuardianPanel from '@/components/user/UserGuardianPanel.vue'
 import UserLocationsPanel from '@/components/user/UserLocationsPanel.vue'
@@ -176,6 +177,7 @@ function setTab(tab: string) {
             <DeviceList :user-id="store.user.id" :devices="store.devices" />
           </div>
           <div v-show="store.activeTab === 'reports'" class="space-y-4">
+            <UserRegistrationSessions :user-id="store.user.id" />
             <UserLiveModeration :user-id="store.user.id" />
             <UserRestrictions :user-id="store.user.id" />
             <UserActiveLiveStreams :user-id="store.user.id" />
