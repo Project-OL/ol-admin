@@ -6,6 +6,8 @@ import type { AgencyHostEarningsItem, AgencyPeriod } from '@/types/agency'
 import { formatNumber, formatPoints } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import axios from 'axios'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{
   identifier: string
@@ -111,6 +113,30 @@ watch(
   },
 )
 
+const {
+  sortKey: hostsSortKey,
+  sortDir: hostsSortDir,
+  sortedRows: sortedHosts,
+  toggleSort: toggleHostsSort,
+} = useSortableRows(hosts, (host, key) => {
+  switch (key) {
+    case 'host':
+      return (host.displayName || host.username || '').toLowerCase()
+    case 'joinedAt':
+      return host.joinedAt ? new Date(host.joinedAt).getTime() : 0
+    case 'hostEarningsPoints':
+      return Number(host.hostEarningsPoints ?? 0)
+    case 'hostCommissionPoints':
+      return Number(host.hostCommissionPoints ?? 0)
+    case 'totalPoints':
+      return Number(host.totalPoints ?? 0)
+    case 'liveDurationSeconds':
+      return Number(host.liveDurationSeconds ?? 0)
+    default:
+      return undefined
+  }
+})
+
 onMounted(() => {
   void load(false)
 })
@@ -194,17 +220,17 @@ onMounted(() => {
       <table class="admin-table">
         <thead>
           <tr>
-            <th>Host</th>
-            <th>Joined</th>
-            <th>Host earnings</th>
-            <th>Commission</th>
-            <th>Total</th>
-            <th>Live</th>
+            <SortableTh label="Host" sort-key="host" :active-key="hostsSortKey" :direction="hostsSortDir" @sort="toggleHostsSort" />
+            <SortableTh label="Joined" sort-key="joinedAt" :active-key="hostsSortKey" :direction="hostsSortDir" @sort="toggleHostsSort" />
+            <SortableTh label="Host earnings" sort-key="hostEarningsPoints" :active-key="hostsSortKey" :direction="hostsSortDir" @sort="toggleHostsSort" />
+            <SortableTh label="Commission" sort-key="hostCommissionPoints" :active-key="hostsSortKey" :direction="hostsSortDir" @sort="toggleHostsSort" />
+            <SortableTh label="Total" sort-key="totalPoints" :active-key="hostsSortKey" :direction="hostsSortDir" @sort="toggleHostsSort" />
+            <SortableTh label="Live" sort-key="liveDurationSeconds" :active-key="hostsSortKey" :direction="hostsSortDir" @sort="toggleHostsSort" />
             <th />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="host in hosts" :key="host.hostUserId">
+          <tr v-for="host in sortedHosts" :key="host.hostUserId">
             <td>
               <p class="font-medium">{{ host.displayName || host.username }}</p>
               <p class="font-mono text-xs text-admin-subtext">

@@ -6,6 +6,8 @@ import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useUserDetailStore } from '@/stores/userDetail'
 import { usePlatformMessagesStore } from '@/stores/platformMessages'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{
   userId: string
@@ -42,6 +44,25 @@ const postingStatusLabel = computed(() => {
     return `Suspended until ${format(new Date(until), 'dd MMM yyyy HH:mm')}`
   }
   return 'Posting allowed'
+})
+
+const postsRef = computed(() => props.posts)
+const {
+  sortKey: postsSortKey,
+  sortDir: postsSortDir,
+  sortedRows: sortedPosts,
+  toggleSort: togglePostsSort,
+} = useSortableRows(postsRef, (post, key) => {
+  switch (key) {
+    case 'caption':
+      return (post.caption || '').toLowerCase()
+    case 'type':
+      return post.type ?? ''
+    case 'date':
+      return post.date ? new Date(post.date).getTime() : 0
+    default:
+      return undefined
+  }
 })
 
 async function openPost(post: Post) {
@@ -149,11 +170,11 @@ async function handleActivatePosting() {
 
             <th>Thumbnail</th>
 
-            <th>Caption</th>
+            <SortableTh label="Caption" sort-key="caption" :active-key="postsSortKey" :direction="postsSortDir" @sort="togglePostsSort" />
 
-            <th>Type</th>
+            <SortableTh label="Type" sort-key="type" :active-key="postsSortKey" :direction="postsSortDir" @sort="togglePostsSort" />
 
-            <th>Date</th>
+            <SortableTh label="Date" sort-key="date" :active-key="postsSortKey" :direction="postsSortDir" @sort="togglePostsSort" />
 
             <th>Actions</th>
 
@@ -163,7 +184,7 @@ async function handleActivatePosting() {
 
         <tbody>
 
-          <tr v-for="post in posts" :key="post.id">
+          <tr v-for="post in sortedPosts" :key="post.id">
 
             <td>
 

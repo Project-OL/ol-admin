@@ -6,6 +6,8 @@ import axios from 'axios'
 import { pushNotificationsApi } from '@/api/pushNotifications'
 import SendPushDialog from '@/components/push/SendPushDialog.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import type {
   PushDelivery,
   PushDeliverySource,
@@ -328,6 +330,48 @@ async function handleComposeConfirm(payload: PushPayload) {
   }
 }
 
+const {
+  sortKey: deliveriesSortKey,
+  sortDir: deliveriesSortDir,
+  sortedRows: sortedDeliveries,
+  toggleSort: toggleDeliveriesSort,
+} = useSortableRows(deliveries, (item, key) => {
+  switch (key) {
+    case 'createdAt':
+      return item.createdAt ? new Date(item.createdAt).getTime() : 0
+    case 'user':
+      return (item.user.name || item.user.username || '').toLowerCase()
+    case 'title':
+      return item.title?.toLowerCase() ?? ''
+    case 'status':
+      return item.status ?? ''
+    case 'source':
+      return sourceLabel(item.source).toLowerCase()
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: usersSortKey,
+  sortDir: usersSortDir,
+  sortedRows: sortedUsers,
+  toggleSort: toggleUsersSort,
+} = useSortableRows(users, (user, key) => {
+  switch (key) {
+    case 'name':
+      return (user.name || user.username || '').toLowerCase()
+    case 'country':
+      return (user.country || '').toLowerCase()
+    case 'status':
+      return user.status ?? ''
+    case 'fcmTokenUpdatedAt':
+      return user.fcmTokenUpdatedAt ? new Date(user.fcmTokenUpdatedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
 function setTab(next: Tab) {
   tab.value = next
   router.replace({
@@ -555,16 +599,16 @@ onMounted(async () => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Time</th>
-                <th>User</th>
-                <th>Notification</th>
-                <th>Status</th>
-                <th>Source</th>
+                <SortableTh label="Time" sort-key="createdAt" :active-key="deliveriesSortKey" :direction="deliveriesSortDir" @sort="toggleDeliveriesSort" />
+                <SortableTh label="User" sort-key="user" :active-key="deliveriesSortKey" :direction="deliveriesSortDir" @sort="toggleDeliveriesSort" />
+                <SortableTh label="Notification" sort-key="title" :active-key="deliveriesSortKey" :direction="deliveriesSortDir" @sort="toggleDeliveriesSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="deliveriesSortKey" :direction="deliveriesSortDir" @sort="toggleDeliveriesSort" />
+                <SortableTh label="Source" sort-key="source" :active-key="deliveriesSortKey" :direction="deliveriesSortDir" @sort="toggleDeliveriesSort" />
                 <th>Error</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="item in deliveries" :key="item.id">
+              <tr v-for="item in sortedDeliveries" :key="item.id">
                 <td class="whitespace-nowrap text-xs">{{ formatDt(item.createdAt) }}</td>
                 <td>
                   <div class="flex items-center gap-2">
@@ -744,15 +788,15 @@ onMounted(async () => {
                     @change="toggleSelectAll"
                   />
                 </th>
-                <th>User</th>
-                <th>Country</th>
-                <th>Status</th>
-                <th>Token updated</th>
+                <SortableTh label="User" sort-key="name" :active-key="usersSortKey" :direction="usersSortDir" @sort="toggleUsersSort" />
+                <SortableTh label="Country" sort-key="country" :active-key="usersSortKey" :direction="usersSortDir" @sort="toggleUsersSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="usersSortKey" :direction="usersSortDir" @sort="toggleUsersSort" />
+                <SortableTh label="Token updated" sort-key="fcmTokenUpdatedAt" :active-key="usersSortKey" :direction="usersSortDir" @sort="toggleUsersSort" />
                 <th />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="user in users" :key="user.userId">
+              <tr v-for="user in sortedUsers" :key="user.userId">
                 <td>
                   <input
                     type="checkbox"

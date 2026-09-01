@@ -4,6 +4,8 @@ import { useRoute } from 'vue-router'
 import { format } from 'date-fns'
 import { otpAuditApi } from '@/api/otpAudit'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import type {
   OtpCostRates,
   OtpCostsByCountry,
@@ -224,6 +226,59 @@ const ratesFootnote = computed(() => {
   return note ? `${parts.join(' · ')}. ${note}` : parts.join(' · ')
 })
 
+const countryRows = computed(() => costsByCountry.value?.countries ?? [])
+const {
+  sortKey: countryRowsSortKey,
+  sortDir: countryRowsSortDir,
+  sortedRows: sortedCountryRows,
+  toggleSort: toggleCountryRowsSort,
+} = useSortableRows(countryRows, (row, key) => {
+  switch (key) {
+    case 'country':
+      return row.country?.toLowerCase() ?? ''
+    case 'email':
+      return row.email.chargeMinor ?? 0
+    case 'whatsapp':
+      return row.whatsapp.chargeMinor ?? 0
+    case 'sms':
+      return row.sms.chargeMinor ?? 0
+    case 'totalChargeMinor':
+      return row.totalChargeMinor ?? 0
+    case 'totalCount':
+      return row.totalCount ?? 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: auditsSortKey,
+  sortDir: auditsSortDir,
+  sortedRows: sortedAudits,
+  toggleSort: toggleAuditsSort,
+} = useSortableRows(audits, (item, key) => {
+  switch (key) {
+    case 'createdAt':
+      return item.createdAt ? new Date(item.createdAt).getTime() : 0
+    case 'flow':
+      return flowLabel(item.flow || item.purpose).toLowerCase()
+    case 'means':
+      return item.means ?? ''
+    case 'country':
+      return (item.country || '').toLowerCase()
+    case 'status':
+      return item.status ?? ''
+    case 'targetMasked':
+      return (item.targetMasked || '').toLowerCase()
+    case 'chargeMinor':
+      return item.chargeMinor ?? 0
+    case 'providerMessageId':
+      return (item.providerMessageId || '').toLowerCase()
+    default:
+      return undefined
+  }
+})
+
 watch(monthValue, () => {
   loadCosts()
 })
@@ -319,16 +374,16 @@ onMounted(async () => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>Country</th>
-              <th>Email</th>
-              <th>WhatsApp</th>
-              <th>SMS</th>
-              <th>Total</th>
-              <th>Sends</th>
+              <SortableTh label="Country" sort-key="country" :active-key="countryRowsSortKey" :direction="countryRowsSortDir" @sort="toggleCountryRowsSort" />
+              <SortableTh label="Email" sort-key="email" :active-key="countryRowsSortKey" :direction="countryRowsSortDir" @sort="toggleCountryRowsSort" />
+              <SortableTh label="WhatsApp" sort-key="whatsapp" :active-key="countryRowsSortKey" :direction="countryRowsSortDir" @sort="toggleCountryRowsSort" />
+              <SortableTh label="SMS" sort-key="sms" :active-key="countryRowsSortKey" :direction="countryRowsSortDir" @sort="toggleCountryRowsSort" />
+              <SortableTh label="Total" sort-key="totalChargeMinor" :active-key="countryRowsSortKey" :direction="countryRowsSortDir" @sort="toggleCountryRowsSort" />
+              <SortableTh label="Sends" sort-key="totalCount" :active-key="countryRowsSortKey" :direction="countryRowsSortDir" @sort="toggleCountryRowsSort" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in costsByCountry?.countries ?? []" :key="row.country">
+            <tr v-for="row in sortedCountryRows" :key="row.country">
               <td class="font-medium">{{ row.country }}</td>
               <td class="tabular-nums text-sm">
                 {{ formatCharge(row.email.chargeMinor, currency) }}
@@ -430,18 +485,18 @@ onMounted(async () => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>Time</th>
-              <th>Flow</th>
-              <th>Means</th>
-              <th>Country</th>
-              <th>Status</th>
-              <th>Target</th>
-              <th>Charge</th>
-              <th>Message ID</th>
+              <SortableTh label="Time" sort-key="createdAt" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Flow" sort-key="flow" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Means" sort-key="means" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Country" sort-key="country" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Status" sort-key="status" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Target" sort-key="targetMasked" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Charge" sort-key="chargeMinor" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
+              <SortableTh label="Message ID" sort-key="providerMessageId" :active-key="auditsSortKey" :direction="auditsSortDir" @sort="toggleAuditsSort" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in audits" :key="item.id">
+            <tr v-for="item in sortedAudits" :key="item.id">
               <td class="whitespace-nowrap text-xs">
                 {{ format(new Date(item.createdAt), 'dd MMM yyyy HH:mm') }}
               </td>

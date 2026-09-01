@@ -11,6 +11,8 @@ import type {
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { formatNumber } from '@/utils/format'
 import { isValidHttpUrl } from '@/utils/catalogValidation'
 import { showToast } from '@/utils/toast'
@@ -347,6 +349,26 @@ async function confirmDelete() {
   }
 }
 
+const {
+  sortKey: bannersSortKey,
+  sortDir: bannersSortDir,
+  sortedRows: sortedBanners,
+  toggleSort: toggleBannersSort,
+} = useSortableRows(banners, (banner, key) => {
+  switch (key) {
+    case 'title':
+      return banner.title?.toLowerCase() ?? ''
+    case 'position':
+      return banner.position?.toLowerCase() ?? ''
+    case 'startAt':
+      return banner.startAt ? new Date(banner.startAt).getTime() : 0
+    case 'status':
+      return banner.status ?? ''
+    default:
+      return undefined
+  }
+})
+
 const formDialogOpen = computed(() => createOpen.value || !!editBanner.value)
 const formDialogTitle = computed(() => (editBanner.value ? 'Edit Banner' : 'Create Banner'))
 
@@ -423,10 +445,10 @@ onMounted(() => loadBanners())
         <table class="admin-table">
           <thead>
             <tr>
-              <th>Banner</th>
-              <th>Position</th>
-              <th>Window</th>
-              <th>Status</th>
+              <SortableTh label="Banner" sort-key="title" :active-key="bannersSortKey" :direction="bannersSortDir" @sort="toggleBannersSort" />
+              <SortableTh label="Position" sort-key="position" :active-key="bannersSortKey" :direction="bannersSortDir" @sort="toggleBannersSort" />
+              <SortableTh label="Window" sort-key="startAt" :active-key="bannersSortKey" :direction="bannersSortDir" @sort="toggleBannersSort" />
+              <SortableTh label="Status" sort-key="status" :active-key="bannersSortKey" :direction="bannersSortDir" @sort="toggleBannersSort" />
               <th>Actions</th>
             </tr>
           </thead>
@@ -437,7 +459,7 @@ onMounted(() => loadBanners())
             <tr v-else-if="!banners.length">
               <td colspan="5" class="py-8 text-center text-admin-subtext">No banners found</td>
             </tr>
-            <tr v-for="banner in banners" :key="banner.id">
+            <tr v-for="banner in sortedBanners" :key="banner.id">
               <td>
                 <div class="flex items-center gap-3">
                   <img

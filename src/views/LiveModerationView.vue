@@ -5,6 +5,8 @@ import { format } from 'date-fns'
 import { userAdminApi } from '@/api/userAdmin'
 import { liveRestrictionsApi, isLiveEnforcedRestrictionType } from '@/api/liveRestrictions'
 import { useLiveModerationActions } from '@/composables/useLiveModerationActions'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { REPORT_REASON_OPTIONS } from '@/types/customerSupport'
 import type {
   AdminGlobalRestrictionItem,
@@ -211,6 +213,65 @@ async function clearRestriction(uid: string, restrictionId: string) {
   if (ok) void load(page.value)
 }
 
+const {
+  sortKey: streamsSortKey,
+  sortDir: streamsSortDir,
+  sortedRows: sortedStreams,
+  toggleSort: toggleStreamsSort,
+} = useSortableRows(streams, (row, key) => {
+  switch (key) {
+    case 'host':
+      return (row.host?.name || row.host?.username || '').toLowerCase()
+    case 'room':
+      return (row.title || row.roomId || '').toLowerCase()
+    case 'startedAt':
+      return row.startedAt ? new Date(row.startedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: restrictionsSortKey,
+  sortDir: restrictionsSortDir,
+  sortedRows: sortedRestrictions,
+  toggleSort: toggleRestrictionsSort,
+} = useSortableRows(restrictions, (row, key) => {
+  switch (key) {
+    case 'user':
+      return (row.user?.name || row.user?.username || '').toLowerCase()
+    case 'type':
+      return row.type ?? ''
+    case 'restrictedUntil':
+      return row.restrictedUntil ? new Date(row.restrictedUntil).getTime() : 0
+    case 'reason':
+      return (row.reason || '').toLowerCase()
+    default:
+      return undefined
+  }
+})
+
+function itemTimestamp(row: (typeof items.value)[number]): number {
+  const iso =
+    asNudity(row)?.checkedAt || asVideo(row)?.checkedAt || asBan(row)?.createdAt || asReport(row)?.createdAt
+  const t = iso ? new Date(iso).getTime() : NaN
+  return Number.isFinite(t) ? t : 0
+}
+
+const {
+  sortKey: itemsSortKey,
+  sortDir: itemsSortDir,
+  sortedRows: sortedItems,
+  toggleSort: toggleItemsSort,
+} = useSortableRows(items, (row, key) => {
+  switch (key) {
+    case 'when':
+      return itemTimestamp(row)
+    default:
+      return undefined
+  }
+})
+
 async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
   actingId.value = id
   const ok = await actions.reviewReport(id, status)
@@ -296,14 +357,14 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
       <table class="admin-table">
         <thead>
           <tr>
-            <th>Host</th>
-            <th>Room</th>
-            <th>Started</th>
+            <SortableTh label="Host" sort-key="host" :active-key="streamsSortKey" :direction="streamsSortDir" @sort="toggleStreamsSort" />
+            <SortableTh label="Room" sort-key="room" :active-key="streamsSortKey" :direction="streamsSortDir" @sort="toggleStreamsSort" />
+            <SortableTh label="Started" sort-key="startedAt" :active-key="streamsSortKey" :direction="streamsSortDir" @sort="toggleStreamsSort" />
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in streams" :key="row.id">
+          <tr v-for="row in sortedStreams" :key="row.id">
             <td>
               <RouterLink
                 v-if="row.hostUserId"
@@ -364,15 +425,15 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
       <table v-else class="admin-table">
         <thead>
           <tr>
-            <th>User</th>
-            <th>Type</th>
-            <th>Until</th>
-            <th>Reason</th>
+            <SortableTh label="User" sort-key="user" :active-key="restrictionsSortKey" :direction="restrictionsSortDir" @sort="toggleRestrictionsSort" />
+            <SortableTh label="Type" sort-key="type" :active-key="restrictionsSortKey" :direction="restrictionsSortDir" @sort="toggleRestrictionsSort" />
+            <SortableTh label="Until" sort-key="restrictedUntil" :active-key="restrictionsSortKey" :direction="restrictionsSortDir" @sort="toggleRestrictionsSort" />
+            <SortableTh label="Reason" sort-key="reason" :active-key="restrictionsSortKey" :direction="restrictionsSortDir" @sort="toggleRestrictionsSort" />
             <th></th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in restrictions" :key="row.id">
+          <tr v-for="row in sortedRestrictions" :key="row.id">
             <td>
               <RouterLink
                 v-if="row.userId"
@@ -411,7 +472,7 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
       <table class="admin-table">
         <thead>
           <tr>
-            <th>When</th>
+            <SortableTh label="When" sort-key="when" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
             <th>Detail</th>
             <th>People</th>
             <th>Evidence</th>
@@ -419,7 +480,7 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in items" :key="row.id">
+          <tr v-for="row in sortedItems" :key="row.id">
             <td class="whitespace-nowrap text-xs">
               {{
                 format(

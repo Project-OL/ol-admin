@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import axios from 'axios'
 import { format } from 'date-fns'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { useAgencyPayrollStore } from '@/stores/agencyPayroll'
 import { formatLocalMoney, formatPoints, formatUsd } from '@/utils/format'
 import { showToast } from '@/utils/toast'
@@ -238,6 +240,114 @@ async function handleFavourHost(payload: { reason?: string }) {
   }
 }
 
+const assignmentsRows = computed(() => store.assignments)
+const {
+  sortKey: assignmentsSortKey,
+  sortDir: assignmentsSortDir,
+  sortedRows: sortedAssignments,
+  toggleSort: toggleAssignmentsSort,
+} = useSortableRows(assignmentsRows, (row, key) => {
+  switch (key) {
+    case 'agent':
+      return row.agent.displayName?.toLowerCase() ?? ''
+    case 'host':
+      return row.host.displayName?.toLowerCase() ?? ''
+    case 'status':
+      return row.status ?? ''
+    case 'withdrawalStatus':
+      return row.withdrawal.status ?? ''
+    case 'grossPoints':
+      return Number(row.withdrawal.grossPoints ?? 0)
+    case 'hostPayoutPoints':
+      return Number(row.withdrawal.hostPayoutPoints ?? 0)
+    case 'agentRewardPoints':
+      return Number(row.withdrawal.agentRewardPoints ?? 0)
+    case 'assignedAt':
+      return row.assignedAt ? new Date(row.assignedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const disputedRows = computed(() => store.disputed)
+const {
+  sortKey: disputedSortKey,
+  sortDir: disputedSortDir,
+  sortedRows: sortedDisputed,
+  toggleSort: toggleDisputedSort,
+} = useSortableRows(disputedRows, (row, key) => {
+  switch (key) {
+    case 'host':
+      return row.hostDisplayName?.toLowerCase() ?? ''
+    case 'agent':
+      return row.assignment?.agentDisplayName?.toLowerCase() ?? ''
+    case 'methodType':
+      return row.methodType ?? ''
+    case 'grossPoints':
+      return Number(row.grossPoints ?? 0)
+    case 'hostPayoutUsd':
+      return row.hostPayoutUsd != null ? Number(row.hostPayoutUsd) : -1
+    case 'requestedAt':
+      return row.requestedAt ? new Date(row.requestedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const adminPayRows = computed(() => store.pendingAdminPay)
+const {
+  sortKey: adminPaySortKey,
+  sortDir: adminPaySortDir,
+  sortedRows: sortedAdminPay,
+  toggleSort: toggleAdminPaySort,
+} = useSortableRows(adminPayRows, (row, key) => {
+  switch (key) {
+    case 'id':
+      return row.id ?? ''
+    case 'methodType':
+      return row.methodType ?? ''
+    case 'status':
+      return row.status ?? ''
+    case 'grossPoints':
+      return Number(row.grossPoints ?? 0)
+    case 'hostPayoutUsd':
+      return row.hostPayoutUsd != null ? Number(row.hostPayoutUsd) : -1
+    case 'serviceFeePoints':
+      return Number(row.serviceFeePoints ?? 0)
+    case 'requestedAt':
+      return row.requestedAt ? new Date(row.requestedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const assignQueueRows = computed(() => store.pendingAssign)
+const {
+  sortKey: assignQueueSortKey,
+  sortDir: assignQueueSortDir,
+  sortedRows: sortedAssignQueue,
+  toggleSort: toggleAssignQueueSort,
+} = useSortableRows(assignQueueRows, (row, key) => {
+  switch (key) {
+    case 'id':
+      return row.id ?? ''
+    case 'methodType':
+      return row.methodType ?? ''
+    case 'status':
+      return row.status ?? ''
+    case 'grossPoints':
+      return Number(row.grossPoints ?? 0)
+    case 'hostPayoutUsd':
+      return row.hostPayoutUsd != null ? Number(row.hostPayoutUsd) : -1
+    case 'assignmentCount':
+      return row.assignmentCount ?? 0
+    case 'requestedAt':
+      return row.requestedAt ? new Date(row.requestedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
 watch(activeTab, (tab) => {
   if (tab === 'assignments' && !store.assignments.length) void loadAssignments()
   if (tab === 'disputed' && !store.disputed.length) void store.fetchDisputed()
@@ -325,19 +435,19 @@ onMounted(() => loadAssignments())
             <thead>
               <tr>
                 <th>Proof</th>
-                <th>Agent</th>
-                <th>Host</th>
-                <th>Assignment</th>
-                <th>Withdrawal</th>
-                <th>Gross</th>
-                <th>Host payout</th>
-                <th>Agent reward</th>
-                <th>Assigned</th>
+                <SortableTh label="Agent" sort-key="agent" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Host" sort-key="host" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Assignment" sort-key="status" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Withdrawal" sort-key="withdrawalStatus" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Gross" sort-key="grossPoints" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Host payout" sort-key="hostPayoutPoints" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Agent reward" sort-key="agentRewardPoints" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
+                <SortableTh label="Assigned" sort-key="assignedAt" :active-key="assignmentsSortKey" :direction="assignmentsSortDir" @sort="toggleAssignmentsSort" />
                 <th />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in store.assignments" :key="row.assignmentId">
+              <tr v-for="row in sortedAssignments" :key="row.assignmentId">
                 <td>
                   <img
                     v-if="row.proofImageUrl"
@@ -433,18 +543,18 @@ onMounted(() => loadAssignments())
             <thead>
               <tr>
                 <th>Proof</th>
-                <th>Host</th>
-                <th>Agent</th>
-                <th>Rail</th>
-                <th>Gross</th>
-                <th>Host payout</th>
-                <th>Requested</th>
+                <SortableTh label="Host" sort-key="host" :active-key="disputedSortKey" :direction="disputedSortDir" @sort="toggleDisputedSort" />
+                <SortableTh label="Agent" sort-key="agent" :active-key="disputedSortKey" :direction="disputedSortDir" @sort="toggleDisputedSort" />
+                <SortableTh label="Rail" sort-key="methodType" :active-key="disputedSortKey" :direction="disputedSortDir" @sort="toggleDisputedSort" />
+                <SortableTh label="Gross" sort-key="grossPoints" :active-key="disputedSortKey" :direction="disputedSortDir" @sort="toggleDisputedSort" />
+                <SortableTh label="Host payout" sort-key="hostPayoutUsd" :active-key="disputedSortKey" :direction="disputedSortDir" @sort="toggleDisputedSort" />
+                <SortableTh label="Requested" sort-key="requestedAt" :active-key="disputedSortKey" :direction="disputedSortDir" @sort="toggleDisputedSort" />
                 <th>Ticket</th>
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in store.disputed" :key="row.withdrawalId">
+              <tr v-for="row in sortedDisputed" :key="row.withdrawalId">
                 <td>
                   <img
                     v-if="row.proofImageUrl"
@@ -571,18 +681,18 @@ onMounted(() => loadAssignments())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Withdrawal</th>
-                <th>Rail</th>
-                <th>Status</th>
-                <th>Gross</th>
-                <th>Host payout</th>
-                <th>Service fee</th>
-                <th>Requested</th>
+                <SortableTh label="Withdrawal" sort-key="id" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
+                <SortableTh label="Rail" sort-key="methodType" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
+                <SortableTh label="Status" sort-key="status" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
+                <SortableTh label="Gross" sort-key="grossPoints" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
+                <SortableTh label="Host payout" sort-key="hostPayoutUsd" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
+                <SortableTh label="Service fee" sort-key="serviceFeePoints" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
+                <SortableTh label="Requested" sort-key="requestedAt" :active-key="adminPaySortKey" :direction="adminPaySortDir" @sort="toggleAdminPaySort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in store.pendingAdminPay" :key="row.id">
+              <tr v-for="row in sortedAdminPay" :key="row.id">
                 <td class="max-w-[140px] truncate font-mono text-xs" :title="row.id">
                   {{ row.id }}
                 </td>
@@ -647,18 +757,18 @@ onMounted(() => loadAssignments())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Withdrawal</th>
-                <th>Rail</th>
-                <th>Status</th>
-                <th>Gross</th>
-                <th>Host payout</th>
-                <th>Assignments</th>
-                <th>Requested</th>
+                <SortableTh label="Withdrawal" sort-key="id" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
+                <SortableTh label="Rail" sort-key="methodType" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
+                <SortableTh label="Gross" sort-key="grossPoints" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
+                <SortableTh label="Host payout" sort-key="hostPayoutUsd" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
+                <SortableTh label="Assignments" sort-key="assignmentCount" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
+                <SortableTh label="Requested" sort-key="requestedAt" :active-key="assignQueueSortKey" :direction="assignQueueSortDir" @sort="toggleAssignQueueSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in store.pendingAssign" :key="row.id">
+              <tr v-for="row in sortedAssignQueue" :key="row.id">
                 <td class="max-w-[140px] truncate font-mono text-xs" :title="row.id">
                   {{ row.id }}
                 </td>
