@@ -22,6 +22,8 @@ import type {
 import { REPORT_REASON_OPTIONS } from '@/types/customerSupport'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import AssignCsaViewsDialog from '@/components/support/AssignCsaViewsDialog.vue'
 import CsaIpWhitelistDialog from '@/components/support/CsaIpWhitelistDialog.vue'
 import ResetPasswordDialog from '@/components/shared/ResetPasswordDialog.vue'
@@ -163,6 +165,89 @@ const reportFilters = reactive({
 const selectedReport = ref<SupportReport | null>(null)
 const reportNote = ref('')
 const reportActing = ref(false)
+
+// --- Column sorting (client-side, current page only) ---
+const PRIORITY_RANK: Record<string, number> = { LOW: 0, NORMAL: 1, HIGH: 2, URGENT: 3 }
+
+const {
+  sortKey: csaSortKey,
+  sortDir: csaSortDir,
+  sortedRows: sortedCsas,
+  toggleSort: toggleCsaSort,
+} = useSortableRows(csas, (csa, key) => {
+  switch (key) {
+    case 'name':
+      return csa.name?.toLowerCase() ?? ''
+    case 'email':
+      return csa.email?.toLowerCase() ?? ''
+    case 'country':
+      return csa.country?.toLowerCase() ?? ''
+    case 'openTicketCount':
+      return csa.openTicketCount ?? 0
+    case 'closedTicketCount':
+      return csa.closedTicketCount ?? 0
+    case 'avgRating':
+      return csa.avgRating ?? -1
+    case 'status':
+      return csa.status ?? ''
+    case 'lastLoginAt':
+      return csa.lastLoginAt ? new Date(csa.lastLoginAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: ticketSortKey,
+  sortDir: ticketSortDir,
+  sortedRows: sortedTickets,
+  toggleSort: toggleTicketSort,
+} = useSortableRows(tickets, (t, key) => {
+  switch (key) {
+    case 'publicId':
+      return t.publicId ?? t.id
+    case 'user':
+      return (t.user?.name || t.user?.username || '').toLowerCase()
+    case 'priority':
+      return PRIORITY_RANK[t.priority] ?? -1
+    case 'stage':
+      return t.stage ?? ''
+    case 'rating':
+      return t.rating ?? -1
+    case 'daysSinceReviewed':
+      return t.daysSinceReviewed ?? -1
+    case 'updatedAt':
+      return t.updatedAt ? new Date(t.updatedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: reportSortKey,
+  sortDir: reportSortDir,
+  sortedRows: sortedReports,
+  toggleSort: toggleReportSort,
+} = useSortableRows(reports, (r, key) => {
+  switch (key) {
+    case 'id':
+      return r.id
+    case 'reporter':
+      return (r.reporter?.name || r.reporter?.username || '').toLowerCase()
+    case 'reported':
+      return (r.reportedUser?.name || r.reportedUser?.username || '').toLowerCase()
+    case 'host':
+      return (r.hostUser?.name || r.hostUser?.username || '').toLowerCase()
+    case 'reason':
+      return r.reason ?? ''
+    case 'status':
+      return r.status ?? ''
+    case 'createdAt':
+      return r.createdAt ? new Date(r.createdAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
 
 function resetCsaForm() {
   csaForm.name = ''
@@ -951,20 +1036,20 @@ onMounted(() => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Agent</th>
-                <th>Contact</th>
-                <th>Country</th>
-                <th>Open</th>
-                <th>Closed</th>
-                <th>Avg rating</th>
-                <th>Status</th>
+                <SortableTh label="Agent" sort-key="name" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
+                <SortableTh label="Contact" sort-key="email" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
+                <SortableTh label="Country" sort-key="country" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
+                <SortableTh label="Open" sort-key="openTicketCount" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
+                <SortableTh label="Closed" sort-key="closedTicketCount" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
+                <SortableTh label="Avg rating" sort-key="avgRating" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
                 <th>Login lock</th>
-                <th>Last login</th>
+                <SortableTh label="Last login" sort-key="lastLoginAt" :active-key="csaSortKey" :direction="csaSortDir" @sort="toggleCsaSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="csa in csas" :key="csa.id">
+              <tr v-for="csa in sortedCsas" :key="csa.id">
                 <td>
                   <div class="flex items-center gap-2">
                     <span
@@ -1254,19 +1339,19 @@ onMounted(() => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Ticket</th>
-                <th>User</th>
-                <th>Priority</th>
-                <th>Stage</th>
-                <th>Rating</th>
-                <th>Since reviewed</th>
-                <th>Updated</th>
+                <SortableTh label="Ticket" sort-key="publicId" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
+                <SortableTh label="User" sort-key="user" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
+                <SortableTh label="Priority" sort-key="priority" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
+                <SortableTh label="Stage" sort-key="stage" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
+                <SortableTh label="Rating" sort-key="rating" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
+                <SortableTh label="Since reviewed" sort-key="daysSinceReviewed" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
+                <SortableTh label="Updated" sort-key="updatedAt" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="t in tickets"
+                v-for="t in sortedTickets"
                 :key="t.id"
                 class="cursor-pointer hover:bg-admin-bg/50"
                 @click="openTicket(t)"
@@ -1393,18 +1478,18 @@ onMounted(() => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Report</th>
-                <th>Reporter</th>
-                <th>Reported</th>
-                <th>Host</th>
-                <th>Reason</th>
-                <th>Status</th>
-                <th>Created</th>
+                <SortableTh label="Report" sort-key="id" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
+                <SortableTh label="Reporter" sort-key="reporter" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
+                <SortableTh label="Reported" sort-key="reported" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
+                <SortableTh label="Host" sort-key="host" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
+                <SortableTh label="Reason" sort-key="reason" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
+                <SortableTh label="Created" sort-key="createdAt" :active-key="reportSortKey" :direction="reportSortDir" @sort="toggleReportSort" />
               </tr>
             </thead>
             <tbody>
               <tr
-                v-for="r in reports"
+                v-for="r in sortedReports"
                 :key="r.id"
                 class="cursor-pointer hover:bg-admin-bg/50"
                 @click="openReport(r)"
