@@ -300,6 +300,22 @@ export interface FailedLoginAttemptsResponse {
   hasMore: boolean
 }
 
+export interface SupportReplyTemplate {
+  id: string
+  title: string
+  content: string
+  createdByAdminId?: string | null
+  createdAt: string
+  updatedAt: string
+}
+
+export interface BulkResolveWithTemplateResult {
+  templateId: string
+  succeeded: number
+  failed: number
+  results: Array<{ ticketId: string; ok: boolean; error?: string }>
+}
+
 export interface TicketListQuery {
   assignedTo?: string
   status?: SupportTicketStatus

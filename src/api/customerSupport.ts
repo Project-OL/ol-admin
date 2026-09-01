@@ -1,6 +1,7 @@
 import api from '@/api/client'
 import type {
   AdminStatus,
+  BulkResolveWithTemplateResult,
   CreateCsaPayload,
   CsaAdmin,
   CsaDirectoryEntry,
@@ -15,6 +16,7 @@ import type {
   ReportListQuery,
   SupportMessage,
   SupportNotification,
+  SupportReplyTemplate,
   SupportReport,
   SupportTicketListItem,
   TicketDetailResponse,
@@ -172,6 +174,40 @@ export const customerSupportApi = {
 
   addNote(ticketId: string, content: string) {
     return api.post('/admin/support/tickets/' + ticketId + '/notes', { content })
+  },
+
+  bulkResolveWithTemplate(payload: {
+    ticketIds: string[]
+    templateId: string
+    resolution?: SupportTicketResolution
+  }) {
+    return api.post<BulkResolveWithTemplateResult>(
+      '/admin/support/tickets/bulk-resolve-with-template',
+      payload,
+    )
+  },
+
+  // --- Reply templates ---
+  listReplyTemplates() {
+    return api.get<{ templates: SupportReplyTemplate[] }>('/admin/support/reply-templates')
+  },
+
+  createReplyTemplate(payload: { title: string; content: string }) {
+    return api.post<{ template: SupportReplyTemplate }>(
+      '/admin/support/reply-templates',
+      payload,
+    )
+  },
+
+  updateReplyTemplate(templateId: string, payload: { title?: string; content?: string }) {
+    return api.patch<{ template: SupportReplyTemplate }>(
+      '/admin/support/reply-templates/' + templateId,
+      payload,
+    )
+  },
+
+  deleteReplyTemplate(templateId: string) {
+    return api.delete<{ ok: true; id: string }>('/admin/support/reply-templates/' + templateId)
   },
 
   getUploadUrl(payload: { ticketId: string; fileName: string; mimeType: string }) {

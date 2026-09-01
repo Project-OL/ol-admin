@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth'
 import type {
   SupportMessage,
   SupportNote,
+  SupportReplyTemplate,
   SupportTicketDetail,
   SupportTicketPriority,
   SupportTicketResolution,
@@ -46,6 +47,9 @@ const noteText = ref('')
 const resolveOpen = ref(false)
 const resolveNote = ref('')
 const resolveType = ref<SupportTicketResolution>('RESOLVED')
+const replyTemplates = ref<SupportReplyTemplate[]>([])
+const loadingTemplates = ref(false)
+const selectedTemplateId = ref('')
 const assignOpen = ref(false)
 const assignAdminId = ref('')
 const { csas: csaOptions, loading: loadingCsas, load: loadCsaDirectory, csaLabel } = useCsaDirectory()
@@ -214,6 +218,24 @@ async function claim() {
   } finally {
     acting.value = false
   }
+}
+
+async function loadReplyTemplates() {
+  if (replyTemplates.value.length || loadingTemplates.value) return
+  loadingTemplates.value = true
+  try {
+    const { data } = await customerSupportApi.listReplyTemplates()
+    replyTemplates.value = data.templates ?? []
+  } catch {
+    /* template picker is optional; leave the note free-typed */
+  } finally {
+    loadingTemplates.value = false
+  }
+}
+
+function applyTemplate() {
+  const template = replyTemplates.value.find((t) => t.id === selectedTemplateId.value)
+  if (template) resolveNote.value = template.content
 }
 
 async function submitResolve() {
@@ -436,7 +458,7 @@ onUnmounted(() => {
               type="button"
               class="admin-btn-secondary text-xs"
               :disabled="acting"
-              @click="resolveType = 'RESOLVED'; resolveNote = ''; resolveOpen = true"
+              @click="resolveType = 'RESOLVED'; resolveNote = ''; selectedTemplateId = ''; resolveOpen = true; loadReplyTemplates()"
             >
               Resolve
             </button>
@@ -445,7 +467,7 @@ onUnmounted(() => {
               type="button"
               class="admin-btn-secondary text-xs"
               :disabled="acting"
-              @click="resolveType = 'REJECTED'; resolveNote = ''; resolveOpen = true"
+              @click="resolveType = 'REJECTED'; resolveNote = ''; selectedTemplateId = ''; resolveOpen = true; loadReplyTemplates()"
             >
               Reject
             </button>
@@ -622,6 +644,18 @@ onUnmounted(() => {
           Posts your reason into the user chat and moves the ticket to pending review.
           The user will have the configured contest window to confirm-close or reply to contest.
         </p>
+        <div v-if="replyTemplates.length || loadingTemplates" class="mb-3">
+          <label class="mb-1 block text-xs text-admin-subtext">Use template (optional)</label>
+          <select
+            v-model="selectedTemplateId"
+            class="admin-input"
+            :disabled="loadingTemplates"
+            @change="applyTemplate"
+          >
+            <option value="">{{ loadingTemplates ? 'Loading…' : 'Select a template…' }}</option>
+            <option v-for="t in replyTemplates" :key="t.id" :value="t.id">{{ t.title }}</option>
+          </select>
+        </div>
         <textarea
           v-model="resolveNote"
           rows="3"

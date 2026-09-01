@@ -13,9 +13,11 @@ import type {
   FailedLoginAttempt,
   ReportReason,
   ReportStatus,
+  SupportReplyTemplate,
   SupportReport,
   SupportTicketListItem,
   SupportTicketPriority,
+  SupportTicketResolution,
   SupportTicketStage,
   SupportTicketStatus,
 } from '@/types/customerSupport'
@@ -150,6 +152,22 @@ const ticketFilters = reactive({
   /** '' | 'min:N' | 'max:N' — days since CSA resolve/reject (resolvedAt). */
   reviewAge: '',
 })
+
+// --- Reply templates ---
+const replyTemplates = ref<SupportReplyTemplate[]>([])
+const loadingTemplates = ref(false)
+const templatesOpen = ref(false)
+const templateFormOpen = ref(false)
+const editingTemplate = ref<SupportReplyTemplate | null>(null)
+const templateForm = reactive({ title: '', content: '' })
+const templateActing = ref(false)
+
+// --- Bulk resolve with template ---
+const selectedTicketIds = ref<Set<string>>(new Set())
+const bulkResolveOpen = ref(false)
+const bulkTemplateId = ref('')
+const bulkResolution = ref<SupportTicketResolution>('RESOLVED')
+const bulkActing = ref(false)
 
 // --- Reports ---
 const reports = ref<SupportReport[]>([])
@@ -622,6 +640,7 @@ function formatDaysSinceReviewed(days: number | null | undefined) {
 async function loadTickets(page = 1) {
   loadingTickets.value = true
   ticketsPage.value = page
+  selectedTicketIds.value = new Set()
   try {
     let assignedTo: string
     if (isSuperAdmin.value && ticketQueue.value === 'csa') {
@@ -780,6 +799,155 @@ async function claimTicket(ticket: SupportTicketListItem, event: Event) {
     await loadTickets(ticketsPage.value)
   } catch {
     showToast('Could not claim ticket', 'error')
+  }
+}
+
+// --- Reply templates ---
+async function loadReplyTemplates() {
+  loadingTemplates.value = true
+  try {
+    const { data } = await customerSupportApi.listReplyTemplates()
+    replyTemplates.value = data.templates ?? []
+  } catch {
+    showToast('Failed to load reply templates', 'error')
+  } finally {
+    loadingTemplates.value = false
+  }
+}
+
+function openTemplates() {
+  templatesOpen.value = true
+  void loadReplyTemplates()
+}
+
+function resetTemplateForm() {
+  templateForm.title = ''
+  templateForm.content = ''
+}
+
+function openNewTemplate() {
+  editingTemplate.value = null
+  resetTemplateForm()
+  templateFormOpen.value = true
+}
+
+function openEditTemplate(template: SupportReplyTemplate) {
+  editingTemplate.value = template
+  templateForm.title = template.title
+  templateForm.content = template.content
+  templateFormOpen.value = true
+}
+
+async function submitTemplateForm() {
+  if (!templateForm.title.trim() || !templateForm.content.trim()) {
+    showToast('Title and content are required', 'error')
+    return
+  }
+  templateActing.value = true
+  try {
+    if (editingTemplate.value) {
+      await customerSupportApi.updateReplyTemplate(editingTemplate.value.id, {
+        title: templateForm.title.trim(),
+        content: templateForm.content.trim(),
+      })
+      showToast('Template updated', 'success')
+    } else {
+      await customerSupportApi.createReplyTemplate({
+        title: templateForm.title.trim(),
+        content: templateForm.content.trim(),
+      })
+      showToast('Template created', 'success')
+    }
+    templateFormOpen.value = false
+    await loadReplyTemplates()
+  } catch {
+    showToast('Failed to save template', 'error')
+  } finally {
+    templateActing.value = false
+  }
+}
+
+async function deleteTemplate(template: SupportReplyTemplate) {
+  if (!confirm(`Delete reply template "${template.title}"?`)) return
+  templateActing.value = true
+  try {
+    await customerSupportApi.deleteReplyTemplate(template.id)
+    showToast('Template deleted', 'success')
+    await loadReplyTemplates()
+  } catch {
+    showToast('Failed to delete template', 'error')
+  } finally {
+    templateActing.value = false
+  }
+}
+
+// --- Bulk resolve with template ---
+function isTicketSelectable(t: SupportTicketListItem) {
+  return t.stage !== 'closed'
+}
+
+const selectableTicketIds = computed(() =>
+  sortedTickets.value.filter(isTicketSelectable).map((t) => t.id),
+)
+
+const allSelectableSelected = computed(
+  () =>
+    selectableTicketIds.value.length > 0 &&
+    selectableTicketIds.value.every((id) => selectedTicketIds.value.has(id)),
+)
+
+function toggleTicketSelection(ticketId: string) {
+  const next = new Set(selectedTicketIds.value)
+  if (next.has(ticketId)) next.delete(ticketId)
+  else next.add(ticketId)
+  selectedTicketIds.value = next
+}
+
+function toggleSelectAll() {
+  if (allSelectableSelected.value) {
+    selectedTicketIds.value = new Set()
+  } else {
+    selectedTicketIds.value = new Set(selectableTicketIds.value)
+  }
+}
+
+function clearSelection() {
+  selectedTicketIds.value = new Set()
+}
+
+async function openBulkResolve() {
+  if (selectedTicketIds.value.size === 0) return
+  bulkTemplateId.value = ''
+  bulkResolution.value = 'RESOLVED'
+  bulkResolveOpen.value = true
+  if (!replyTemplates.value.length) await loadReplyTemplates()
+}
+
+async function submitBulkResolve() {
+  if (!bulkTemplateId.value) {
+    showToast('Select a reply template', 'error')
+    return
+  }
+  bulkActing.value = true
+  try {
+    const { data } = await customerSupportApi.bulkResolveWithTemplate({
+      ticketIds: [...selectedTicketIds.value],
+      templateId: bulkTemplateId.value,
+      resolution: bulkResolution.value,
+    })
+    showToast(
+      data.failed > 0
+        ? `Resolved ${data.succeeded}, failed ${data.failed}`
+        : `Resolved ${data.succeeded} ticket${data.succeeded === 1 ? '' : 's'}`,
+      data.failed > 0 ? 'error' : 'success',
+    )
+    bulkResolveOpen.value = false
+    clearSelection()
+    await loadTickets(ticketsPage.value)
+  } catch {
+    showToast('Bulk resolve failed', 'error')
+  } finally {
+    bulkActing.value = false
   }
 }
 
@@ -1333,12 +1501,37 @@ onMounted(() => {
           <button type="button" class="admin-btn-primary" :disabled="loadingTickets" @click="loadTickets(1)">
             Refresh
           </button>
+          <button type="button" class="admin-btn-secondary" @click="openTemplates">
+            Reply templates
+          </button>
+        </div>
+
+        <div
+          v-if="selectedTicketIds.size > 0"
+          class="flex flex-wrap items-center gap-3 rounded-md border border-admin-accent/40 bg-admin-accent/10 px-3 py-2 text-sm"
+        >
+          <span>{{ selectedTicketIds.size }} selected</span>
+          <button type="button" class="admin-btn-primary py-1 text-xs" @click="openBulkResolve">
+            Resolve with template
+          </button>
+          <button type="button" class="admin-btn-secondary py-1 text-xs" @click="clearSelection">
+            Clear
+          </button>
         </div>
 
         <div class="admin-table-wrap">
           <table class="admin-table">
             <thead>
               <tr>
+                <th>
+                  <input
+                    type="checkbox"
+                    class="accent-admin-accent"
+                    :checked="allSelectableSelected"
+                    :disabled="!selectableTicketIds.length"
+                    @change="toggleSelectAll"
+                  />
+                </th>
                 <SortableTh label="Ticket" sort-key="publicId" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
                 <SortableTh label="User" sort-key="user" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
                 <SortableTh label="Priority" sort-key="priority" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
@@ -1356,6 +1549,15 @@ onMounted(() => {
                 class="cursor-pointer hover:bg-admin-bg/50"
                 @click="openTicket(t)"
               >
+                <td @click.stop>
+                  <input
+                    type="checkbox"
+                    class="accent-admin-accent"
+                    :disabled="!isTicketSelectable(t)"
+                    :checked="selectedTicketIds.has(t.id)"
+                    @change="toggleTicketSelection(t.id)"
+                  />
+                </td>
                 <td>
                   <div class="flex items-start gap-2">
                     <img
@@ -1415,7 +1617,7 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!tickets.length && !loadingTickets">
-                <td colspan="8" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
+                <td colspan="9" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
               </tr>
             </tbody>
           </table>
@@ -2096,6 +2298,137 @@ onMounted(() => {
           @click="csaTicketsOpen = false; csaTicketsTarget = null"
         >
           Close
+        </button>
+      </template>
+    </BaseDialog>
+
+    <!-- Reply templates -->
+    <BaseDialog :open="templatesOpen" title="Reply templates" size="lg" @close="templatesOpen = false">
+      <template #body>
+        <div class="mb-3 flex justify-end">
+          <button type="button" class="admin-btn-primary py-1 text-xs" @click="openNewTemplate">
+            Add template
+          </button>
+        </div>
+        <div class="admin-table-wrap max-h-[50vh] overflow-auto">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Title</th>
+                <th>Content</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="t in replyTemplates" :key="t.id">
+                <td class="font-medium">{{ t.title }}</td>
+                <td class="max-w-[360px] truncate text-xs text-admin-subtext">{{ t.content }}</td>
+                <td>
+                  <div class="flex gap-1">
+                    <button type="button" class="admin-btn-secondary py-1 text-xs" @click="openEditTemplate(t)">
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      class="admin-btn-danger py-1 text-xs"
+                      :disabled="templateActing"
+                      @click="deleteTemplate(t)"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+              <tr v-if="!replyTemplates.length && !loadingTemplates">
+                <td colspan="3" class="py-8 text-center text-admin-muted">No reply templates yet</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="templatesOpen = false">Close</button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :open="templateFormOpen"
+      :title="editingTemplate ? 'Edit reply template' : 'Add reply template'"
+      @close="templateFormOpen = false"
+    >
+      <template #body>
+        <div class="space-y-3">
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Title *</label>
+            <input v-model="templateForm.title" class="admin-input" maxlength="150" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Content *</label>
+            <textarea
+              v-model="templateForm.content"
+              rows="5"
+              class="admin-input resize-none"
+              maxlength="2000"
+              placeholder="Message sent to the user as the resolve note…"
+            />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="templateFormOpen = false">Cancel</button>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="templateActing"
+          @click="submitTemplateForm"
+        >
+          {{ editingTemplate ? 'Save' : 'Create' }}
+        </button>
+      </template>
+    </BaseDialog>
+
+    <!-- Bulk resolve with template -->
+    <BaseDialog
+      :open="bulkResolveOpen"
+      :title="`Resolve ${selectedTicketIds.size} ticket${selectedTicketIds.size === 1 ? '' : 's'} with template`"
+      @close="bulkResolveOpen = false"
+    >
+      <template #body>
+        <div class="space-y-3">
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Reply template *</label>
+            <select v-model="bulkTemplateId" class="admin-input" :disabled="loadingTemplates">
+              <option value="">{{ loadingTemplates ? 'Loading…' : 'Select a template…' }}</option>
+              <option v-for="t in replyTemplates" :key="t.id" :value="t.id">{{ t.title }}</option>
+            </select>
+            <p v-if="!loadingTemplates && !replyTemplates.length" class="mt-1 text-xs text-admin-warn">
+              No reply templates yet — add one first.
+            </p>
+          </div>
+          <div v-if="bulkTemplateId" class="rounded border border-admin-border bg-admin-bg/40 p-2 text-xs text-admin-subtext">
+            {{ replyTemplates.find((t) => t.id === bulkTemplateId)?.content }}
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Outcome</label>
+            <select v-model="bulkResolution" class="admin-input">
+              <option value="RESOLVED">Resolved</option>
+              <option value="REJECTED">Rejected</option>
+            </select>
+          </div>
+          <p class="text-xs text-admin-muted">
+            Posts the template content as the resolve note on each selected ticket and moves it to pending review. Tickets you can't act on (closed, assigned elsewhere) are skipped and reported.
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="bulkResolveOpen = false">Cancel</button>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="bulkActing || !bulkTemplateId"
+          @click="submitBulkResolve"
+        >
+          {{ bulkActing ? 'Resolving…' : 'Confirm' }}
         </button>
       </template>
     </BaseDialog>
