@@ -5,6 +5,8 @@ import axios from 'axios'
 import { format } from 'date-fns'
 import { userAdminApi } from '@/api/userAdmin'
 import { showToast } from '@/utils/toast'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import type { AdminLocationFeedItem, AdminLocationsQuery } from '@/types/userLocation'
 
 const UUID_RE =
@@ -113,6 +115,26 @@ async function loadMore() {
   }
 }
 
+const {
+  sortKey: itemsSortKey,
+  sortDir: itemsSortDir,
+  sortedRows: sortedItems,
+  toggleSort: toggleItemsSort,
+} = useSortableRows(items, (row, key) => {
+  switch (key) {
+    case 'user':
+      return (row.user.displayName || row.user.username || '').toLowerCase()
+    case 'recordedAt':
+      return row.recordedAt ? new Date(row.recordedAt).getTime() : 0
+    case 'accuracyM':
+      return row.accuracyM ?? -1
+    case 'source':
+      return row.source ?? ''
+    default:
+      return undefined
+  }
+})
+
 onMounted(() => load())
 </script>
 
@@ -145,16 +167,16 @@ onMounted(() => load())
         <table class="admin-table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>Recorded</th>
+              <SortableTh label="User" sort-key="user" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Recorded" sort-key="recordedAt" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
               <th>Coords</th>
-              <th>Accuracy</th>
-              <th>Source</th>
+              <SortableTh label="Accuracy" sort-key="accuracyM" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Source" sort-key="source" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
               <th />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in items" :key="row.id">
+            <tr v-for="row in sortedItems" :key="row.id">
               <td>
                 <RouterLink
                   :to="`/admin/users/${row.user.userId}`"

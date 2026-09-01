@@ -7,6 +7,8 @@ import { adminActivityApi } from '@/api/adminActivity'
 import type { AdminActivityAdminBrief, AdminActivityEntry } from '@/types/adminActivity'
 import { showToast } from '@/utils/toast'
 import { actionTypeLabel, destinationHref, groupActionTypes } from '@/utils/adminActivityLabels'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const entries = ref<AdminActivityEntry[]>([])
 const actionTypes = ref<string[]>([])
@@ -138,6 +140,32 @@ function resetFilters() {
   void loadEntries(false)
 }
 
+const {
+  sortKey: entriesSortKey,
+  sortDir: entriesSortDir,
+  sortedRows: sortedEntries,
+  toggleSort: toggleEntriesSort,
+} = useSortableRows(entries, (row, key) => {
+  switch (key) {
+    case 'createdAt':
+      return row.createdAt ? new Date(row.createdAt).getTime() : 0
+    case 'admin':
+      return (row.admin?.displayName || row.admin?.email || '').toLowerCase()
+    case 'actionType':
+      return actionTypeLabel(row.actionType).toLowerCase()
+    case 'targetUser':
+      return (row.targetUser?.name || row.targetUser?.displayName || row.targetUser?.username || '').toLowerCase()
+    case 'destination':
+      return (row.destination.label || '').toLowerCase()
+    case 'ipAddress':
+      return (row.ipAddress || '').toLowerCase()
+    case 'actionStatus':
+      return row.actionStatus ?? ''
+    default:
+      return undefined
+  }
+})
+
 onMounted(() => {
   void loadActionTypes()
   void loadAdmins()
@@ -190,17 +218,17 @@ onMounted(() => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Admin</th>
-              <th>Action</th>
-              <th>Target user</th>
-              <th>Destination</th>
-              <th>IP</th>
-              <th>Status</th>
+              <SortableTh label="When" sort-key="createdAt" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="Admin" sort-key="admin" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="Action" sort-key="actionType" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="Target user" sort-key="targetUser" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="Destination" sort-key="destination" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="IP" sort-key="ipAddress" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="Status" sort-key="actionStatus" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in entries" :key="row.id">
+            <tr v-for="row in sortedEntries" :key="row.id">
               <td class="whitespace-nowrap text-xs">{{ formatDt(row.createdAt) }}</td>
               <td>
                 <template v-if="row.admin">

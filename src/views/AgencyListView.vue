@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import { useAgencyAdminStore } from '@/stores/agencyAdmin'
@@ -8,6 +8,8 @@ import AgencyApplicationReviewDrawer from '@/components/agency/AgencyApplication
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { COMMISSION_TIERS, type AgencyApplicationListItem } from '@/types/agency'
 import { formatPoints, formatUsd } from '@/utils/format'
 import axios from 'axios'
@@ -246,6 +248,87 @@ function nextRejectedPage() {
   }
 }
 
+const agenciesRows = computed(() => store.agencies)
+const {
+  sortKey: agenciesSortKey,
+  sortDir: agenciesSortDir,
+  sortedRows: sortedAgencies,
+  toggleSort: toggleAgenciesSort,
+} = useSortableRows(agenciesRows, (agency, key) => {
+  switch (key) {
+    case 'userName':
+      return agency.userName?.toLowerCase() ?? ''
+    case 'agencyPublicId':
+      return agency.agencyPublicId ?? ''
+    case 'totalHosts':
+      return agency.totalHosts ?? 0
+    case 'country':
+      return agency.country?.toLowerCase() ?? ''
+    case 'earningsThisMonthPoints':
+      return Number(agency.earningsThisMonthPoints ?? 0)
+    case 'commissionTier':
+      return agency.commissionTier ?? ''
+    case 'status':
+      return agency.status ?? ''
+    case 'approvedAt':
+      return agency.approvedAt ? new Date(agency.approvedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const pendingRows = computed(() => store.pending)
+const {
+  sortKey: pendingSortKey,
+  sortDir: pendingSortDir,
+  sortedRows: sortedPending,
+  toggleSort: togglePendingSort,
+} = useSortableRows(pendingRows, (app, key) => {
+  switch (key) {
+    case 'applicantUserName':
+      return app.applicantUserName?.toLowerCase() ?? ''
+    case 'phone':
+      return (app.kyc.contactPhone || '').toLowerCase()
+    case 'email':
+      return (app.kyc.contactEmail || '').toLowerCase()
+    case 'country':
+      return app.country?.toLowerCase() ?? ''
+    case 'status':
+      return app.status ?? ''
+    case 'appliedAt':
+      return app.appliedAt ? new Date(app.appliedAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const rejectedRows = computed(() => store.rejected)
+const {
+  sortKey: rejectedSortKey,
+  sortDir: rejectedSortDir,
+  sortedRows: sortedRejected,
+  toggleSort: toggleRejectedSort,
+} = useSortableRows(rejectedRows, (app, key) => {
+  switch (key) {
+    case 'applicantUserName':
+      return app.applicantUserName?.toLowerCase() ?? ''
+    case 'phone':
+      return (app.kyc.contactPhone || '').toLowerCase()
+    case 'email':
+      return (app.kyc.contactEmail || '').toLowerCase()
+    case 'country':
+      return app.country?.toLowerCase() ?? ''
+    case 'appliedAt':
+      return app.appliedAt ? new Date(app.appliedAt).getTime() : 0
+    case 'reviewedAt':
+      return app.reviewedAt ? new Date(app.reviewedAt).getTime() : 0
+    case 'adminNote':
+      return (app.adminNote || '').toLowerCase()
+    default:
+      return undefined
+  }
+})
+
 watch(activeTab, (tab) => {
   if (tab === 'pending' && !store.pending.length) loadPending()
   if (tab === 'rejected' && !store.rejected.length) loadRejected()
@@ -386,20 +469,20 @@ onMounted(async () => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Agency</th>
-                <th>Public ID</th>
-                <th>Hosts</th>
-                <th>Country</th>
-                <th>Month earnings</th>
-                <th>Tier</th>
+                <SortableTh label="Agency" sort-key="userName" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
+                <SortableTh label="Public ID" sort-key="agencyPublicId" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
+                <SortableTh label="Hosts" sort-key="totalHosts" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
+                <SortableTh label="Country" sort-key="country" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
+                <SortableTh label="Month earnings" sort-key="earningsThisMonthPoints" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
+                <SortableTh label="Tier" sort-key="commissionTier" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
                 <th>Payroll</th>
-                <th>Status</th>
-                <th>Approved</th>
+                <SortableTh label="Status" sort-key="status" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
+                <SortableTh label="Approved" sort-key="approvedAt" :active-key="agenciesSortKey" :direction="agenciesSortDir" @sort="toggleAgenciesSort" />
                 <th />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="agency in store.agencies" :key="agency.agencyUserId">
+              <tr v-for="agency in sortedAgencies" :key="agency.agencyUserId">
                 <td>
                   <p class="font-medium">{{ agency.userName }}</p>
                   <p class="text-xs text-admin-subtext">Owner {{ agency.userPublicId }}</p>
@@ -491,18 +574,18 @@ onMounted(async () => {
             <thead>
               <tr>
                 <th>Face</th>
-                <th>Applicant</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Country</th>
+                <SortableTh label="Applicant" sort-key="applicantUserName" :active-key="pendingSortKey" :direction="pendingSortDir" @sort="togglePendingSort" />
+                <SortableTh label="Phone" sort-key="phone" :active-key="pendingSortKey" :direction="pendingSortDir" @sort="togglePendingSort" />
+                <SortableTh label="Email" sort-key="email" :active-key="pendingSortKey" :direction="pendingSortDir" @sort="togglePendingSort" />
+                <SortableTh label="Country" sort-key="country" :active-key="pendingSortKey" :direction="pendingSortDir" @sort="togglePendingSort" />
                 <th>KYC</th>
-                <th>Status</th>
-                <th>Applied</th>
+                <SortableTh label="Status" sort-key="status" :active-key="pendingSortKey" :direction="pendingSortDir" @sort="togglePendingSort" />
+                <SortableTh label="Applied" sort-key="appliedAt" :active-key="pendingSortKey" :direction="pendingSortDir" @sort="togglePendingSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="app in store.pending" :key="app.applicationId">
+              <tr v-for="app in sortedPending" :key="app.applicationId">
                 <td>
                   <img
                     v-if="faceThumb(app)"
@@ -622,19 +705,19 @@ onMounted(async () => {
             <thead>
               <tr>
                 <th>Face</th>
-                <th>Applicant</th>
-                <th>Phone</th>
-                <th>Email</th>
-                <th>Country</th>
+                <SortableTh label="Applicant" sort-key="applicantUserName" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
+                <SortableTh label="Phone" sort-key="phone" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
+                <SortableTh label="Email" sort-key="email" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
+                <SortableTh label="Country" sort-key="country" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
                 <th>KYC</th>
-                <th>Applied</th>
-                <th>Reviewed</th>
-                <th>Admin note</th>
+                <SortableTh label="Applied" sort-key="appliedAt" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
+                <SortableTh label="Reviewed" sort-key="reviewedAt" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
+                <SortableTh label="Admin note" sort-key="adminNote" :active-key="rejectedSortKey" :direction="rejectedSortDir" @sort="toggleRejectedSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="app in store.rejected" :key="app.applicationId">
+              <tr v-for="app in sortedRejected" :key="app.applicationId">
                 <td>
                   <img
                     v-if="faceThumb(app)"

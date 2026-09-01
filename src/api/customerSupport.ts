@@ -13,6 +13,7 @@ import type {
   FailedLoginsResponse,
   NotificationBadge,
   ReportListQuery,
+  SupportMessage,
   SupportNotification,
   SupportReport,
   SupportTicketListItem,
@@ -143,7 +144,10 @@ export const customerSupportApi = {
   },
 
   reply(ticketId: string, payload: { content: string; imageUrl?: string }) {
-    return api.post('/admin/support/tickets/' + ticketId + '/reply', payload)
+    return api.post<{ message: SupportMessage }>(
+      '/admin/support/tickets/' + ticketId + '/reply',
+      payload,
+    )
   },
 
   resolve(ticketId: string, payload: { resolution: SupportTicketResolution; note: string }) {

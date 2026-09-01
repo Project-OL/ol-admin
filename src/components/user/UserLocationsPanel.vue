@@ -4,6 +4,8 @@ import { format } from 'date-fns'
 import { userAdminApi } from '@/api/userAdmin'
 import { showToast } from '@/utils/toast'
 import type { AdminUserLocationCurrent, AdminUserLocationSample } from '@/types/userLocation'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{ userId: string }>()
 
@@ -67,6 +69,28 @@ async function loadMore() {
     loadingMore.value = false
   }
 }
+
+const {
+  sortKey: historySortKey,
+  sortDir: historySortDir,
+  sortedRows: sortedHistory,
+  toggleSort: toggleHistorySort,
+} = useSortableRows(history, (row, key) => {
+  switch (key) {
+    case 'recordedAt':
+      return row.recordedAt ? new Date(row.recordedAt).getTime() : 0
+    case 'latitude':
+      return row.latitude ?? 0
+    case 'longitude':
+      return row.longitude ?? 0
+    case 'accuracyM':
+      return row.accuracyM ?? -1
+    case 'source':
+      return row.source ?? ''
+    default:
+      return undefined
+  }
+})
 
 onMounted(() => load())
 watch(() => props.userId, () => load())
@@ -133,16 +157,16 @@ watch(() => props.userId, () => load())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Recorded</th>
-                <th>Latitude</th>
-                <th>Longitude</th>
-                <th>Accuracy</th>
-                <th>Source</th>
+                <SortableTh label="Recorded" sort-key="recordedAt" :active-key="historySortKey" :direction="historySortDir" @sort="toggleHistorySort" />
+                <SortableTh label="Latitude" sort-key="latitude" :active-key="historySortKey" :direction="historySortDir" @sort="toggleHistorySort" />
+                <SortableTh label="Longitude" sort-key="longitude" :active-key="historySortKey" :direction="historySortDir" @sort="toggleHistorySort" />
+                <SortableTh label="Accuracy" sort-key="accuracyM" :active-key="historySortKey" :direction="historySortDir" @sort="toggleHistorySort" />
+                <SortableTh label="Source" sort-key="source" :active-key="historySortKey" :direction="historySortDir" @sort="toggleHistorySort" />
                 <th />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in history" :key="row.id">
+              <tr v-for="row in sortedHistory" :key="row.id">
                 <td class="whitespace-nowrap text-xs">{{ formatDate(row.recordedAt) }}</td>
                 <td class="font-mono text-xs">{{ formatCoord(row.latitude) }}</td>
                 <td class="font-mono text-xs">{{ formatCoord(row.longitude) }}</td>

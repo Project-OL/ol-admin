@@ -14,6 +14,8 @@ import CatalogAssetField from '@/components/shared/CatalogAssetField.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { formatCoins, formatNumber } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import {
@@ -602,6 +604,78 @@ async function confirmDeleteGallery() {
   await loadGallery()
 }
 
+const {
+  sortKey: giftsSortKey,
+  sortDir: giftsSortDir,
+  sortedRows: sortedGifts,
+  toggleSort: toggleGiftsSort,
+} = useSortableRows(gifts, (gift, key) => {
+  switch (key) {
+    case 'name':
+      return gift.name?.toLowerCase() ?? ''
+    case 'code':
+      return gift.code?.toLowerCase() ?? ''
+    case 'category':
+      return (gift.category?.name || '').toLowerCase()
+    case 'coinCost':
+      return gift.coinCost ?? 0
+    case 'timesSent':
+      return gift.timesSent ?? 0
+    case 'vipOnly':
+      return gift.vipOnly ? 1 : 0
+    case 'status':
+      return gift.status ?? ''
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: categoriesSortKey,
+  sortDir: categoriesSortDir,
+  sortedRows: sortedCategories,
+  toggleSort: toggleCategoriesSort,
+} = useSortableRows(categories, (cat, key) => {
+  switch (key) {
+    case 'name':
+      return cat.name?.toLowerCase() ?? ''
+    case 'slug':
+      return cat.slug?.toLowerCase() ?? ''
+    case 'displayOrder':
+      return cat.displayOrder ?? 0
+    case 'giftCount':
+      return cat.giftCount ?? 0
+    case 'status':
+      return cat.status ?? ''
+    case 'createdAt':
+      return cat.createdAt ? new Date(cat.createdAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: gallerySlotsSortKey,
+  sortDir: gallerySlotsSortDir,
+  sortedRows: sortedGallerySlots,
+  toggleSort: toggleGallerySlotsSort,
+} = useSortableRows(allGallerySlots, (g, key) => {
+  switch (key) {
+    case 'name':
+      return g.name?.toLowerCase() ?? ''
+    case 'code':
+      return g.code?.toLowerCase() ?? ''
+    case 'sectionName':
+      return g.sectionName?.toLowerCase() ?? ''
+    case 'coinCost':
+      return g.coinCost ?? 0
+    case 'isActive':
+      return g.isActive === false ? 0 : 1
+    default:
+      return undefined
+  }
+})
+
 function formatChange(value: number | null) {
   if (value === null) return '—'
   const sign = value > 0 ? '+' : ''
@@ -767,18 +841,18 @@ onMounted(async () => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Gift</th>
-                <th>Code</th>
-                <th>Category</th>
-                <th>Price</th>
-                <th>Sent</th>
-                <th>VIP</th>
-                <th>Status</th>
+                <SortableTh label="Gift" sort-key="name" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
+                <SortableTh label="Code" sort-key="code" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
+                <SortableTh label="Category" sort-key="category" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
+                <SortableTh label="Price" sort-key="coinCost" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
+                <SortableTh label="Sent" sort-key="timesSent" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
+                <SortableTh label="VIP" sort-key="vipOnly" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="giftsSortKey" :direction="giftsSortDir" @sort="toggleGiftsSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="gift in gifts" :key="gift.id">
+              <tr v-for="gift in sortedGifts" :key="gift.id">
                 <td>
                   <div class="flex items-center gap-3">
                     <img :src="gift.displayImageUrl" :alt="gift.name" class="h-10 w-10 rounded object-cover" />
@@ -849,17 +923,17 @@ onMounted(async () => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Slug</th>
-                <th>Order</th>
-                <th>Gifts</th>
-                <th>Status</th>
-                <th>Created</th>
+                <SortableTh label="Name" sort-key="name" :active-key="categoriesSortKey" :direction="categoriesSortDir" @sort="toggleCategoriesSort" />
+                <SortableTh label="Slug" sort-key="slug" :active-key="categoriesSortKey" :direction="categoriesSortDir" @sort="toggleCategoriesSort" />
+                <SortableTh label="Order" sort-key="displayOrder" :active-key="categoriesSortKey" :direction="categoriesSortDir" @sort="toggleCategoriesSort" />
+                <SortableTh label="Gifts" sort-key="giftCount" :active-key="categoriesSortKey" :direction="categoriesSortDir" @sort="toggleCategoriesSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="categoriesSortKey" :direction="categoriesSortDir" @sort="toggleCategoriesSort" />
+                <SortableTh label="Created" sort-key="createdAt" :active-key="categoriesSortKey" :direction="categoriesSortDir" @sort="toggleCategoriesSort" />
                 <th>Actions</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="cat in categories" :key="cat.id">
+              <tr v-for="cat in sortedCategories" :key="cat.id">
                 <td class="font-medium">{{ cat.name }}</td>
                 <td class="font-mono text-xs">{{ cat.slug }}</td>
                 <td class="tabular-nums">{{ cat.displayOrder }}</td>
@@ -906,15 +980,15 @@ onMounted(async () => {
             <table class="admin-table">
               <thead>
                 <tr>
-                  <th>Gift</th>
-                  <th>Code</th>
-                  <th>Section</th>
-                  <th>Cost</th>
-                  <th>Catalog</th>
+                  <SortableTh label="Gift" sort-key="name" :active-key="gallerySlotsSortKey" :direction="gallerySlotsSortDir" @sort="toggleGallerySlotsSort" />
+                  <SortableTh label="Code" sort-key="code" :active-key="gallerySlotsSortKey" :direction="gallerySlotsSortDir" @sort="toggleGallerySlotsSort" />
+                  <SortableTh label="Section" sort-key="sectionName" :active-key="gallerySlotsSortKey" :direction="gallerySlotsSortDir" @sort="toggleGallerySlotsSort" />
+                  <SortableTh label="Cost" sort-key="coinCost" :active-key="gallerySlotsSortKey" :direction="gallerySlotsSortDir" @sort="toggleGallerySlotsSort" />
+                  <SortableTh label="Catalog" sort-key="isActive" :active-key="gallerySlotsSortKey" :direction="gallerySlotsSortDir" @sort="toggleGallerySlotsSort" />
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="g in allGallerySlots" :key="g.itemId">
+                <tr v-for="g in sortedGallerySlots" :key="g.itemId">
                   <td>
                     <div class="flex items-center gap-2">
                       <img :src="g.displayImageUrl" :alt="g.name" class="h-8 w-8 rounded object-cover" />

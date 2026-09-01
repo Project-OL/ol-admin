@@ -8,6 +8,8 @@ import type { AdminUserRegistrationStats } from '@/types/api'
 import { mockUser } from '@/mocks/userDetail'
 import { showToast } from '@/utils/toast'
 import { formatNumber } from '@/utils/format'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const useMock = import.meta.env.VITE_USE_MOCK === 'true'
 
@@ -144,6 +146,46 @@ async function search() {
   }
 }
 
+const {
+  sortKey: registeredTodaySortKey,
+  sortDir: registeredTodaySortDir,
+  sortedRows: sortedRegisteredToday,
+  toggleSort: toggleRegisteredTodaySort,
+} = useSortableRows(registeredTodayUsers, (user, key) => {
+  switch (key) {
+    case 'user':
+      return (user.username || chipLabel(user)).toLowerCase()
+    case 'name':
+      return chipLabel(user).toLowerCase()
+    case 'email':
+      return (user.email || '').toLowerCase()
+    case 'status':
+      return user.status ?? ''
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: resultsSortKey,
+  sortDir: resultsSortDir,
+  sortedRows: sortedResults,
+  toggleSort: toggleResultsSort,
+} = useSortableRows(results, (user, key) => {
+  switch (key) {
+    case 'user':
+      return (user.username || chipLabel(user)).toLowerCase()
+    case 'name':
+      return chipLabel(user).toLowerCase()
+    case 'email':
+      return (user.email || '').toLowerCase()
+    case 'status':
+      return user.status ?? ''
+    default:
+      return undefined
+  }
+})
+
 onMounted(() => {
   void loadHistory()
   void loadStats()
@@ -242,15 +284,15 @@ onMounted(() => {
           <table class="admin-table">
             <thead>
               <tr>
-                <th>User</th>
-                <th>Name</th>
-                <th>Contact</th>
-                <th>Status</th>
+                <SortableTh label="User" sort-key="user" :active-key="registeredTodaySortKey" :direction="registeredTodaySortDir" @sort="toggleRegisteredTodaySort" />
+                <SortableTh label="Name" sort-key="name" :active-key="registeredTodaySortKey" :direction="registeredTodaySortDir" @sort="toggleRegisteredTodaySort" />
+                <SortableTh label="Contact" sort-key="email" :active-key="registeredTodaySortKey" :direction="registeredTodaySortDir" @sort="toggleRegisteredTodaySort" />
+                <SortableTh label="Status" sort-key="status" :active-key="registeredTodaySortKey" :direction="registeredTodaySortDir" @sort="toggleRegisteredTodaySort" />
                 <th />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="user in registeredTodayUsers" :key="user.id">
+              <tr v-for="user in sortedRegisteredToday" :key="user.id">
                 <td>
                   <div class="flex items-center gap-3">
                     <img
@@ -304,15 +346,15 @@ onMounted(() => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>Name</th>
-              <th>Contact</th>
-              <th>Status</th>
+              <SortableTh label="User" sort-key="user" :active-key="resultsSortKey" :direction="resultsSortDir" @sort="toggleResultsSort" />
+              <SortableTh label="Name" sort-key="name" :active-key="resultsSortKey" :direction="resultsSortDir" @sort="toggleResultsSort" />
+              <SortableTh label="Contact" sort-key="email" :active-key="resultsSortKey" :direction="resultsSortDir" @sort="toggleResultsSort" />
+              <SortableTh label="Status" sort-key="status" :active-key="resultsSortKey" :direction="resultsSortDir" @sort="toggleResultsSort" />
               <th />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="user in results" :key="user.id">
+            <tr v-for="user in sortedResults" :key="user.id">
               <td>
                 <div class="flex items-center gap-3">
                   <img

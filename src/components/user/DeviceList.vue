@@ -6,6 +6,8 @@ import type { DeviceInfo, DeviceOtherActiveLogin } from '@/types/user'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useUserDetailStore } from '@/stores/userDetail'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{
   userId: string
@@ -79,6 +81,30 @@ function otherLoginLabel(login: DeviceOtherActiveLogin) {
 function toggleOtherLogins(deviceId: string) {
   expandedDeviceId.value = expandedDeviceId.value === deviceId ? null : deviceId
 }
+
+const {
+  sortKey: devicesSortKey,
+  sortDir: devicesSortDir,
+  sortedRows: tableSortedDevices,
+  toggleSort: toggleDevicesSort,
+} = useSortableRows(sortedDevices, (device, key) => {
+  switch (key) {
+    case 'name':
+      return (device.name || '').toLowerCase()
+    case 'platform':
+      return (device.platform || '').toLowerCase()
+    case 'ipAddress':
+      return (device.ipAddress || '').toLowerCase()
+    case 'lastActiveAt':
+      return device.lastActiveAt ? new Date(device.lastActiveAt).getTime() : 0
+    case 'status':
+      return deviceStatus(device).status
+    case 'otherLogins':
+      return (device.otherActiveLogins ?? []).length
+    default:
+      return undefined
+  }
+})
 </script>
 
 <template>
@@ -182,17 +208,17 @@ function toggleOtherLogins(deviceId: string) {
       <table class="admin-table">
         <thead>
           <tr>
-            <th>Device</th>
-            <th>Platform</th>
-            <th>IP</th>
-            <th>Last Active</th>
-            <th>Status</th>
-            <th>Other logins</th>
+            <SortableTh label="Device" sort-key="name" :active-key="devicesSortKey" :direction="devicesSortDir" @sort="toggleDevicesSort" />
+            <SortableTh label="Platform" sort-key="platform" :active-key="devicesSortKey" :direction="devicesSortDir" @sort="toggleDevicesSort" />
+            <SortableTh label="IP" sort-key="ipAddress" :active-key="devicesSortKey" :direction="devicesSortDir" @sort="toggleDevicesSort" />
+            <SortableTh label="Last Active" sort-key="lastActiveAt" :active-key="devicesSortKey" :direction="devicesSortDir" @sort="toggleDevicesSort" />
+            <SortableTh label="Status" sort-key="status" :active-key="devicesSortKey" :direction="devicesSortDir" @sort="toggleDevicesSort" />
+            <SortableTh label="Other logins" sort-key="otherLogins" :active-key="devicesSortKey" :direction="devicesSortDir" @sort="toggleDevicesSort" />
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          <template v-for="device in sortedDevices" :key="device.id">
+          <template v-for="device in tableSortedDevices" :key="device.id">
             <tr :class="device.hasActiveSession ? 'bg-admin-success/5' : ''">
               <td>
                 <p class="font-medium">{{ device.name ?? 'Unknown' }}</p>

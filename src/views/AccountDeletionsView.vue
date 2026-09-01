@@ -7,6 +7,8 @@ import { accountDeletionApi } from '@/api/accountDeletion'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import InlineEditField from '@/components/shared/InlineEditField.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import type {
   AccountDeletionConfig,
   AccountDeletionRequest,
@@ -275,6 +277,30 @@ onUnmounted(() => {
   document.body.style.overflow = ''
 })
 
+const {
+  sortKey: itemsSortKey,
+  sortDir: itemsSortDir,
+  sortedRows: sortedItems,
+  toggleSort: toggleItemsSort,
+} = useSortableRows(items, (row, key) => {
+  switch (key) {
+    case 'user':
+      return (row.user.name || row.user.username || '').toLowerCase()
+    case 'contact':
+      return (row.user.email || row.user.phone || '').toLowerCase()
+    case 'scheduledAt':
+      return row.scheduledAt ? new Date(row.scheduledAt).getTime() : 0
+    case 'deletionAt':
+      return row.deletionAt ? new Date(row.deletionAt).getTime() : 0
+    case 'reminderSentAt':
+      return row.reminderSentAt ? new Date(row.reminderSentAt).getTime() : 0
+    case 'status':
+      return row.status ?? ''
+    default:
+      return undefined
+  }
+})
+
 const remainingLabel = computed(() => {
   if (!selected.value) return ''
   return relativeTo(selected.value.deletionAt)
@@ -425,17 +451,17 @@ const cancelMessage = computed(() => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>Contact</th>
-              <th>Scheduled</th>
-              <th>Deletes</th>
-              <th>Reminder</th>
-              <th>Status</th>
+              <SortableTh label="User" sort-key="user" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Contact" sort-key="contact" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Scheduled" sort-key="scheduledAt" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Deletes" sort-key="deletionAt" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Reminder" sort-key="reminderSentAt" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
+              <SortableTh label="Status" sort-key="status" :active-key="itemsSortKey" :direction="itemsSortDir" @sort="toggleItemsSort" />
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="row in items"
+              v-for="row in sortedItems"
               :key="row.id"
               class="cursor-pointer transition-colors hover:bg-admin-bg/80"
               :class="selected?.id === row.id ? 'bg-admin-accent/10' : ''"

@@ -186,12 +186,12 @@ async function sendReply() {
     if (replyFile.value) {
       imageUrl = await uploadSupportReplyImage(ticketId.value, replyFile.value)
     }
-    const { data: msg } = await customerSupportApi.reply(ticketId.value, {
+    const { data } = await customerSupportApi.reply(ticketId.value, {
       content: optimisticContent,
       imageUrl,
-    }) as unknown as { data: SupportMessage }
+    })
     // Replace optimistic with real
-    messages.value = messages.value.map((m) => m.id === optimisticId ? (msg ?? m) : m)
+    messages.value = messages.value.map((m) => m.id === optimisticId ? (data.message ?? m) : m)
     showToast('Reply sent', 'success')
   } catch (err) {
     // Remove optimistic on failure

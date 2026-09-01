@@ -10,6 +10,8 @@ import type {
   AdminUserGuardianDossier,
   GuardianCounterparty,
 } from '@/types/userVipGuardian'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{ userId: string }>()
 
@@ -73,6 +75,57 @@ function relationRows(): AdminGuardianRelation[] {
   if (activeTab.value === 'asTarget') return dossier.value.asTarget
   return []
 }
+
+const relationRowsList = computed<AdminGuardianRelation[]>(() => relationRows())
+const purchasesList = computed(() => dossier.value?.purchases ?? [])
+
+const {
+  sortKey: relationsSortKey,
+  sortDir: relationsSortDir,
+  sortedRows: sortedRelations,
+  toggleSort: toggleRelationsSort,
+} = useSortableRows(relationRowsList, (row, key) => {
+  switch (key) {
+    case 'counterparty':
+      return counterpartyLabel(row.counterparty).toLowerCase()
+    case 'tier':
+      return row.tier ?? ''
+    case 'durationMonths':
+      return row.durationMonths ?? 0
+    case 'coinsPaid':
+      return Number(row.coinsPaid ?? 0)
+    case 'purchasedAt':
+      return row.purchasedAt ? new Date(row.purchasedAt).getTime() : 0
+    case 'expiresAt':
+      return row.expiresAt ? new Date(row.expiresAt).getTime() : 0
+    case 'status':
+      return row.isExpired ? 0 : 1
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: purchasesSortKey,
+  sortDir: purchasesSortDir,
+  sortedRows: sortedPurchases,
+  toggleSort: togglePurchasesSort,
+} = useSortableRows(purchasesList, (row, key) => {
+  switch (key) {
+    case 'purchasedAt':
+      return row.purchasedAt ? new Date(row.purchasedAt).getTime() : 0
+    case 'counterparty':
+      return (row.counterparty ? counterpartyLabel(row.counterparty) : '').toLowerCase()
+    case 'tier':
+      return row.tier ?? ''
+    case 'durationMonths':
+      return row.durationMonths ?? -1
+    case 'coinsPaid':
+      return Number(row.coinsPaid ?? 0)
+    default:
+      return undefined
+  }
+})
 
 onMounted(() => load())
 watch(() => props.userId, () => load())
@@ -145,17 +198,17 @@ watch(() => props.userId, () => load())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Counterparty</th>
-                <th>Tier</th>
-                <th>Duration</th>
-                <th>Coins</th>
-                <th>Purchased</th>
-                <th>Expires</th>
-                <th>Status</th>
+                <SortableTh label="Counterparty" sort-key="counterparty" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
+                <SortableTh label="Tier" sort-key="tier" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
+                <SortableTh label="Duration" sort-key="durationMonths" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
+                <SortableTh label="Coins" sort-key="coinsPaid" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
+                <SortableTh label="Purchased" sort-key="purchasedAt" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
+                <SortableTh label="Expires" sort-key="expiresAt" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
+                <SortableTh label="Status" sort-key="status" :active-key="relationsSortKey" :direction="relationsSortDir" @sort="toggleRelationsSort" />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in relationRows()" :key="row.guardianId + row.role">
+              <tr v-for="row in sortedRelations" :key="row.guardianId + row.role">
                 <td>
                   <div class="flex items-center gap-2">
                     <img
@@ -224,16 +277,16 @@ watch(() => props.userId, () => load())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Counterparty</th>
-                <th>Tier</th>
-                <th>Duration</th>
-                <th>Coins</th>
+                <SortableTh label="Date" sort-key="purchasedAt" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Counterparty" sort-key="counterparty" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Tier" sort-key="tier" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Duration" sort-key="durationMonths" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Coins" sort-key="coinsPaid" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
                 <th>Description</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in dossier.purchases" :key="row.ledgerEntryId">
+              <tr v-for="row in sortedPurchases" :key="row.ledgerEntryId">
                 <td class="whitespace-nowrap text-xs">{{ formatDate(row.purchasedAt) }}</td>
                 <td>
                   <template v-if="row.counterparty">

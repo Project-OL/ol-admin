@@ -23,6 +23,8 @@ import type {
 } from '@/types/currency'
 import type { UserSearchItem } from '@/types/api'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { formatCoins, formatPoints, formatUsd } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 
@@ -1107,6 +1109,94 @@ onMounted(() => {
   void refreshAll()
 })
 
+const {
+  sortKey: houseAccountsSortKey,
+  sortDir: houseAccountsSortDir,
+  sortedRows: sortedHouseAccounts,
+  toggleSort: toggleHouseAccountsSort,
+} = useSortableRows(houseAccounts, (acc, key) => {
+  switch (key) {
+    case 'user':
+      return (acc.user.name || acc.user.displayName || '').toLowerCase()
+    case 'role':
+      return acc.role ?? ''
+    case 'label':
+      return (acc.label || '').toLowerCase()
+    case 'effectiveFrom':
+      return acc.effectiveFrom ? new Date(acc.effectiveFrom).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: treasuryFlowsSortKey,
+  sortDir: treasuryFlowsSortDir,
+  sortedRows: sortedTreasuryFlows,
+  toggleSort: toggleTreasuryFlowsSort,
+} = useSortableRows(treasuryFlows, (flow, key) => {
+  switch (key) {
+    case 'createdAt':
+      return flow.createdAt ? new Date(flow.createdAt).getTime() : 0
+    case 'from':
+      return (flow.sender?.name || '').toLowerCase()
+    case 'units':
+      return Number(flow.units ?? 0)
+    case 'classification':
+      return flow.classification ?? ''
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: adjustmentsSortKey,
+  sortDir: adjustmentsSortDir,
+  sortedRows: sortedAdjustments,
+  toggleSort: toggleAdjustmentsSort,
+} = useSortableRows(adjustments, (row, key) => {
+  switch (key) {
+    case 'createdAt':
+      return row.createdAt ? new Date(row.createdAt).getTime() : 0
+    case 'user':
+      return (row.user.name || row.user.displayName || row.user.username || '').toLowerCase()
+    case 'currency':
+      return row.currency ?? ''
+    case 'supplyEffect':
+      return row.supplyEffect ?? ''
+    case 'amount':
+      return Number(row.amount ?? 0)
+    case 'description':
+      return (row.description || '').toLowerCase()
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: cashEntriesSortKey,
+  sortDir: cashEntriesSortDir,
+  sortedRows: sortedCashEntries,
+  toggleSort: toggleCashEntriesSort,
+} = useSortableRows(cashEntries, (row, key) => {
+  switch (key) {
+    case 'createdAt':
+      return row.createdAt ? new Date(row.createdAt).getTime() : 0
+    case 'direction':
+      return row.direction ?? ''
+    case 'reason':
+      return row.reason ?? ''
+    case 'amountUsd':
+      return Number(row.amountUsdDisplay ?? 0)
+    case 'counterparty':
+      return (row.counterparty?.name || '').toLowerCase()
+    case 'description':
+      return (row.description || '').toLowerCase()
+    default:
+      return undefined
+  }
+})
+
 const hero = computed(() => dashboard.value?.hero ?? null)
 const customerFloat = computed<LedgerLine[]>(() => dashboard.value?.stock.customerFloat ?? [])
 const houseInventory = computed<LedgerLine[]>(() => dashboard.value?.stock.houseInventory ?? [])
@@ -1350,14 +1440,14 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <table class="admin-table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>Role</th>
-              <th>Label</th>
-              <th>Since</th>
+              <SortableTh label="User" sort-key="user" :active-key="houseAccountsSortKey" :direction="houseAccountsSortDir" @sort="toggleHouseAccountsSort" />
+              <SortableTh label="Role" sort-key="role" :active-key="houseAccountsSortKey" :direction="houseAccountsSortDir" @sort="toggleHouseAccountsSort" />
+              <SortableTh label="Label" sort-key="label" :active-key="houseAccountsSortKey" :direction="houseAccountsSortDir" @sort="toggleHouseAccountsSort" />
+              <SortableTh label="Since" sort-key="effectiveFrom" :active-key="houseAccountsSortKey" :direction="houseAccountsSortDir" @sort="toggleHouseAccountsSort" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="acc in houseAccounts" :key="acc.id">
+            <tr v-for="acc in sortedHouseAccounts" :key="acc.id">
               <td>
                 <p class="text-sm">{{ acc.user.name || acc.user.displayName }}</p>
                 <p class="text-xs text-admin-muted">#{{ acc.user.publicId }}</p>
@@ -1421,15 +1511,15 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <table class="admin-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>From → To</th>
-              <th>Units</th>
-              <th>Class</th>
+              <SortableTh label="When" sort-key="createdAt" :active-key="treasuryFlowsSortKey" :direction="treasuryFlowsSortDir" @sort="toggleTreasuryFlowsSort" />
+              <SortableTh label="From → To" sort-key="from" :active-key="treasuryFlowsSortKey" :direction="treasuryFlowsSortDir" @sort="toggleTreasuryFlowsSort" />
+              <SortableTh label="Units" sort-key="units" :active-key="treasuryFlowsSortKey" :direction="treasuryFlowsSortDir" @sort="toggleTreasuryFlowsSort" />
+              <SortableTh label="Class" sort-key="classification" :active-key="treasuryFlowsSortKey" :direction="treasuryFlowsSortDir" @sort="toggleTreasuryFlowsSort" />
               <th>Actions</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="flow in treasuryFlows" :key="`${flow.flowKind}:${flow.flowId}`">
+            <tr v-for="flow in sortedTreasuryFlows" :key="`${flow.flowKind}:${flow.flowId}`">
               <td class="whitespace-nowrap text-xs">{{ formatDt(flow.createdAt) }}</td>
               <td class="text-xs">
                 {{ flow.sender?.name || '—' }} → {{ flow.recipient?.name || '—' }}
@@ -1668,16 +1758,16 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <table class="admin-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>User</th>
-              <th>Currency</th>
-              <th>Effect</th>
-              <th>Amount</th>
-              <th>Reason</th>
+              <SortableTh label="When" sort-key="createdAt" :active-key="adjustmentsSortKey" :direction="adjustmentsSortDir" @sort="toggleAdjustmentsSort" />
+              <SortableTh label="User" sort-key="user" :active-key="adjustmentsSortKey" :direction="adjustmentsSortDir" @sort="toggleAdjustmentsSort" />
+              <SortableTh label="Currency" sort-key="currency" :active-key="adjustmentsSortKey" :direction="adjustmentsSortDir" @sort="toggleAdjustmentsSort" />
+              <SortableTh label="Effect" sort-key="supplyEffect" :active-key="adjustmentsSortKey" :direction="adjustmentsSortDir" @sort="toggleAdjustmentsSort" />
+              <SortableTh label="Amount" sort-key="amount" :active-key="adjustmentsSortKey" :direction="adjustmentsSortDir" @sort="toggleAdjustmentsSort" />
+              <SortableTh label="Reason" sort-key="description" :active-key="adjustmentsSortKey" :direction="adjustmentsSortDir" @sort="toggleAdjustmentsSort" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in adjustments" :key="row.id">
+            <tr v-for="row in sortedAdjustments" :key="row.id">
               <td class="whitespace-nowrap text-xs">{{ formatDt(row.createdAt) }}</td>
               <td>
                 <p class="text-sm">{{ row.user.name || row.user.displayName || row.user.username }}</p>
@@ -1890,16 +1980,16 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <table class="admin-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Dir</th>
-              <th>Reason</th>
-              <th>USD</th>
-              <th>Counterparty</th>
-              <th>Note</th>
+              <SortableTh label="When" sort-key="createdAt" :active-key="cashEntriesSortKey" :direction="cashEntriesSortDir" @sort="toggleCashEntriesSort" />
+              <SortableTh label="Dir" sort-key="direction" :active-key="cashEntriesSortKey" :direction="cashEntriesSortDir" @sort="toggleCashEntriesSort" />
+              <SortableTh label="Reason" sort-key="reason" :active-key="cashEntriesSortKey" :direction="cashEntriesSortDir" @sort="toggleCashEntriesSort" />
+              <SortableTh label="USD" sort-key="amountUsd" :active-key="cashEntriesSortKey" :direction="cashEntriesSortDir" @sort="toggleCashEntriesSort" />
+              <SortableTh label="Counterparty" sort-key="counterparty" :active-key="cashEntriesSortKey" :direction="cashEntriesSortDir" @sort="toggleCashEntriesSort" />
+              <SortableTh label="Note" sort-key="description" :active-key="cashEntriesSortKey" :direction="cashEntriesSortDir" @sort="toggleCashEntriesSort" />
             </tr>
           </thead>
           <tbody>
-            <tr v-for="row in cashEntries" :key="row.id">
+            <tr v-for="row in sortedCashEntries" :key="row.id">
               <td class="whitespace-nowrap text-xs">{{ formatDt(row.createdAt) }}</td>
               <td>{{ row.direction }}</td>
               <td class="text-xs">{{ row.reason }}</td>

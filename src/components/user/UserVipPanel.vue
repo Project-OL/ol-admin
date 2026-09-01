@@ -9,6 +9,8 @@ import type {
   AdminUserVipDossier,
   AdminUserVipPurchase,
 } from '@/types/userVipGuardian'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{ userId: string }>()
 
@@ -115,6 +117,48 @@ async function loadMoreClaims() {
     loadingMoreClaims.value = false
   }
 }
+
+const {
+  sortKey: purchasesSortKey,
+  sortDir: purchasesSortDir,
+  sortedRows: sortedPurchases,
+  toggleSort: togglePurchasesSort,
+} = useSortableRows(purchases, (row, key) => {
+  switch (key) {
+    case 'createdAt':
+      return row.createdAt ? new Date(row.createdAt).getTime() : 0
+    case 'tier':
+      return row.tier ?? ''
+    case 'periodDays':
+      return row.periodDays ?? 0
+    case 'coinCost':
+      return Number(row.coinCost ?? 0)
+    case 'expiresAtAfter':
+      return row.expiresAtAfter ? new Date(row.expiresAtAfter).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
+const {
+  sortKey: claimsSortKey,
+  sortDir: claimsSortDir,
+  sortedRows: sortedClaims,
+  toggleSort: toggleClaimsSort,
+} = useSortableRows(claims, (row, key) => {
+  switch (key) {
+    case 'claimDate':
+      return row.claimDate ?? ''
+    case 'coinAmount':
+      return Number(row.coinAmount ?? 0)
+    case 'claimedAt':
+      return row.claimedAt ? new Date(row.claimedAt).getTime() : 0
+    case 'ledgerEntryId':
+      return row.ledgerEntryId ?? ''
+    default:
+      return undefined
+  }
+})
 
 onMounted(() => load())
 watch(() => props.userId, () => load())
@@ -232,15 +276,15 @@ watch(() => props.userId, () => load())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Date</th>
-                <th>Tier</th>
-                <th>Period</th>
-                <th>Coins</th>
-                <th>Expiry after</th>
+                <SortableTh label="Date" sort-key="createdAt" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Tier" sort-key="tier" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Period" sort-key="periodDays" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Coins" sort-key="coinCost" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
+                <SortableTh label="Expiry after" sort-key="expiresAtAfter" :active-key="purchasesSortKey" :direction="purchasesSortDir" @sort="togglePurchasesSort" />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in purchases" :key="row.id">
+              <tr v-for="row in sortedPurchases" :key="row.id">
                 <td class="whitespace-nowrap text-xs">{{ formatDate(row.createdAt) }}</td>
                 <td>
                   <span class="rounded bg-admin-accent/15 px-2 py-0.5 text-xs font-semibold text-admin-accent">
@@ -279,14 +323,14 @@ watch(() => props.userId, () => load())
           <table class="admin-table">
             <thead>
               <tr>
-                <th>Claim date</th>
-                <th>Coins</th>
-                <th>Claimed at</th>
-                <th>Ledger</th>
+                <SortableTh label="Claim date" sort-key="claimDate" :active-key="claimsSortKey" :direction="claimsSortDir" @sort="toggleClaimsSort" />
+                <SortableTh label="Coins" sort-key="coinAmount" :active-key="claimsSortKey" :direction="claimsSortDir" @sort="toggleClaimsSort" />
+                <SortableTh label="Claimed at" sort-key="claimedAt" :active-key="claimsSortKey" :direction="claimsSortDir" @sort="toggleClaimsSort" />
+                <SortableTh label="Ledger" sort-key="ledgerEntryId" :active-key="claimsSortKey" :direction="claimsSortDir" @sort="toggleClaimsSort" />
               </tr>
             </thead>
             <tbody>
-              <tr v-for="row in claims" :key="`${row.claimDate}-${row.ledgerEntryId}`">
+              <tr v-for="row in sortedClaims" :key="`${row.claimDate}-${row.ledgerEntryId}`">
                 <td class="font-mono text-xs">{{ row.claimDate }}</td>
                 <td class="tabular-nums text-sm font-medium">{{ formatCoinStr(row.coinAmount) }}</td>
                 <td class="whitespace-nowrap text-xs">{{ formatDate(row.claimedAt) }}</td>

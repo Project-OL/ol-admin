@@ -13,6 +13,8 @@ import { showToast } from '@/utils/toast'
 import { resolveUserWalletRevert } from '@/utils/transactionRevert'
 import type { ApiTransaction } from '@/types/api'
 import type { CoinTransaction, TxCounterpartyDetails } from '@/types/user'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{ userId: string }>()
 const store = useUserDetailStore()
@@ -394,6 +396,28 @@ async function confirmRevert() {
   }
 }
 
+const {
+  sortKey: rowsSortKey,
+  sortDir: rowsSortDir,
+  sortedRows: sortedRowsList,
+  toggleSort: toggleRowsSort,
+} = useSortableRows(rows, (tx, key) => {
+  switch (key) {
+    case 'date':
+      return tx.date ? new Date(tx.date).getTime() : 0
+    case 'transactionName':
+      return tx.transactionName?.toLowerCase() ?? ''
+    case 'counterparty':
+      return (peerName(tx) || '').toLowerCase()
+    case 'amount':
+      return Math.abs(tx.amount)
+    case 'revertable':
+      return rowCanRevert(tx) ? 1 : 0
+    default:
+      return undefined
+  }
+})
+
 watch(activeTab, () => {
   typesFilter.value = ''
   direction.value = ''
@@ -472,16 +496,16 @@ onMounted(async () => {
       <table class="admin-table">
         <thead>
           <tr>
-            <th>When</th>
-            <th>Summary</th>
-            <th>Counterparty</th>
-            <th>Amount</th>
-            <th>Flags</th>
+            <SortableTh label="When" sort-key="date" :active-key="rowsSortKey" :direction="rowsSortDir" @sort="toggleRowsSort" />
+            <SortableTh label="Summary" sort-key="transactionName" :active-key="rowsSortKey" :direction="rowsSortDir" @sort="toggleRowsSort" />
+            <SortableTh label="Counterparty" sort-key="counterparty" :active-key="rowsSortKey" :direction="rowsSortDir" @sort="toggleRowsSort" />
+            <SortableTh label="Amount" sort-key="amount" :active-key="rowsSortKey" :direction="rowsSortDir" @sort="toggleRowsSort" />
+            <SortableTh label="Flags" sort-key="revertable" :active-key="rowsSortKey" :direction="rowsSortDir" @sort="toggleRowsSort" />
             <th />
           </tr>
         </thead>
         <tbody>
-          <template v-for="tx in rows" :key="tx.id">
+          <template v-for="tx in sortedRowsList" :key="tx.id">
             <tr
               class="cursor-pointer transition-colors hover:bg-admin-bg/60"
               @click="toggleExpand(tx.id)"

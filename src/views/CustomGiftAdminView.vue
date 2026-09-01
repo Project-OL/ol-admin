@@ -11,6 +11,8 @@ import type {
 import type { GiftAdminListItem } from '@/types/gift'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { formatCoins, formatNumber } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 
@@ -316,6 +318,32 @@ async function submitFail() {
   }
 }
 
+const {
+  sortKey: requestsSortKey,
+  sortDir: requestsSortDir,
+  sortedRows: sortedRequests,
+  toggleSort: toggleRequestsSort,
+} = useSortableRows(requests, (row, key) => {
+  switch (key) {
+    case 'user':
+      return row.user.name?.toLowerCase() ?? ''
+    case 'whatsappNumber':
+      return row.whatsappNumber ?? ''
+    case 'note':
+      return (row.note || '').toLowerCase()
+    case 'coinCost':
+      return Number(row.coinCost ?? 0)
+    case 'validityDays':
+      return row.validityDays ?? -1
+    case 'status':
+      return row.status ?? ''
+    case 'createdAt':
+      return row.createdAt ? new Date(row.createdAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
 watch(giftSearch, (q) => {
   if (!q.trim()) giftResults.value = []
 })
@@ -477,13 +505,13 @@ onMounted(async () => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>User</th>
-              <th>WhatsApp</th>
-              <th>Note</th>
-              <th>Cost</th>
-              <th>Package</th>
-              <th>Status</th>
-              <th>Created</th>
+              <SortableTh label="User" sort-key="user" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
+              <SortableTh label="WhatsApp" sort-key="whatsappNumber" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
+              <SortableTh label="Note" sort-key="note" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
+              <SortableTh label="Cost" sort-key="coinCost" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
+              <SortableTh label="Package" sort-key="validityDays" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
+              <SortableTh label="Status" sort-key="status" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
+              <SortableTh label="Created" sort-key="createdAt" :active-key="requestsSortKey" :direction="requestsSortDir" @sort="toggleRequestsSort" />
               <th>Actions</th>
             </tr>
           </thead>
@@ -494,7 +522,7 @@ onMounted(async () => {
             <tr v-else-if="!requests.length">
               <td colspan="8" class="py-8 text-center text-admin-subtext">No requests found</td>
             </tr>
-            <tr v-for="row in requests" :key="row.id">
+            <tr v-for="row in sortedRequests" :key="row.id">
               <td>
                 <div class="flex items-center gap-2">
                   <img

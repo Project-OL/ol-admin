@@ -5,6 +5,8 @@ import { format, parseISO } from 'date-fns'
 import axios from 'axios'
 import { ledgerAuditApi } from '@/api/ledgerAudit'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import type {
   LedgerAuditCategory,
   LedgerAuditCode,
@@ -268,6 +270,30 @@ async function runAuditNow() {
   }
 }
 
+const SEVERITY_RANK: Record<string, number> = { INFO: 0, WARNING: 1, CRITICAL: 2 }
+
+const {
+  sortKey: flagsSortKey,
+  sortDir: flagsSortDir,
+  sortedRows: sortedFlags,
+  toggleSort: toggleFlagsSort,
+} = useSortableRows(flags, (flag, key) => {
+  switch (key) {
+    case 'severity':
+      return SEVERITY_RANK[flag.severity] ?? -1
+    case 'code':
+      return flag.code ?? ''
+    case 'user':
+      return userDisplayName(flag)?.toLowerCase() ?? ''
+    case 'summary':
+      return flag.summary?.toLowerCase() ?? ''
+    case 'createdAt':
+      return flag.createdAt ? new Date(flag.createdAt).getTime() : 0
+    default:
+      return undefined
+  }
+})
+
 const evidenceJson = computed(() => {
   if (!selected.value?.evidence) return ''
   try {
@@ -450,16 +476,16 @@ onUnmounted(() => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>Severity</th>
-              <th>Code</th>
-              <th>User</th>
-              <th>Summary</th>
-              <th>Created</th>
+              <SortableTh label="Severity" sort-key="severity" :active-key="flagsSortKey" :direction="flagsSortDir" @sort="toggleFlagsSort" />
+              <SortableTh label="Code" sort-key="code" :active-key="flagsSortKey" :direction="flagsSortDir" @sort="toggleFlagsSort" />
+              <SortableTh label="User" sort-key="user" :active-key="flagsSortKey" :direction="flagsSortDir" @sort="toggleFlagsSort" />
+              <SortableTh label="Summary" sort-key="summary" :active-key="flagsSortKey" :direction="flagsSortDir" @sort="toggleFlagsSort" />
+              <SortableTh label="Created" sort-key="createdAt" :active-key="flagsSortKey" :direction="flagsSortDir" @sort="toggleFlagsSort" />
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="flag in flags"
+              v-for="flag in sortedFlags"
               :key="flag.id"
               class="cursor-pointer transition-colors hover:bg-admin-bg/80"
               :class="selected?.id === flag.id ? 'bg-admin-accent/10' : ''"

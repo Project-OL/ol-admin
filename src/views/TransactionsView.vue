@@ -5,6 +5,8 @@ import { format, parseISO } from 'date-fns'
 import axios from 'axios'
 import { transactionsApi } from '@/api/transactions'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import type {
   AdminCoinTradingTransfer,
   AdminGiftTransaction,
@@ -444,6 +446,38 @@ function primaryTitle(entry: AdminTransactionEntry): string {
   return 'Transaction'
 }
 
+function primaryAmountNumeric(entry: AdminTransactionEntry): number {
+  if (isLedger(entry)) {
+    const n = Number(entry.amount)
+    return Number.isFinite(n) ? Math.abs(n) : 0
+  }
+  if (isTransfer(entry)) return Number(entry.coinsCredited) || 0
+  if (isGift(entry)) return Number(entry.coinCost) || 0
+  if (isVip(entry)) return Number(entry.coinCost) || 0
+  if (isStore(entry)) return Number(entry.coinsPaid) || 0
+  return 0
+}
+
+const {
+  sortKey: entriesSortKey,
+  sortDir: entriesSortDir,
+  sortedRows: sortedEntries,
+  toggleSort: toggleEntriesSort,
+} = useSortableRows(entries, (entry, key) => {
+  switch (key) {
+    case 'createdAt':
+      return entry.createdAt ? new Date(entry.createdAt).getTime() : 0
+    case 'summary':
+      return primaryTitle(entry).toLowerCase()
+    case 'amount':
+      return primaryAmountNumeric(entry)
+    case 'revertable':
+      return canRevertEntry(entry) ? 1 : 0
+    default:
+      return undefined
+  }
+})
+
 function onKeydown(e: KeyboardEvent) {
   if (e.key === 'Escape' && selected.value && !revertOpen.value) closeDetail()
 }
@@ -722,17 +756,17 @@ onUnmounted(() => {
         <table class="admin-table">
           <thead>
             <tr>
-              <th>When</th>
-              <th>Summary</th>
+              <SortableTh label="When" sort-key="createdAt" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+              <SortableTh label="Summary" sort-key="summary" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
               <th>Parties</th>
-              <th>Amount</th>
+              <SortableTh label="Amount" sort-key="amount" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
               <th>Platform profit</th>
-              <th>Flags</th>
+              <SortableTh label="Flags" sort-key="revertable" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="entry in entries"
+              v-for="entry in sortedEntries"
               :key="entry.id"
               class="cursor-pointer transition-colors hover:bg-admin-bg/80"
               :class="selected?.id === entry.id ? 'bg-admin-accent/10' : ''"

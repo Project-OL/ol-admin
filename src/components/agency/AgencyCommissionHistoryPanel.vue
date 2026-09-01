@@ -6,6 +6,8 @@ import { useAgencyAdminStore } from '@/stores/agencyAdmin'
 import type { AgencyCommissionHistoryEntry, AgencyPeriod } from '@/types/agency'
 import { formatNumber, formatPoints } from '@/utils/format'
 import { showToast } from '@/utils/toast'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 
 const props = defineProps<{
   identifier: string
@@ -127,6 +129,32 @@ onMounted(() => {
   void load(false)
 })
 
+const {
+  sortKey: entriesSortKey,
+  sortDir: entriesSortDir,
+  sortedRows: sortedEntries,
+  toggleSort: toggleEntriesSort,
+} = useSortableRows(entries, (entry, key) => {
+  switch (key) {
+    case 'createdAt':
+      return entry.createdAt ? new Date(entry.createdAt).getTime() : 0
+    case 'host':
+      return (entry.host?.displayName || '').toLowerCase()
+    case 'category':
+      return (entry.category || '').toLowerCase()
+    case 'hostTxType':
+      return (entry.hostTxType || '').toLowerCase()
+    case 'rateBp':
+      return entry.rateBp ?? -1
+    case 'amount':
+      return Number(entry.amount ?? 0)
+    case 'balanceAfter':
+      return Number(entry.balanceAfter ?? 0)
+    default:
+      return undefined
+  }
+})
+
 defineExpose({ setHostFilter })
 </script>
 
@@ -213,17 +241,17 @@ defineExpose({ setHostFilter })
       <table class="admin-table">
         <thead>
           <tr>
-            <th>When</th>
-            <th>Host</th>
-            <th>Category</th>
-            <th>Host tx</th>
-            <th>Rate</th>
-            <th>Amount</th>
-            <th>Balance</th>
+            <SortableTh label="When" sort-key="createdAt" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+            <SortableTh label="Host" sort-key="host" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+            <SortableTh label="Category" sort-key="category" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+            <SortableTh label="Host tx" sort-key="hostTxType" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+            <SortableTh label="Rate" sort-key="rateBp" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+            <SortableTh label="Amount" sort-key="amount" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
+            <SortableTh label="Balance" sort-key="balanceAfter" :active-key="entriesSortKey" :direction="entriesSortDir" @sort="toggleEntriesSort" />
           </tr>
         </thead>
         <tbody>
-          <tr v-for="entry in entries" :key="entry.id">
+          <tr v-for="entry in sortedEntries" :key="entry.id">
             <td class="whitespace-nowrap text-xs">{{ formatDt(entry.createdAt) }}</td>
             <td>
               <p class="text-sm font-medium">{{ entry.host?.displayName ?? '—' }}</p>

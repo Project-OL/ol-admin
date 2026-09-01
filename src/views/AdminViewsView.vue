@@ -5,6 +5,8 @@ import { adminViewsApi } from '@/api/adminViews'
 import type { AdminViewCatalogItem } from '@/types/adminViews'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import SortableTh from '@/components/shared/SortableTh.vue'
+import { useSortableRows } from '@/composables/useSortableRows'
 import { showToast } from '@/utils/toast'
 
 const VIEW_NAME_RE = /^[A-Za-z][A-Za-z0-9_-]*$/
@@ -38,6 +40,26 @@ const filteredViews = computed(() => {
       v.name.toLowerCase().includes(q) ||
       v.endpoints.some((e) => e.toLowerCase().includes(q)),
   )
+})
+
+const {
+  sortKey: viewsSortKey,
+  sortDir: viewsSortDir,
+  sortedRows: sortedViews,
+  toggleSort: toggleViewsSort,
+} = useSortableRows(filteredViews, (v, key) => {
+  switch (key) {
+    case 'name':
+      return v.name?.toLowerCase() ?? ''
+    case 'endpoints':
+      return v.endpoints.length
+    case 'assignedAdminCount':
+      return v.assignedAdminCount ?? 0
+    case 'updatedAt':
+      return v.updatedAt ? new Date(v.updatedAt).getTime() : 0
+    default:
+      return undefined
+  }
 })
 
 function formatDt(iso: string) {
@@ -210,10 +232,10 @@ onMounted(() => loadCatalog())
         <table class="admin-table">
           <thead>
             <tr>
-              <th>View</th>
-              <th>Endpoints</th>
-              <th>Assigned CSAs</th>
-              <th>Updated</th>
+              <SortableTh label="View" sort-key="name" :active-key="viewsSortKey" :direction="viewsSortDir" @sort="toggleViewsSort" />
+              <SortableTh label="Endpoints" sort-key="endpoints" :active-key="viewsSortKey" :direction="viewsSortDir" @sort="toggleViewsSort" />
+              <SortableTh label="Assigned CSAs" sort-key="assignedAdminCount" :active-key="viewsSortKey" :direction="viewsSortDir" @sort="toggleViewsSort" />
+              <SortableTh label="Updated" sort-key="updatedAt" :active-key="viewsSortKey" :direction="viewsSortDir" @sort="toggleViewsSort" />
               <th>Actions</th>
             </tr>
           </thead>
@@ -226,7 +248,7 @@ onMounted(() => loadCatalog())
                 No views in catalog. Run backend seed or create a view.
               </td>
             </tr>
-            <template v-for="view in filteredViews" :key="view.name">
+            <template v-for="view in sortedViews" :key="view.name">
               <tr>
                 <td>
                   <button
