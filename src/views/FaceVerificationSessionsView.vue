@@ -139,19 +139,22 @@ onMounted(() => {
 <template>
   <div class="admin-page">
     <div>
-      <h1 class="text-xl font-semibold sm:text-2xl">Face Verification — Stuck Registrations</h1>
+      <h1 class="text-xl font-semibold sm:text-2xl">Face Verification — Needs Attention</h1>
       <p class="mt-1 text-sm text-admin-subtext">
-        Registration sessions that have not reached a terminal status. A session created but never
-        followed by a verify call means the app never finished the liveness capture; one that's been
-        PROCESSING for a while may indicate a worker outage. Recheck to force a fresh Rekognition
-        poll, or clear to let the user start over.
+        Users whose most recent registration attempt hasn't reached a good outcome yet — either hung
+        (a session created but never followed by a verify call means the app never finished the
+        liveness capture; one that's been PROCESSING for a while may indicate a worker outage), or a
+        legitimate rejection (liveness/validation failure) they haven't retried past. A user who
+        retries and succeeds, or whose latest attempt simply expired after starting a newer one, drops
+        off this list on its own. Recheck (hung sessions only) to force a fresh Rekognition poll, or
+        clear to reset rate limits and let the user start over.
       </p>
     </div>
 
     <section class="admin-card">
       <div class="mb-4 flex flex-wrap items-end gap-2">
         <div>
-          <label class="mb-0.5 block text-[11px] text-admin-subtext">Stuck for at least</label>
+          <label class="mb-0.5 block text-[11px] text-admin-subtext">Needing attention for at least</label>
           <select v-model.number="filters.minAgeSec" class="admin-input w-auto">
             <option v-for="opt in MIN_AGE_OPTIONS" :key="opt.value" :value="opt.value">
               {{ opt.label }}
@@ -206,6 +209,9 @@ onMounted(() => {
                   :status="row.status.toLowerCase()"
                   :label="row.status.replace(/_/g, ' ')"
                 />
+                <p v-if="row.failureReason" class="mt-1 max-w-[220px] truncate text-[11px] text-admin-danger">
+                  {{ row.failureReason }}
+                </p>
               </td>
               <td class="whitespace-nowrap text-xs text-admin-warn">
                 {{ stuckLabel(row.stuckForSec) }}

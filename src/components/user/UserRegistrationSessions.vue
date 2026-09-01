@@ -78,7 +78,7 @@ defineExpose({ load })
   <div class="admin-card space-y-3">
     <div class="flex items-center justify-between gap-2">
       <h2 class="text-sm font-semibold uppercase tracking-wide text-admin-subtext">
-        Pending registration sessions
+        Face registration needing attention
       </h2>
       <div class="flex items-center gap-2">
         <button type="button" class="admin-btn-secondary py-1 text-xs" :disabled="loading" @click="load">
@@ -96,7 +96,7 @@ defineExpose({ load })
     </div>
 
     <p v-if="!sessions.length && !loading" class="text-xs text-admin-muted">
-      No open registration sessions.
+      Latest registration attempt is clean (succeeded, or superseded by a newer one).
     </p>
 
     <ul v-else class="space-y-2">
