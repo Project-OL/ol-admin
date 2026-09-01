@@ -1,10 +1,14 @@
-/** Non-terminal face_registration_sessions statuses that can be "stuck". */
+/** face_registration_sessions statuses that still "need attention" -- hung
+ * (non-terminal) or a terminal failure not yet retried past. */
 export type RegistrationSessionStatus =
   | 'PENDING'
   | 'UPLOADED'
   | 'PROCESSING'
   | 'LIVENESS_PASSED'
   | 'INDEX_PENDING'
+  | 'LIVENESS_FAILED'
+  | 'VALIDATION_FAILED'
+  | 'REJECTED'
 
 export type RegistrationSessionRow = {
   sessionId: string
@@ -52,5 +56,18 @@ export type RecheckRegistrationSessionResponse = {
 export type ClearRegistrationSessionsResponse = {
   success: true
   clearedSessionIds: string[]
+  message: string
+}
+
+export type ClearAllStuckSessionsQuery = {
+  minAgeSec?: number
+  userId?: string
+  reason?: string
+}
+
+export type ClearAllStuckSessionsResponse = {
+  success: true
+  usersCleared: number
+  sessionsCleared: number
   message: string
 }

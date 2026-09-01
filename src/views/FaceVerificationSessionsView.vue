@@ -38,6 +38,9 @@ const filters = reactive({
 const clearTarget = ref<StuckRegistrationSessionRow | null>(null)
 const clearOpen = ref(false)
 
+const clearAllOpen = ref(false)
+const clearingAll = ref(false)
+
 function axiosMessage(err: unknown, fallback: string) {
   if (!axios.isAxiosError(err)) return fallback
   const body = err.response?.data as { message?: string } | undefined
@@ -127,6 +130,25 @@ async function confirmClear(payload: { reason?: string }) {
   }
 }
 
+async function confirmClearAll(payload: { reason?: string }) {
+  if (clearingAll.value) return
+  clearingAll.value = true
+  try {
+    const { data } = await faceVerificationAdminApi.clearAllStuckRegistrationSessions({
+      minAgeSec: filters.minAgeSec,
+      userId: filters.userId.trim() || undefined,
+      reason: payload.reason,
+    })
+    showToast(data.message || 'Cleared', 'success')
+    clearAllOpen.value = false
+    await load(1)
+  } catch (err) {
+    showToast(axiosMessage(err, 'Failed to clear all'), 'error')
+  } finally {
+    clearingAll.value = false
+  }
+}
+
 onMounted(() => {
   if (typeof route.query.minAgeSec === 'string' && Number(route.query.minAgeSec) >= 0) {
     filters.minAgeSec = Number(route.query.minAgeSec)
@@ -176,6 +198,15 @@ onMounted(() => {
         </button>
         <button type="button" class="admin-btn-secondary" :disabled="loading" @click="load(page)">
           Refresh
+        </button>
+        <button
+          v-if="total > 0"
+          type="button"
+          class="admin-btn-danger ml-auto"
+          :disabled="loading"
+          @click="clearAllOpen = true"
+        >
+          Clear all matching ({{ formatNumber(total) }})
         </button>
       </div>
 
@@ -284,6 +315,18 @@ onMounted(() => {
       require-reason
       @close="clearOpen = false"
       @confirm="confirmClear"
+    />
+
+    <ConfirmActionDialog
+      :open="clearAllOpen"
+      title="Clear all matching sessions"
+      :message="`Clears every user currently matching these filters (${formatNumber(total)} right now) -- force-expires each one's stuck/failed session and resets their rate limits, so they can all start a fresh attempt. Does not touch anyone's existing face profile. This cannot be undone.`"
+      confirm-label="Clear all"
+      variant="danger"
+      require-reason
+      require-confirm-text
+      @close="clearAllOpen = false"
+      @confirm="confirmClearAll"
     />
   </div>
 </template>
