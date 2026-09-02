@@ -251,12 +251,6 @@ const composeSubtitle = computed(() => {
   return 'Broadcast to everyone with a push token (active, non-support)'
 })
 
-const composeRequiresConfirm = computed(
-  () =>
-    composeMode.value === 'broadcast' &&
-    (broadcastMode.value === 'all' || broadcastMode.value === 'country'),
-)
-
 function openSendOne(user: PushEligibleUser) {
   composeMode.value = 'single'
   composeUserId.value = user.userId
@@ -939,7 +933,6 @@ onMounted(async () => {
       :open="composeOpen"
       :subtitle="composeSubtitle"
       :confirm-label="composeMode === 'single' ? 'Send now' : 'Queue broadcast'"
-      :require-confirm-text="composeRequiresConfirm"
       @close="composeOpen = false"
       @confirm="handleComposeConfirm"
     />

@@ -10,7 +10,6 @@ const props = defineProps<{
   variant?: 'danger' | 'warn' | 'default'
   requireReason?: boolean
   amountInput?: boolean
-  requireConfirmText?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -20,7 +19,6 @@ const emit = defineEmits<{
 
 const reason = ref('')
 const amount = ref<number | ''>('')
-const confirmText = ref('')
 
 const variantClass = computed(() => {
   if (props.variant === 'danger') return 'admin-btn-danger'
@@ -31,7 +29,6 @@ const variantClass = computed(() => {
 const canSubmit = computed(() => {
   if (props.requireReason && !reason.value.trim()) return false
   if (props.amountInput && (!amount.value || Number(amount.value) <= 0)) return false
-  if (props.requireConfirmText && confirmText.value !== 'CONFIRM') return false
   return true
 })
 
@@ -41,7 +38,6 @@ watch(
     if (isOpen) {
       reason.value = ''
       amount.value = ''
-      confirmText.value = ''
     }
   },
 )
@@ -72,12 +68,6 @@ function handleConfirm() {
             class="admin-input resize-none"
             placeholder="Enter reason..."
           />
-        </div>
-        <div v-if="requireConfirmText">
-          <label class="mb-1 block text-xs font-medium text-admin-subtext">
-            Type <span class="font-mono text-admin-danger">CONFIRM</span> to proceed
-          </label>
-          <input v-model="confirmText" type="text" class="admin-input font-mono uppercase" />
         </div>
       </div>
     </template>

@@ -8,8 +8,6 @@ const props = defineProps<{
   title?: string
   subtitle?: string
   confirmLabel?: string
-  /** Shown when targeting country / all — requires CONFIRM */
-  requireConfirmText?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -21,7 +19,6 @@ const form = reactive({
   title: '',
   body: '',
   dataScreen: '',
-  confirmText: '',
 })
 
 const sending = ref(false)
@@ -30,7 +27,6 @@ const canSubmit = computed(() => {
   const titleOk = form.title.trim().length >= 1 && form.title.trim().length <= 200
   const bodyOk = form.body.trim().length >= 1 && form.body.trim().length <= 1000
   if (!titleOk || !bodyOk) return false
-  if (props.requireConfirmText && form.confirmText !== 'CONFIRM') return false
   return !sending.value
 })
 
@@ -41,7 +37,6 @@ watch(
       form.title = ''
       form.body = ''
       form.dataScreen = ''
-      form.confirmText = ''
       sending.value = false
     }
   },
@@ -102,13 +97,6 @@ function handleSubmit() {
             placeholder="e.g. home, vip"
           />
           <p class="mt-1 text-xs text-admin-muted">Sent as FCM data map with string values only.</p>
-        </div>
-
-        <div v-if="requireConfirmText">
-          <label class="mb-1 block text-xs font-medium text-admin-subtext">
-            Type <span class="font-mono text-admin-danger">CONFIRM</span> to proceed
-          </label>
-          <input v-model="form.confirmText" type="text" class="admin-input font-mono uppercase" />
         </div>
       </div>
     </template>

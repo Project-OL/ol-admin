@@ -1335,7 +1335,6 @@ onMounted(async () => {
       message="This permanently deletes the gift from the catalog."
       confirm-label="Delete"
       variant="danger"
-      :require-confirm-text="true"
       @close="deleteGiftId = null"
       @confirm="confirmDeleteGift"
     />
@@ -1346,7 +1345,6 @@ onMounted(async () => {
       :message="deleteGalleryMessage"
       confirm-label="Delete"
       variant="danger"
-      :require-confirm-text="true"
       @close="deleteGalleryId = null"
       @confirm="confirmDeleteGallery"
     />

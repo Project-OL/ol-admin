@@ -384,8 +384,6 @@ async function handleActivatePosting() {
 
       variant="danger"
 
-      :require-confirm-text="true"
-
       @close="deletePostId = null"
 
       @confirm="handleDelete"
@@ -461,8 +459,6 @@ async function handleActivatePosting() {
       confirm-label="Ban Posting"
 
       variant="danger"
-
-      :require-confirm-text="true"
 
       @close="postBanOpen = false"
 

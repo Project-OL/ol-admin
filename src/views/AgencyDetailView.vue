@@ -808,7 +808,6 @@ async function recomputeTier() {
       confirm-label="Ban Agency"
       variant="danger"
       :require-reason="true"
-      :require-confirm-text="true"
       @close="banDialog = false"
       @confirm="banAgency"
     />
@@ -819,7 +818,6 @@ async function recomputeTier() {
       message="Teardown without barring: frees hosts and deletes the agency. Does not set agency_barred_at. Prefer Ban for policy removals."
       confirm-label="Delete Agency"
       variant="danger"
-      :require-confirm-text="true"
       @close="deleteDialog = false"
       @confirm="deleteAgency"
     />

@@ -3,6 +3,9 @@ import type {
   OtpAuditListParams,
   OtpCostRates,
   OtpCostsByCountry,
+  OtpCountryRate,
+  OtpCountryRateMeans,
+  OtpCountryRateUpsertBody,
   OtpDeliveryAuditList,
   OtpDeliveryAuditSummary,
   OtpMonthParams,
@@ -28,5 +31,15 @@ export const otpAuditApi = {
 
   getCostsByCountry(params: OtpMonthParams = {}) {
     return api.get<OtpCostsByCountry>('/admin/otp-delivery/costs/by-country', { params })
+  },
+
+  setCountryRate(body: OtpCountryRateUpsertBody) {
+    return api.put<OtpCountryRate>('/admin/otp-delivery/cost-rates', body)
+  },
+
+  deleteCountryRate(means: OtpCountryRateMeans, country: string) {
+    return api.delete<{ success: boolean }>('/admin/otp-delivery/cost-rates', {
+      params: { means, country },
+    })
   },
 }

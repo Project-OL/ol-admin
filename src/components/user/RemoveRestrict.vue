@@ -42,8 +42,6 @@ const configs: Record<Exclude<Action, null>, {
 
   variant: 'danger' | 'warn' | 'default'
 
-  requireConfirmText?: boolean
-
   requireReason?: boolean
 
 }> = {
@@ -58,8 +56,6 @@ const configs: Record<Exclude<Action, null>, {
 
     variant: 'danger',
 
-    requireConfirmText: true,
-
   },
 
   removeBio: {
@@ -72,8 +68,6 @@ const configs: Record<Exclude<Action, null>, {
 
     variant: 'danger',
 
-    requireConfirmText: true,
-
   },
 
   resetIdentity: {
@@ -85,8 +79,6 @@ const configs: Record<Exclude<Action, null>, {
     confirmLabel: 'Reset Identity',
 
     variant: 'warn',
-
-    requireConfirmText: true,
 
   },
 

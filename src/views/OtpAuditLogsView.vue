@@ -3,12 +3,15 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { format } from 'date-fns'
 import { otpAuditApi } from '@/api/otpAudit'
+import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import StatusBadge from '@/components/shared/StatusBadge.vue'
 import SortableTh from '@/components/shared/SortableTh.vue'
 import { useSortableRows } from '@/composables/useSortableRows'
 import type {
   OtpCostRates,
   OtpCostsByCountry,
+  OtpCountryRate,
+  OtpCountryRateMeans,
   OtpDeliveryAuditItem,
   OtpDeliveryAuditSummary,
   OtpMonthlyCosts,
@@ -155,6 +158,61 @@ async function loadCosts() {
   }
 }
 
+const rateForm = reactive({
+  means: 'whatsapp' as OtpCountryRateMeans,
+  country: '',
+  rateMinor: '',
+})
+const savingRate = ref(false)
+const rateCardFilter = ref('')
+
+async function saveCountryRate() {
+  const country = rateForm.country.trim().toUpperCase()
+  const rateMinor = Number(rateForm.rateMinor)
+  if (!/^[A-Z]{2}$/.test(country)) {
+    showToast('Country must be a 2-letter ISO code (e.g. IN, US)', 'error')
+    return
+  }
+  if (!Number.isFinite(rateMinor) || rateMinor < 0) {
+    showToast('Rate must be a non-negative number (minor units)', 'error')
+    return
+  }
+  savingRate.value = true
+  try {
+    await otpAuditApi.setCountryRate({ means: rateForm.means, country, rateMinor })
+    showToast(`Saved ${meansLabel(rateForm.means)} rate for ${country}`, 'success')
+    rateForm.country = ''
+    rateForm.rateMinor = ''
+    await loadCosts()
+  } catch {
+    showToast('Failed to save country rate', 'error')
+  } finally {
+    savingRate.value = false
+  }
+}
+
+const pendingRemoveRate = ref<OtpCountryRate | null>(null)
+
+async function confirmRemoveCountryRate() {
+  const rate = pendingRemoveRate.value
+  if (!rate) return
+  try {
+    await otpAuditApi.deleteCountryRate(rate.means, rate.country)
+    showToast(`Removed ${meansLabel(rate.means)} override for ${rate.country}`, 'success')
+    await loadCosts()
+  } catch {
+    showToast('Failed to remove country rate', 'error')
+  } finally {
+    pendingRemoveRate.value = null
+  }
+}
+
+function editCountryRate(rate: OtpCountryRate) {
+  rateForm.means = rate.means
+  rateForm.country = rate.country
+  rateForm.rateMinor = String(rate.rateMinor)
+}
+
 async function loadAudits(page = 1) {
   loadingAudits.value = true
   auditsPage.value = page
@@ -224,6 +282,32 @@ const ratesFootnote = computed(() => {
     (m) => `${meansLabel(m)} = ${formatCharge(rates[m] ?? 0, cur)}`,
   )
   return note ? `${parts.join(' · ')}. ${note}` : parts.join(' · ')
+})
+
+const countryRateOverrides = computed(() => {
+  const filter = rateCardFilter.value.trim().toUpperCase()
+  const all = costRates.value?.countryRates ?? []
+  if (!filter) return all
+  return all.filter((r) => r.country.includes(filter) || r.means.toUpperCase().includes(filter))
+})
+const {
+  sortKey: rateCardSortKey,
+  sortDir: rateCardSortDir,
+  sortedRows: sortedRateCard,
+  toggleSort: toggleRateCardSort,
+} = useSortableRows(countryRateOverrides, (row, key) => {
+  switch (key) {
+    case 'means':
+      return row.means
+    case 'country':
+      return row.country
+    case 'rateMinor':
+      return row.rateMinor
+    case 'updatedAt':
+      return row.updatedAt ? new Date(row.updatedAt).getTime() : 0
+    default:
+      return undefined
+  }
 })
 
 const countryRows = computed(() => costsByCountry.value?.countries ?? [])
@@ -392,10 +476,16 @@ onMounted(async () => {
               <td class="tabular-nums text-sm">
                 {{ formatCharge(row.whatsapp.chargeMinor, currency) }}
                 <span class="text-xs text-admin-muted">({{ row.whatsapp.count }})</span>
+                <p class="text-[10px] text-admin-muted">
+                  now: {{ formatCharge(row.currentRates.whatsapp, currency) }}/msg
+                </p>
               </td>
               <td class="tabular-nums text-sm">
                 {{ formatCharge(row.sms.chargeMinor, currency) }}
                 <span class="text-xs text-admin-muted">({{ row.sms.count }})</span>
+                <p class="text-[10px] text-admin-muted">
+                  now: {{ formatCharge(row.currentRates.sms, currency) }}/msg
+                </p>
               </td>
               <td class="tabular-nums text-sm font-medium">
                 {{ formatCharge(row.totalChargeMinor, currency) }}
@@ -408,6 +498,114 @@ onMounted(async () => {
             <tr v-else-if="!(costsByCountry?.countries?.length)">
               <td colspan="6" class="py-10 text-center text-admin-muted">
                 No successful OTP deliveries for this month
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Country rate card -->
+    <section class="admin-card">
+      <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <h2 class="text-lg font-medium">WhatsApp / SMS rate card</h2>
+          <p class="mt-1 text-xs text-admin-subtext">
+            Per-country override. A country with no row here uses the flat default shown above
+            (WhatsApp {{ formatCharge(costRates?.rates.whatsapp ?? 0, currency) }}, SMS
+            {{ formatCharge(costRates?.rates.sms ?? 0, currency) }}). Applies to new sends only —
+            past audit charges never change.
+          </p>
+        </div>
+        <input
+          v-model="rateCardFilter"
+          type="text"
+          class="admin-input w-40"
+          placeholder="Filter country/means"
+        />
+      </div>
+
+      <div class="mb-4 flex flex-wrap items-end gap-2">
+        <label class="flex flex-col gap-1 text-xs text-admin-subtext">
+          Means
+          <select v-model="rateForm.means" class="admin-input w-auto">
+            <option value="whatsapp">WhatsApp</option>
+            <option value="sms">SMS</option>
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-xs text-admin-subtext">
+          Country (ISO-2)
+          <input
+            v-model="rateForm.country"
+            type="text"
+            class="admin-input w-24 uppercase"
+            placeholder="IN"
+            maxlength="2"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-xs text-admin-subtext">
+          Rate (minor units)
+          <input
+            v-model="rateForm.rateMinor"
+            type="number"
+            min="0"
+            step="1"
+            class="admin-input w-32"
+            placeholder="e.g. 12"
+          />
+        </label>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="savingRate"
+          @click="saveCountryRate"
+        >
+          {{ savingRate ? 'Saving…' : 'Save rate' }}
+        </button>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <SortableTh label="Means" sort-key="means" :active-key="rateCardSortKey" :direction="rateCardSortDir" @sort="toggleRateCardSort" />
+              <SortableTh label="Country" sort-key="country" :active-key="rateCardSortKey" :direction="rateCardSortDir" @sort="toggleRateCardSort" />
+              <SortableTh label="Rate" sort-key="rateMinor" :active-key="rateCardSortKey" :direction="rateCardSortDir" @sort="toggleRateCardSort" />
+              <SortableTh label="Updated" sort-key="updatedAt" :active-key="rateCardSortKey" :direction="rateCardSortDir" @sort="toggleRateCardSort" />
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="rate in sortedRateCard" :key="`${rate.means}:${rate.country}`">
+              <td class="text-sm">{{ meansLabel(rate.means) }}</td>
+              <td class="font-medium">{{ rate.country }}</td>
+              <td class="tabular-nums text-sm">{{ formatCharge(rate.rateMinor, rate.currency) }}</td>
+              <td class="whitespace-nowrap text-xs text-admin-muted">
+                {{ format(new Date(rate.updatedAt), 'dd MMM yyyy HH:mm') }}
+              </td>
+              <td class="whitespace-nowrap text-right">
+                <button
+                  type="button"
+                  class="admin-btn-secondary text-xs"
+                  @click="editCountryRate(rate)"
+                >
+                  Edit
+                </button>
+                <button
+                  type="button"
+                  class="admin-btn-secondary text-xs text-admin-danger"
+                  @click="pendingRemoveRate = rate"
+                >
+                  Remove
+                </button>
+              </td>
+            </tr>
+            <tr v-if="loadingCosts">
+              <td colspan="5" class="py-10 text-center text-admin-muted">Loading…</td>
+            </tr>
+            <tr v-else-if="!sortedRateCard.length">
+              <td colspan="5" class="py-10 text-center text-admin-muted">
+                No country overrides configured — every country uses the flat default
               </td>
             </tr>
           </tbody>
@@ -560,5 +758,19 @@ onMounted(async () => {
         </div>
       </div>
     </section>
+
+    <ConfirmActionDialog
+      :open="!!pendingRemoveRate"
+      title="Remove country rate override"
+      :message="
+        pendingRemoveRate
+          ? `Removes the ${meansLabel(pendingRemoveRate.means)} override for ${pendingRemoveRate.country}. New sends to that country will fall back to the flat default rate.`
+          : ''
+      "
+      confirm-label="Remove"
+      variant="danger"
+      @close="pendingRemoveRate = null"
+      @confirm="confirmRemoveCountryRate"
+    />
   </div>
 </template>

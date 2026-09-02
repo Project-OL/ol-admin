@@ -70,6 +70,9 @@ export type OtpMonthlyCosts = {
   totalChargeMinor: number
 }
 
+/** Rate that would apply to a send today (country override, else the flat env default). */
+export type OtpCurrentRates = { whatsapp: number; sms: number }
+
 export type OtpCountryCostRow = {
   country: string
   email: OtpMeansCost
@@ -77,16 +80,35 @@ export type OtpCountryCostRow = {
   sms: OtpMeansCost
   totalCount: number
   totalChargeMinor: number
+  currentRates: OtpCurrentRates
 }
 
 export type OtpCostsByCountry = OtpMonthlyCosts & {
   countries: OtpCountryCostRow[]
 }
 
+/** WhatsApp/SMS pricing varies by destination country — email stays flat. */
+export type OtpCountryRateMeans = 'whatsapp' | 'sms'
+
+export type OtpCountryRate = {
+  means: OtpCountryRateMeans
+  country: string
+  rateMinor: number
+  currency: string
+  updatedAt: string
+}
+
 export type OtpCostRates = {
   currency: string
   rates: Record<OtpMeans, number>
+  countryRates: OtpCountryRate[]
   note: string
+}
+
+export type OtpCountryRateUpsertBody = {
+  means: OtpCountryRateMeans
+  country: string
+  rateMinor: number
 }
 
 export type OtpAuditListParams = {

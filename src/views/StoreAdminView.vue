@@ -915,7 +915,6 @@ onMounted(async () => {
       message="This permanently deletes the store item from the catalog."
       confirm-label="Delete"
       variant="danger"
-      :require-confirm-text="true"
       @close="deleteItemId = null"
       @confirm="confirmDelete"
     />

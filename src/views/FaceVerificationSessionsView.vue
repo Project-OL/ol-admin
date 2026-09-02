@@ -341,7 +341,6 @@ onMounted(() => {
       confirm-label="Clear all"
       variant="danger"
       require-reason
-      require-confirm-text
       @close="clearAllOpen = false"
       @confirm="confirmClearAll"
     />

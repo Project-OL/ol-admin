@@ -301,7 +301,6 @@ const {
       message="This ends every active login for this user (up to 3). They will need to sign in again. Devices are not banned."
       confirm-label="Logout all"
       variant="warn"
-      require-confirm-text
       @close="confirmLogoutAll = false"
       @confirm="logoutAll"
     />
