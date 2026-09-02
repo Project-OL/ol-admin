@@ -247,6 +247,12 @@ const router = createRouter({
           component: () => import('../views/AdminViewsView.vue'),
           meta: { title: 'Admin Views', roles: ['SUPER_ADMIN'] },
         },
+        {
+          path: 'admin/infra-cost',
+          name: 'infra-cost',
+          component: () => import('../views/InfraCostView.vue'),
+          meta: { title: 'Infra & AWS Cost', roles: ['SUPER_ADMIN'] },
+        },
       ],
     },
   ],

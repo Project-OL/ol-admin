@@ -160,6 +160,13 @@ const allNavItems: NavItem[] = [
     roles: ['SUPER_ADMIN'],
     superAdminOnly: true,
   },
+  {
+    to: '/admin/infra-cost',
+    label: 'Infra & Cost',
+    icon: 'settings',
+    roles: ['SUPER_ADMIN'],
+    superAdminOnly: true,
+  },
 ]
 
 const navItems = computed(() => {
