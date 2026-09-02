@@ -216,6 +216,7 @@ onMounted(() => {
             <tr>
               <th>User</th>
               <th>Status</th>
+              <th>Image</th>
               <th>Stuck for</th>
               <th>Created</th>
               <th>Risk score</th>
@@ -244,6 +245,22 @@ onMounted(() => {
                   {{ row.failureReason }}
                 </p>
               </td>
+              <td>
+                <a
+                  v-if="row.failureImageUrl"
+                  :href="row.failureImageUrl"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="block h-12 w-12 overflow-hidden rounded-md border border-admin-border"
+                >
+                  <img
+                    :src="row.failureImageUrl"
+                    alt="Captured face image"
+                    class="h-full w-full object-cover"
+                  />
+                </a>
+                <span v-else class="text-[11px] text-admin-muted">No image</span>
+              </td>
               <td class="whitespace-nowrap text-xs text-admin-warn">
                 {{ stuckLabel(row.stuckForSec) }}
               </td>
@@ -271,10 +288,10 @@ onMounted(() => {
               </td>
             </tr>
             <tr v-if="loading && !items.length">
-              <td colspan="6" class="py-10 text-center text-admin-muted">Loading…</td>
+              <td colspan="7" class="py-10 text-center text-admin-muted">Loading…</td>
             </tr>
             <tr v-else-if="!items.length">
-              <td colspan="6" class="py-10 text-center text-admin-muted">
+              <td colspan="7" class="py-10 text-center text-admin-muted">
                 No stuck registration sessions
               </td>
             </tr>

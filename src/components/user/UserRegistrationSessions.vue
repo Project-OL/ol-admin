@@ -116,6 +116,15 @@ defineExpose({ load })
           </p>
           <p v-if="s.failureReason" class="text-[11px] text-admin-danger">{{ s.failureReason }}</p>
         </div>
+        <a
+          v-if="s.failureImageUrl"
+          :href="s.failureImageUrl"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="block h-14 w-14 shrink-0 overflow-hidden rounded-md border border-admin-border"
+        >
+          <img :src="s.failureImageUrl" alt="Captured face image" class="h-full w-full object-cover" />
+        </a>
         <button
           v-if="s.status === 'PENDING' || s.status === 'UPLOADED' || s.status === 'PROCESSING'"
           type="button"

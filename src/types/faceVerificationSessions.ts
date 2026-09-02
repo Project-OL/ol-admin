@@ -16,6 +16,8 @@ export type RegistrationSessionRow = {
   awsSessionId: string | null
   riskScore: number
   failureReason?: string | null
+  /** Rekognition reference image captured on the failed attempt, when one was saved. */
+  failureImageUrl?: string | null
   createdAt: string
   updatedAt: string
   stuckForSec: number
