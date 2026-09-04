@@ -2,6 +2,7 @@ name: Staging build and deploy
 
 # Mirrors production.yml: Vite build, pack dist, scp, ssh 'bash -s' < unpack.sh
 # Staging API/live URLs and APP_DIR=/var/www/admins3jinyu.offoolive.com
+# Test push 2026-09-04 to re-verify SSH connectivity from GitHub Actions.
 
 on:
   push:
