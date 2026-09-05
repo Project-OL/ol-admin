@@ -644,7 +644,10 @@ function formatDaysSinceReviewed(days: number | null | undefined) {
 async function loadTickets(page = 1) {
   loadingTickets.value = true
   ticketsPage.value = page
-  selectedTicketIds.value = new Set()
+  // Selection deliberately survives reloads and page changes: a background badge
+  // refresh must never drop rows the admin has ticked, and selecting more than one
+  // page worth of tickets requires it to persist across pagination. It is cleared
+  // only by "Clear" or a completed bulk action.
   try {
     let assignedTo: string
     if (isSuperAdmin.value && ticketQueue.value === 'csa') {
@@ -929,13 +932,24 @@ function toggleTicketSelection(ticketId: string) {
   selectedTicketIds.value = next
 }
 
+/** Select-all applies to this page only — selections made on other pages are left alone. */
 function toggleSelectAll() {
+  const next = new Set(selectedTicketIds.value)
   if (allSelectableSelected.value) {
-    selectedTicketIds.value = new Set()
+    for (const id of selectableTicketIds.value) next.delete(id)
   } else {
-    selectedTicketIds.value = new Set(selectableTicketIds.value)
+    for (const id of selectableTicketIds.value) next.add(id)
   }
+  selectedTicketIds.value = next
 }
+
+/** Tickets ticked on other pages / queues, still part of the pending bulk action. */
+const selectedOffPageCount = computed(() => {
+  const onPage = new Set(tickets.value.map((t) => t.id))
+  let count = 0
+  for (const id of selectedTicketIds.value) if (!onPage.has(id)) count++
+  return count
+})
 
 function clearSelection() {
   selectedTicketIds.value = new Set()
@@ -1055,7 +1069,11 @@ watch(tab, (t) => {
 watch(
   () => [notifStore.badge.myAwaitingReply, notifStore.badge.unreadCount] as const,
   () => {
-    if (tab.value === 'tickets') void loadTickets(ticketsPage.value)
+    // The badge polls every 30s. Refreshing under an active selection would reorder
+    // rows mid-interaction, so hold off until the admin has acted on their picks.
+    if (tab.value === 'tickets' && selectedTicketIds.value.size === 0) {
+      void loadTickets(ticketsPage.value)
+    }
   },
 )
 
@@ -1549,7 +1567,12 @@ onMounted(() => {
           v-if="selectedTicketIds.size > 0"
           class="flex flex-wrap items-center gap-3 rounded-md border border-admin-accent/40 bg-admin-accent/10 px-3 py-2 text-sm"
         >
-          <span>{{ selectedTicketIds.size }} selected</span>
+          <span>
+            {{ selectedTicketIds.size }} selected
+            <span v-if="selectedOffPageCount" class="text-admin-subtext">
+              ({{ selectedOffPageCount }} on other pages)
+            </span>
+          </span>
           <button type="button" class="admin-btn-primary py-1 text-xs" @click="openBulkResolve">
             Resolve with template
           </button>
