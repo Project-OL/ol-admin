@@ -80,22 +80,47 @@ jobs:
           printf '%s\n' "$SSH_PRIVATE_KEY" | tr -d '\r' > ~/.ssh/id_deploy
           chmod 600 ~/.ssh/id_deploy
           ssh-keyscan -H "$EC2_HOST" >> ~/.ssh/known_hosts || true
-          scp -i ~/.ssh/id_deploy \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=20 \
-            admin-artifact.tgz "$EC2_USER@$EC2_HOST:/tmp/admin-artifact.tgz"
-          ssh -i ~/.ssh/id_deploy \
-            -o IdentitiesOnly=yes \
-            -o StrictHostKeyChecking=accept-new \
-            -o ConnectTimeout=20 \
-            -o ServerAliveInterval=15 \
-            -o ServerAliveCountMax=120 \
-            -o TCPKeepAlive=yes \
-            "$EC2_USER@$EC2_HOST" \
-            'APP_USER=ec2-user APP_DIR=/var/www/admins3jinyu.offoolive.com ARTIFACT=/tmp/admin-artifact.tgz bash -s' \
-            < .github/deploy/ec2-unpack-admin.sh
+
+          SCP_OK=0
+          for i in 1 2 3 4; do
+            if scp -i ~/.ssh/id_deploy \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o ConnectTimeout=20 \
+                admin-artifact.tgz "$EC2_USER@$EC2_HOST:/tmp/admin-artifact.tgz"; then
+              SCP_OK=1
+              break
+            fi
+            echo "scp attempt $i/4 failed (transient SSH connectivity is known-flaky to this host); retrying in 15s..." >&2
+            sleep 15
+          done
+          [ "$SCP_OK" = "1" ] || { echo "scp upload failed after 4 attempts" >&2; exit 1; }
+
+          SSH_OK=0
+          for i in 1 2 3 4; do
+            if ssh -i ~/.ssh/id_deploy \
+                -o IdentitiesOnly=yes \
+                -o StrictHostKeyChecking=accept-new \
+                -o ConnectTimeout=20 \
+                -o ServerAliveInterval=15 \
+                -o ServerAliveCountMax=120 \
+                -o TCPKeepAlive=yes \
+                "$EC2_USER@$EC2_HOST" \
+                'APP_USER=ec2-user APP_DIR=/var/www/admins3jinyu.offoolive.com ARTIFACT=/tmp/admin-artifact.tgz bash -s' \
+                < .github/deploy/ec2-unpack-admin.sh; then
+              SSH_OK=1
+              break
+            fi
+            echo "ssh deploy attempt $i/4 failed (transient SSH connectivity is known-flaky to this host); retrying in 15s..." >&2
+            sleep 15
+          done
+          [ "$SSH_OK" = "1" ] || { echo "ssh deploy failed after 4 attempts" >&2; exit 1; }
 # Same as production.yml. Staging:
 #   https://admin-staging.offoolive.com  root /var/www/admins3jinyu.offoolive.com
 # Secrets: STAGING_EC2_HOST, STAGING_EC2_USER, STAGING_EC2_SSH_PRIVATE_KEY
 # retest 2026-09-05T04:29:20Z — box IP + DNS fixed, verifying staging deploy lands
+# 2026-09-05: retry loop added -- SSH to this host intermittently times out during banner
+# exchange (worked at 04:29/05:15 UTC, failed by 06:11) while SSM (prodv2) to a different box
+# in the same window never failed, so this is specific/intermittent to this EC2's SSH listener,
+# not a network-wide issue. The unpack script is idempotent, so retrying the whole ssh call is
+# safe even on a failure that happens after the connection banner.
