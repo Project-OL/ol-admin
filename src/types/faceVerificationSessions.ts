@@ -85,11 +85,21 @@ export type PendingDuplicatePair = {
   blockedUser: DuplicateCaseUser & { flaggedAt: string }
   ownerUser: (DuplicateCaseUser & { status: string }) | null
   faceMatchSimilarity: number | null
+  /** True when an admin parked this case at the bottom of the worklist. */
+  deprioritized?: boolean
 }
 
 export type PendingDuplicatesQuery = {
   page?: number
   limit?: number
+  /** User id, public id, username or partial name; matches either side of the pair. */
+  search?: string
+}
+
+export type DuplicateOrderResponse = {
+  success: true
+  userId: string
+  deprioritized: boolean
 }
 
 export type PendingDuplicatesResponse = {

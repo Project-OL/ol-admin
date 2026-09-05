@@ -48,8 +48,9 @@ const notifStore = useSupportNotificationsStore()
 const isSuperAdmin = computed(() => auth.isSuperAdmin)
 const isModeratorOnly = computed(() => auth.role === 'MODERATOR')
 const canWorkTickets = computed(() => auth.isSuperAdmin || auth.isCustomerSupport)
+// Support always opens on the ticket queue — that is the day-to-day work surface;
+// SUPER_ADMINs switch to Agents deliberately.
 const defaultTab = computed(() => {
-  if (isSuperAdmin.value) return 'agents' as const
   if (isModeratorOnly.value) return 'reports' as const
   return 'tickets' as const
 })
@@ -151,7 +152,10 @@ const ticketFilters = reactive({
   priority: '' as '' | SupportTicketPriority,
   /** '' | 'min:N' | 'max:N' — days since CSA resolve/reject (resolvedAt). */
   reviewAge: '',
+  /** Only tickets this admin starred (stars are private per admin). */
+  starredOnly: false,
 })
+const starringTicketIds = ref<Set<string>>(new Set())
 
 // --- Reply templates ---
 const replyTemplates = ref<SupportReplyTemplate[]>([])
@@ -657,6 +661,7 @@ async function loadTickets(page = 1) {
       assignedTo,
       status: ticketFilters.status || undefined,
       priority: ticketFilters.priority || undefined,
+      starredOnly: ticketFilters.starredOnly || undefined,
       ...reviewAge,
     })
     tickets.value = data.tickets ?? []
@@ -789,6 +794,27 @@ function ticketThumb(t: SupportTicketListItem) {
 
 function openTicket(ticket: SupportTicketListItem) {
   router.push('/admin/support/tickets/' + ticket.id)
+}
+
+async function toggleTicketStar(ticket: SupportTicketListItem, event: Event) {
+  event.stopPropagation()
+  if (starringTicketIds.value.has(ticket.id)) return
+  const next = !ticket.isStarred
+  starringTicketIds.value = new Set(starringTicketIds.value).add(ticket.id)
+  // Optimistic: the row flips immediately, and rolls back if the call fails.
+  ticket.isStarred = next
+  try {
+    await customerSupportApi.setStar(ticket.id, next)
+    // Un-starring while the starred-only filter is on removes the row from the queue.
+    if (!next && ticketFilters.starredOnly) await loadTickets(ticketsPage.value)
+  } catch {
+    ticket.isStarred = !next
+    showToast(next ? 'Could not star ticket' : 'Could not remove star', 'error')
+  } finally {
+    const pending = new Set(starringTicketIds.value)
+    pending.delete(ticket.id)
+    starringTicketIds.value = pending
+  }
 }
 
 async function claimTicket(ticket: SupportTicketListItem, event: Event) {
@@ -1498,6 +1524,19 @@ onMounted(() => {
             <option value="min:14">Reviewed 14+ days ago</option>
             <option value="min:30">Reviewed 30+ days ago</option>
           </select>
+          <button
+            type="button"
+            :class="[
+              'rounded-md px-3 py-1.5 text-xs font-medium',
+              ticketFilters.starredOnly
+                ? 'bg-amber-500/20 text-amber-300'
+                : 'bg-admin-bg text-admin-subtext',
+            ]"
+            :title="ticketFilters.starredOnly ? 'Showing starred tickets only' : 'Show only tickets you starred'"
+            @click="ticketFilters.starredOnly = !ticketFilters.starredOnly; loadTickets(1)"
+          >
+            ★ Starred
+          </button>
           <button type="button" class="admin-btn-primary" :disabled="loadingTickets" @click="loadTickets(1)">
             Refresh
           </button>
@@ -1532,6 +1571,7 @@ onMounted(() => {
                     @change="toggleSelectAll"
                   />
                 </th>
+                <th><span class="sr-only">Starred</span>★</th>
                 <SortableTh label="Ticket" sort-key="publicId" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
                 <SortableTh label="User" sort-key="user" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
                 <SortableTh label="Priority" sort-key="priority" :active-key="ticketSortKey" :direction="ticketSortDir" @sort="toggleTicketSort" />
@@ -1557,6 +1597,18 @@ onMounted(() => {
                     :checked="selectedTicketIds.has(t.id)"
                     @change="toggleTicketSelection(t.id)"
                   />
+                </td>
+                <td @click.stop>
+                  <button
+                    type="button"
+                    class="text-lg leading-none"
+                    :class="t.isStarred ? 'text-amber-400' : 'text-admin-muted hover:text-amber-400'"
+                    :disabled="starringTicketIds.has(t.id)"
+                    :title="t.isStarred ? 'Remove star' : 'Star this ticket'"
+                    @click="toggleTicketStar(t, $event)"
+                  >
+                    {{ t.isStarred ? '★' : '☆' }}
+                  </button>
                 </td>
                 <td>
                   <div class="flex items-start gap-2">
@@ -1617,7 +1669,9 @@ onMounted(() => {
                 </td>
               </tr>
               <tr v-if="!tickets.length && !loadingTickets">
-                <td colspan="9" class="py-10 text-center text-admin-muted">No tickets in this queue</td>
+                <td colspan="10" class="py-10 text-center text-admin-muted">
+                  {{ ticketFilters.starredOnly ? 'No starred tickets in this queue' : 'No tickets in this queue' }}
+                </td>
               </tr>
             </tbody>
           </table>

@@ -3,6 +3,7 @@ import type {
   AcceptDuplicateBothResponse,
   ClearAllStuckSessionsQuery,
   ClearAllStuckSessionsResponse,
+  DuplicateOrderResponse,
   PendingDuplicatesQuery,
   PendingDuplicatesResponse,
   StuckRegistrationSessionsQuery,
@@ -34,6 +35,19 @@ export const faceVerificationAdminApi = {
     return api.post<AcceptDuplicateBothResponse>(
       `/admin/face-verification/${userId}/accept-duplicate`,
       { reason },
+    )
+  },
+
+  /** Park a duplicate case below every other row in the worklist (ordering only). */
+  sendDuplicateToBottom(userId: string) {
+    return api.post<DuplicateOrderResponse>(
+      `/admin/face-verification/duplicates/${userId}/send-to-bottom`,
+    )
+  },
+
+  restoreDuplicateOrder(userId: string) {
+    return api.post<DuplicateOrderResponse>(
+      `/admin/face-verification/duplicates/${userId}/restore-order`,
     )
   },
 }

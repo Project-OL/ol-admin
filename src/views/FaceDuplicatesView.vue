@@ -19,6 +19,11 @@ const acceptTarget = ref<PendingDuplicatePair | null>(null)
 const acceptOpen = ref(false)
 const accepting = ref(false)
 
+const search = ref('')
+/** Applied search term — kept separate so paging doesn't pick up an unsubmitted edit. */
+const appliedSearch = ref('')
+const reordering = ref<string | null>(null)
+
 function axiosMessage(err: unknown, fallback: string) {
   if (!axios.isAxiosError(err)) return fallback
   const body = err.response?.data as { message?: string } | undefined
@@ -42,7 +47,11 @@ async function load(p = 1) {
   loading.value = true
   page.value = p
   try {
-    const { data } = await faceVerificationAdminApi.listPendingDuplicates({ page: p, limit })
+    const { data } = await faceVerificationAdminApi.listPendingDuplicates({
+      page: p,
+      limit,
+      search: appliedSearch.value || undefined,
+    })
     pairs.value = data.pairs ?? []
     total.value = data.total ?? 0
   } catch {
@@ -51,6 +60,38 @@ async function load(p = 1) {
     showToast('Failed to load pending duplicate cases', 'error')
   } finally {
     loading.value = false
+  }
+}
+
+function applySearch() {
+  appliedSearch.value = search.value.trim()
+  void load(1)
+}
+
+function clearSearch() {
+  search.value = ''
+  appliedSearch.value = ''
+  void load(1)
+}
+
+/** Ordering only — parks a hard case at the bottom without resolving it. */
+async function toggleRowOrder(pair: PendingDuplicatePair) {
+  const userId = pair.blockedUser.userId
+  if (reordering.value) return
+  reordering.value = userId
+  try {
+    if (pair.deprioritized) {
+      await faceVerificationAdminApi.restoreDuplicateOrder(userId)
+      showToast('Restored to default position', 'success')
+    } else {
+      await faceVerificationAdminApi.sendDuplicateToBottom(userId)
+      showToast('Moved to the bottom of the list', 'success')
+    }
+    await load(page.value)
+  } catch (err) {
+    showToast(axiosMessage(err, 'Failed to reorder this case'), 'error')
+  } finally {
+    reordering.value = null
   }
 }
 
@@ -96,15 +137,40 @@ onMounted(() => load(1))
     </div>
 
     <section class="admin-card">
+      <div class="admin-search-row mb-4">
+        <input
+          v-model="search"
+          class="admin-input min-w-0 flex-1"
+          placeholder="Search user by id, public id, username or part of a name…"
+          @keyup.enter="applySearch"
+        />
+        <button type="button" class="admin-btn-primary w-full sm:w-auto" :disabled="loading" @click="applySearch">
+          Search
+        </button>
+        <button
+          v-if="appliedSearch"
+          type="button"
+          class="admin-btn-secondary w-full sm:w-auto"
+          :disabled="loading"
+          @click="clearSearch"
+        >
+          Clear
+        </button>
+      </div>
+      <p v-if="appliedSearch" class="mb-3 text-xs text-admin-subtext">
+        Showing cases where either account matches “{{ appliedSearch }}”.
+      </p>
+
       <div v-if="loading && !pairs.length" class="py-10 text-center text-admin-muted">Loading…</div>
       <div v-else-if="!pairs.length" class="py-10 text-center text-admin-muted">
-        No pending duplicate cases
+        {{ appliedSearch ? 'No duplicate cases match this user' : 'No pending duplicate cases' }}
       </div>
       <div v-else class="space-y-3">
         <div
           v-for="pair in pairs"
           :key="pair.blockedUser.userId"
           class="rounded-lg border border-admin-border p-3"
+          :class="pair.deprioritized ? 'opacity-70' : ''"
         >
           <div class="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_auto_1fr_auto]">
             <div class="flex gap-3">
@@ -161,7 +227,7 @@ onMounted(() => load(1))
               <p v-else class="text-xs text-admin-muted">Matched account no longer available</p>
             </div>
 
-            <div class="flex items-center justify-end">
+            <div class="flex flex-col items-stretch justify-center gap-2 sm:items-end">
               <button
                 type="button"
                 class="admin-btn-primary py-1.5 text-xs"
@@ -169,6 +235,19 @@ onMounted(() => load(1))
                 @click="openAccept(pair)"
               >
                 Accept both
+              </button>
+              <button
+                type="button"
+                class="admin-btn-secondary py-1.5 text-xs whitespace-nowrap"
+                :disabled="reordering === pair.blockedUser.userId || loading"
+                :title="
+                  pair.deprioritized
+                    ? 'Restore this case to its default position'
+                    : 'Park this case below every other row'
+                "
+                @click="toggleRowOrder(pair)"
+              >
+                {{ pair.deprioritized ? '↑ Restore order' : '↓ Send to bottom' }}
               </button>
             </div>
           </div>
