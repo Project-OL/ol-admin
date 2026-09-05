@@ -49,6 +49,7 @@ const resolveNote = ref('')
 const resolveType = ref<SupportTicketResolution>('RESOLVED')
 const replyTemplates = ref<SupportReplyTemplate[]>([])
 const loadingTemplates = ref(false)
+const starring = ref(false)
 const selectedTemplateId = ref('')
 const assignOpen = ref(false)
 const assignAdminId = ref('')
@@ -74,9 +75,10 @@ const canAct = computed(() => {
   return ticket.value.assignedAdminId === auth.admin?.id
 })
 
+// Support can always keep talking to the user — a resolved or closed ticket still
+// accepts messages (the API re-opens the review window on any non-closed ticket).
 const canReply = computed(() => {
   if (!ticket.value) return false
-  if (ticket.value.stage === 'closed') return false
   if (auth.isSuperAdmin) return true
   if (!ticket.value.assignedAdminId) return false
   return ticket.value.assignedAdminId === auth.admin?.id
@@ -171,6 +173,9 @@ async function sendReply() {
   acting.value = true
   const optimisticContent = replyText.value.trim() || '(image)'
   const optimisticId = `optimistic-${Date.now()}`
+  // Captured before the inputs are cleared below, otherwise the attachment is lost.
+  const pendingFile = replyFile.value
+  const wasClosed = ticket.value?.stage === 'closed'
   // Optimistic insert
   const optimistic: SupportMessage = {
     id: optimisticId,
@@ -187,8 +192,8 @@ async function sendReply() {
   replyFile.value = null
   try {
     let imageUrl: string | undefined
-    if (replyFile.value) {
-      imageUrl = await uploadSupportReplyImage(ticketId.value, replyFile.value)
+    if (pendingFile) {
+      imageUrl = await uploadSupportReplyImage(ticketId.value, pendingFile)
     }
     const { data } = await customerSupportApi.reply(ticketId.value, {
       content: optimisticContent,
@@ -196,11 +201,14 @@ async function sendReply() {
     })
     // Replace optimistic with real
     messages.value = messages.value.map((m) => m.id === optimisticId ? (data.message ?? m) : m)
-    showToast('Reply sent', 'success')
+    showToast(wasClosed ? 'Message sent' : 'Reply sent — ticket marked resolved', 'success')
+    // A reply on a live ticket moves it to pending review; refresh the header state.
+    await loadTicket(false, true)
   } catch (err) {
     // Remove optimistic on failure
     messages.value = messages.value.filter((m) => m.id !== optimisticId)
     replyText.value = optimisticContent
+    replyFile.value = pendingFile
     showToast(ticketErrorMessage(err, 'Reply failed'), 'error')
   } finally {
     acting.value = false
@@ -240,15 +248,11 @@ function applyTemplate() {
 
 async function submitResolve() {
   const note = resolveNote.value.trim()
-  if (!note) {
-    showToast('A public reason note is required', 'error')
-    return
-  }
   acting.value = true
   try {
     await customerSupportApi.resolve(ticketId.value, {
       resolution: resolveType.value,
-      note,
+      ...(note ? { note } : {}),
     })
     resolveOpen.value = false
     showToast('Resolution offered — pending user review', 'success')
@@ -257,6 +261,36 @@ async function submitResolve() {
     showToast(ticketErrorMessage(err, 'Resolve failed'), 'error')
   } finally {
     acting.value = false
+  }
+}
+
+/** Resolve is one click: no confirmation dialog, no template, no note. */
+async function resolveNow() {
+  if (acting.value) return
+  acting.value = true
+  try {
+    await customerSupportApi.resolve(ticketId.value, { resolution: 'RESOLVED' })
+    showToast('Ticket resolved — pending user review', 'success')
+    await loadTicket(false, true)
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Resolve failed'), 'error')
+  } finally {
+    acting.value = false
+  }
+}
+
+async function toggleStar() {
+  if (!ticket.value || starring.value) return
+  const next = !ticket.value.isStarred
+  starring.value = true
+  ticket.value.isStarred = next
+  try {
+    await customerSupportApi.setStar(ticketId.value, next)
+  } catch {
+    if (ticket.value) ticket.value.isStarred = !next
+    showToast(next ? 'Could not star ticket' : 'Could not remove star', 'error')
+  } finally {
+    starring.value = false
   }
 }
 
@@ -390,8 +424,12 @@ onUnmounted(() => {
 <template>
   <div class="admin-page max-w-[1200px]">
     <div class="flex flex-wrap items-center gap-3">
-      <button type="button" class="admin-btn-secondary text-xs" @click="router.push('/admin/support')">
-        ← Back to support
+      <button
+        type="button"
+        class="admin-btn-secondary text-xs"
+        @click="router.push({ path: '/admin/support', query: { tab: 'tickets' } })"
+      >
+        ← Back to tickets
       </button>
       <h1 class="text-xl font-semibold">Ticket detail</h1>
     </div>
@@ -403,6 +441,16 @@ onUnmounted(() => {
         <div class="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="text-xl leading-none"
+                :class="ticket.isStarred ? 'text-amber-400' : 'text-admin-muted hover:text-amber-400'"
+                :disabled="starring"
+                :title="ticket.isStarred ? 'Remove star' : 'Star this ticket'"
+                @click="toggleStar"
+              >
+                {{ ticket.isStarred ? '★' : '☆' }}
+              </button>
               <h2 class="text-lg font-semibold">{{ ticket.publicId ?? ticket.id }}</h2>
               <StatusBadge
                 :status="ticket.stage === 'closed' ? 'inactive' : ticket.stage === 'pending_review' ? 'warn' : 'active'"
@@ -458,7 +506,8 @@ onUnmounted(() => {
               type="button"
               class="admin-btn-secondary text-xs"
               :disabled="acting"
-              @click="resolveType = 'RESOLVED'; resolveNote = ''; selectedTemplateId = ''; resolveOpen = true; loadReplyTemplates()"
+              title="Marks the ticket resolved immediately — no note needed"
+              @click="resolveNow"
             >
               Resolve
             </button>
@@ -585,6 +634,12 @@ onUnmounted(() => {
           </div>
 
           <div v-if="canReply" class="space-y-2">
+            <p v-if="ticket.stage === 'closed'" class="text-xs text-admin-muted">
+              This ticket is closed — your message still reaches the user and the ticket stays closed.
+            </p>
+            <p v-else class="text-xs text-admin-muted">
+              Sending a reply marks this ticket resolved and starts the user's review window.
+            </p>
             <textarea
               v-model="replyText"
               rows="3"
@@ -608,7 +663,7 @@ onUnmounted(() => {
           <p v-else-if="isUnassigned && ticket.stage === 'open'" class="text-xs text-admin-warn">
             Claim this ticket before replying.
           </p>
-          <p v-else-if="ticket.stage !== 'closed'" class="text-xs text-admin-warn">
+          <p v-else class="text-xs text-admin-warn">
             This ticket is assigned to another agent — actions are disabled.
           </p>
         </div>
@@ -660,16 +715,18 @@ onUnmounted(() => {
           v-model="resolveNote"
           rows="3"
           class="admin-input resize-none"
-          placeholder="Required public reason shown to the user…"
+          placeholder="Public reason shown to the user (optional)…"
         />
-        <p v-if="!resolveNote.trim()" class="mt-1 text-xs text-admin-warn">Note is required</p>
+        <p v-if="!resolveNote.trim()" class="mt-1 text-xs text-admin-muted">
+          Optional — a generic notice is posted when left empty.
+        </p>
       </template>
       <template #footer>
         <button type="button" class="admin-btn-secondary" @click="resolveOpen = false">Cancel</button>
         <button
           type="button"
           class="admin-btn-primary"
-          :disabled="acting || !resolveNote.trim()"
+          :disabled="acting"
           @click="submitResolve"
         >
           Confirm

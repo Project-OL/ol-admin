@@ -152,8 +152,17 @@ export const customerSupportApi = {
     )
   },
 
-  resolve(ticketId: string, payload: { resolution: SupportTicketResolution; note: string }) {
+  /** `note` is optional — the API posts a generic notice when it is omitted. */
+  resolve(ticketId: string, payload: { resolution: SupportTicketResolution; note?: string }) {
     return api.post('/admin/support/tickets/' + ticketId + '/resolve', payload)
+  },
+
+  /** Per-admin bookmark; visible only to the admin who starred the ticket. */
+  setStar(ticketId: string, starred: boolean) {
+    const url = '/admin/support/tickets/' + ticketId + '/star'
+    return starred
+      ? api.post<{ ticketId: string; isStarred: boolean }>(url)
+      : api.delete<{ ticketId: string; isStarred: boolean }>(url)
   },
 
   close(ticketId: string) {

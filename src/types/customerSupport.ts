@@ -222,6 +222,8 @@ export interface SupportTicketListItem {
   hasUnread?: boolean
   rating?: number | null
   ratedAt?: string | null
+  /** Starred by the calling admin (per-admin bookmark, not a global flag). */
+  isStarred?: boolean
 }
 
 export interface SupportMessage {
@@ -323,6 +325,8 @@ export interface TicketListQuery {
   type?: SupportTicketType
   minDaysSinceReviewed?: number
   maxDaysSinceReviewed?: number
+  /** Only tickets the calling admin has starred. */
+  starredOnly?: boolean
   page?: number
   limit?: number
 }
