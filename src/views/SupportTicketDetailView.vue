@@ -46,6 +46,8 @@ const replyFile = ref<File | null>(null)
 const noteText = ref('')
 const resolveOpen = ref(false)
 const resolveNote = ref('')
+const reopenOpen = ref(false)
+const reopenNote = ref('')
 const resolveType = ref<SupportTicketResolution>('RESOLVED')
 const replyTemplates = ref<SupportReplyTemplate[]>([])
 const loadingTemplates = ref(false)
@@ -87,6 +89,17 @@ const canReply = computed(() => {
 const canHandOff = computed(() => canAct.value && !isFrozen.value)
 const canResolve = computed(() => canAct.value && !isFrozen.value)
 
+/**
+ * Super admins can undo a resolve/reject while the ticket is still pending review —
+ * i.e. before the contest window closes it automatically or someone force-closes it.
+ * Closed tickets are terminal.
+ */
+const canReopen = computed(() => {
+  if (!ticket.value) return false
+  if (!auth.isSuperAdmin) return false
+  return ticket.value.stage === 'pending_review' || ticket.value.status === 'PENDING_REVIEW'
+})
+
 const canForceClose = computed(() => {
   if (!ticket.value) return false
   if (ticket.value.stage === 'closed') return false
@@ -116,6 +129,7 @@ function ticketErrorMessage(err: unknown, fallback: string) {
     case 'TICKET_CLOSED': return 'Ticket is already closed'
     case 'ALREADY_ASSIGNED': return 'Ticket is already assigned'
     case 'TICKET_ALREADY_PENDING_REVIEW': return 'Ticket is already pending user review'
+    case 'TICKET_NOT_PENDING_REVIEW': return 'Only a ticket pending user review can be reopened'
     case 'TICKET_PENDING_REVIEW_FROZEN': return 'Ticket is frozen during pending review — no hand-off'
     case 'TICKET_RATED_FROZEN': return 'Ticket was rated and is frozen to the assignee'
     case 'TICKET_ALREADY_RATED': return 'Ticket already has a rating'
@@ -279,6 +293,21 @@ async function toggleStar() {
   }
 }
 
+async function submitReopen() {
+  acting.value = true
+  const note = reopenNote.value.trim()
+  try {
+    await customerSupportApi.reopen(ticketId.value, note ? { note } : {})
+    reopenOpen.value = false
+    showToast('Ticket reopened — back in the active queue', 'success')
+    await loadTicket(false, true)
+  } catch (err) {
+    showToast(ticketErrorMessage(err, 'Reopen failed'), 'error')
+  } finally {
+    acting.value = false
+  }
+}
+
 async function forceClose() {
   if (!confirm('Force-close this ticket immediately (no review window)?')) return
   acting.value = true
@@ -385,7 +414,9 @@ function bindWs(tid: string) {
       void loadTicket(false, true)
       const statusMsg = frame.status === 'CLOSED'
         ? `Ticket closed (${frame.resolution ?? 'force-closed'})`
-        : `Ticket moved to pending review (${frame.resolution})`
+        : frame.status === 'AWAITING_REPLY'
+          ? 'Ticket reopened — back in the active queue'
+          : `Ticket moved to pending review (${frame.resolution})`
       showToast(statusMsg, 'info' as never)
     }
   })
@@ -503,6 +534,16 @@ onUnmounted(() => {
               @click="resolveType = 'REJECTED'; resolveNote = ''; selectedTemplateId = ''; resolveOpen = true; loadReplyTemplates()"
             >
               Reject
+            </button>
+            <button
+              v-if="canReopen"
+              type="button"
+              class="admin-btn-secondary text-xs"
+              :disabled="acting"
+              title="Super admin: undo the resolve/reject and put this ticket back in the queue"
+              @click="reopenNote = ''; reopenOpen = true"
+            >
+              Mark as open
             </button>
             <button
               v-if="canHandOff"
@@ -716,6 +757,29 @@ onUnmounted(() => {
           @click="submitResolve"
         >
           Confirm
+        </button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog :open="reopenOpen" title="Mark ticket as open" @close="reopenOpen = false">
+      <template #body>
+        <p class="mb-3 text-sm text-admin-subtext">
+          Clears the resolve/reject outcome and puts the ticket back in the active queue,
+          cancelling the auto-close. The user was told it would close on its own, so a note
+          is posted into their chat — write your own or leave it blank for a generic one.
+          Hand-off becomes available again once reopened.
+        </p>
+        <textarea
+          v-model="reopenNote"
+          rows="3"
+          class="admin-input resize-none"
+          placeholder="Message shown to the user (optional)…"
+        />
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="reopenOpen = false">Cancel</button>
+        <button type="button" class="admin-btn-primary" :disabled="acting" @click="submitReopen">
+          Mark as open
         </button>
       </template>
     </BaseDialog>
