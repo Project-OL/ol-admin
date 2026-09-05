@@ -79,7 +79,10 @@ export type UserWalletRevertAction =
 
 /** User-detail wallet tabs → only when API sent canRevert. Prefer transfer / revertVia. */
 export function resolveUserWalletRevert(
-  tab: 'coins' | 'points' | 'trading',
+  /** `diamonds` never resolves an action — game settlement is paired against the
+   * GAME_HOUSE account on BAISHUN's order_id, so the backend always sends
+   * `canRevert: false` and the guard below short-circuits. */
+  tab: 'coins' | 'points' | 'trading' | 'diamonds',
   tx: {
     id: string
     canRevert?: boolean

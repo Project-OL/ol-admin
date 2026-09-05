@@ -241,6 +241,7 @@ export interface TransactionFilterTypes {
   personalCoins?: { filterValues?: string[] }
   points?: { filterValues?: string[] }
   tradingCoins?: { filterValues?: string[] }
+  diamonds?: { filterValues?: string[] }
 }
 
 export interface ApiTransaction {

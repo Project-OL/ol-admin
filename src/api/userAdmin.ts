@@ -155,6 +155,10 @@ export const userAdminApi = {
     return api.get<ApiTransactionListResponse>(`/admin/users/${id}/transactions/trading-coins`, { params })
   },
 
+  getDiamondTransactions(id: string, params: TransactionQuery) {
+    return api.get<ApiTransactionListResponse>(`/admin/users/${id}/transactions/diamonds`, { params })
+  },
+
   addPersonalCoins(id: string, amount: number, description?: string) {
     const payload: WalletAdjustPayload = {
       amount: String(amount),
