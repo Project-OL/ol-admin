@@ -24,6 +24,7 @@ import type {
   AdminGlobalActiveLiveStreamsResponse,
   AdminGlobalRestrictionsResponse,
   AdminStopLiveStreamResponse,
+  AdminStopAllLiveStreamsResponse,
   UserLiveModerationDossier,
   LiveModerationListResponse,
   LiveModerationListQuery,
@@ -414,7 +415,9 @@ export const userAdminApi = {
     return api.get<LiveModerationListResponse>('/admin/live-moderation', { params })
   },
 
-  listAllActiveLiveStreams(params: { page?: number; limit?: number; hostUserId?: string } = {}) {
+  listAllActiveLiveStreams(
+    params: { page?: number; limit?: number; hostUserId?: string; country?: string } = {},
+  ) {
     return api.get<AdminGlobalActiveLiveStreamsResponse>('/admin/live-streams/active', { params })
   },
 
@@ -422,6 +425,10 @@ export const userAdminApi = {
     return api.post<AdminStopLiveStreamResponse>(`/admin/live-streams/${encodeURIComponent(streamRef)}/stop`, {
       reason,
     })
+  },
+
+  stopAllActiveLiveStreams(params: { country?: string; reason?: string } = {}) {
+    return api.post<AdminStopAllLiveStreamsResponse>('/admin/live-streams/stop-all', params)
   },
 
   listGlobalRestrictions(params: {

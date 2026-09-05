@@ -5,9 +5,12 @@ import { format } from 'date-fns'
 import { userAdminApi } from '@/api/userAdmin'
 import { liveRestrictionsApi, isLiveEnforcedRestrictionType } from '@/api/liveRestrictions'
 import { useLiveModerationActions } from '@/composables/useLiveModerationActions'
+import { useAuthStore } from '@/stores/auth'
 import SortableTh from '@/components/shared/SortableTh.vue'
+import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useSortableRows } from '@/composables/useSortableRows'
 import { REPORT_REASON_OPTIONS } from '@/types/customerSupport'
+import { formatNumber } from '@/utils/format'
 import type {
   AdminGlobalRestrictionItem,
   AdminLiveStreamRow,
@@ -25,9 +28,12 @@ type Workbench = LiveModerationKind | 'open_streams' | 'restrictions'
 const route = useRoute()
 const router = useRouter()
 const actions = useLiveModerationActions()
+const auth = useAuthStore()
+const isSuperAdmin = computed(() => auth.isSuperAdmin)
 
 const kind = ref<Workbench>('nudity')
 const userId = ref('')
+const countryFilter = ref('')
 const actionFilter = ref<'' | LiveNudityAction>('')
 const reasonFilter = ref('')
 const statusFilter = ref('')
@@ -35,6 +41,8 @@ const restrictionType = ref<'' | UserRestrictionType>('')
 const page = ref(1)
 const loading = ref(false)
 const actingId = ref<string | null>(null)
+const stopAllOpen = ref(false)
+const stoppingAll = ref(false)
 
 const items = ref<Array<LiveNudityLogItem | VideoCallNudityLogItem | HostStreamBanItem | LiveUserReportItem>>(
   [],
@@ -64,6 +72,7 @@ function hydrateFromRoute() {
     kind.value = k
   }
   userId.value = qStr(q.userId)
+  countryFilter.value = qStr(q.country)
   const action = qStr(q.action)
   actionFilter.value = action === 'BLOCK' || action === 'WARNING' ? action : ''
   reasonFilter.value = qStr(q.reason)
@@ -77,6 +86,7 @@ function hydrateFromRoute() {
 function syncQuery() {
   const query: Record<string, string> = { kind: kind.value }
   if (userId.value.trim()) query.userId = userId.value.trim()
+  if (countryFilter.value.trim()) query.country = countryFilter.value.trim()
   if (actionFilter.value) query.action = actionFilter.value
   if (reasonFilter.value) query.reason = reasonFilter.value
   if (statusFilter.value) query.status = statusFilter.value
@@ -94,6 +104,7 @@ async function load(nextPage = 1) {
     if (kind.value === 'open_streams') {
       const { data } = await userAdminApi.listAllActiveLiveStreams({
         hostUserId: uid,
+        country: countryFilter.value.trim() || undefined,
         page: nextPage,
         limit: 20,
       })
@@ -197,6 +208,23 @@ async function closeStream(streamRef: string) {
   const ok = await actions.stopLive(streamRef, 'Closed from live moderation')
   actingId.value = null
   if (ok) void load(page.value)
+}
+
+async function confirmStopAll(payload: { reason?: string }) {
+  if (stoppingAll.value) return
+  stoppingAll.value = true
+  try {
+    const ok = await actions.stopAllLive({
+      country: countryFilter.value.trim() || undefined,
+      reason: payload.reason,
+    })
+    if (ok) {
+      stopAllOpen.value = false
+      await load(1)
+    }
+  } finally {
+    stoppingAll.value = false
+  }
 }
 
 async function liftBan(uid: string) {
@@ -306,6 +334,13 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
         :placeholder="kind === 'restrictions' ? 'User UUID (required)' : 'Filter user UUID'"
         @keyup.enter="load(1)"
       />
+      <input
+        v-if="kind === 'open_streams'"
+        v-model="countryFilter"
+        class="admin-input w-40"
+        placeholder="Filter country"
+        @keyup.enter="load(1)"
+      />
       <select
         v-if="showActionFilter"
         v-model="actionFilter"
@@ -350,6 +385,15 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
       </select>
       <button type="button" class="admin-btn-primary" :disabled="loading" @click="load(1)">
         {{ loading ? 'Loading…' : 'Apply' }}
+      </button>
+      <button
+        v-if="kind === 'open_streams' && isSuperAdmin && total > 0"
+        type="button"
+        class="admin-btn-danger ml-auto"
+        :disabled="loading"
+        @click="stopAllOpen = true"
+      >
+        {{ countryFilter.trim() ? `Close all in ${countryFilter.trim()}` : 'Close all live streams' }}
       </button>
     </div>
 
@@ -658,5 +702,20 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
         Next
       </button>
     </div>
+
+    <ConfirmActionDialog
+      :open="stopAllOpen"
+      :title="countryFilter.trim() ? `Close all live streams in ${countryFilter.trim()}` : 'Close all live streams'"
+      :message="
+        countryFilter.trim()
+          ? `Closes every currently open live stream hosted from ${countryFilter.trim()} (${formatNumber(total)} right now). Each host and their viewers are disconnected immediately. This cannot be undone.`
+          : `Closes every currently open live stream on the platform (${formatNumber(total)} right now). Each host and their viewers are disconnected immediately. This cannot be undone.`
+      "
+      confirm-label="Close all"
+      variant="danger"
+      require-reason
+      @close="stopAllOpen = false"
+      @confirm="confirmStopAll"
+    />
   </div>
 </template>
