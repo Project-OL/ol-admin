@@ -68,6 +68,22 @@ export function useLiveModerationActions() {
     }
   }
 
+  async function stopAllLive(params: { country?: string; reason?: string }) {
+    try {
+      const { data } = await userAdminApi.stopAllActiveLiveStreams(params)
+      showToast(
+        data.failed > 0
+          ? `Closed ${data.stopped} stream(s), ${data.failed} failed`
+          : `Closed ${data.stopped} stream(s)`,
+        data.failed > 0 ? 'error' : 'success',
+      )
+      return true
+    } catch (err) {
+      showToast(errorMessage(err, 'Failed to close streams'), 'error')
+      return false
+    }
+  }
+
   async function liftHostBan(userId: string) {
     try {
       await userAdminApi.clearHostStreamSuspension(userId)
@@ -94,5 +110,5 @@ export function useLiveModerationActions() {
     }
   }
 
-  return { applyMute, clearLiveRestriction, stopLive, liftHostBan, reviewReport }
+  return { applyMute, clearLiveRestriction, stopLive, stopAllLive, liftHostBan, reviewReport }
 }

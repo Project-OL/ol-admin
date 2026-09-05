@@ -518,6 +518,11 @@ export interface AdminStopLiveStreamResponse {
   message?: string
 }
 
+export interface AdminStopAllLiveStreamsResponse {
+  stopped: number
+  failed: number
+}
+
 export type LiveModerationKind = 'nudity' | 'video_call' | 'user_report' | 'host_ban'
 export type LiveNudityAction = 'WARNING' | 'BLOCK'
 
