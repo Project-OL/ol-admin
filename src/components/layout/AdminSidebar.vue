@@ -154,6 +154,13 @@ const allNavItems: NavItem[] = [
     viewName: 'FaceVerificationSessionsView',
   },
   {
+    to: '/admin/face-duplicates',
+    label: 'Face Duplicates',
+    icon: 'users',
+    roles: ['SUPER_ADMIN'],
+    viewName: 'FaceDuplicatesView',
+  },
+  {
     to: '/admin/views',
     label: 'Admin Views',
     icon: 'views',

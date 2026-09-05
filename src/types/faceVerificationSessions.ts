@@ -73,3 +73,36 @@ export type ClearAllStuckSessionsResponse = {
   sessionsCleared: number
   message: string
 }
+
+export type DuplicateCaseUser = {
+  userId: string
+  userName: string
+  displayPublicId: string | null
+  imageUrl: string | null
+}
+
+export type PendingDuplicatePair = {
+  blockedUser: DuplicateCaseUser & { flaggedAt: string }
+  ownerUser: (DuplicateCaseUser & { status: string }) | null
+  faceMatchSimilarity: number | null
+}
+
+export type PendingDuplicatesQuery = {
+  page?: number
+  limit?: number
+}
+
+export type PendingDuplicatesResponse = {
+  page: number
+  limit: number
+  total: number
+  pairs: PendingDuplicatePair[]
+}
+
+export type AcceptDuplicateBothResponse = {
+  success: true
+  userId: string
+  ownerUserId: string | null
+  rekognitionFaceId: string
+  message: string
+}

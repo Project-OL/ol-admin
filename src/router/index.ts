@@ -242,6 +242,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/face-duplicates',
+          name: 'face-duplicates',
+          component: () => import('../views/FaceDuplicatesView.vue'),
+          meta: {
+            title: 'Face Duplicates',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'FaceDuplicatesView',
+          },
+        },
+        {
           path: 'admin/views',
           name: 'admin-views',
           component: () => import('../views/AdminViewsView.vue'),
