@@ -18,6 +18,7 @@ import type {
   SupportNotification,
   SupportReplyTemplate,
   SupportReport,
+  SupportTicketDetail,
   SupportTicketListItem,
   TicketDetailResponse,
   TicketListQuery,
@@ -167,6 +168,17 @@ export const customerSupportApi = {
 
   close(ticketId: string) {
     return api.post('/admin/support/tickets/' + ticketId + '/close')
+  },
+
+  /**
+   * SUPER_ADMIN only: undo a resolve/reject while the ticket is still pending
+   * review. Closed tickets are terminal and rejected by the API.
+   */
+  reopen(ticketId: string, payload: { note?: string } = {}) {
+    return api.post<{ ticket: SupportTicketDetail }>(
+      '/admin/support/tickets/' + ticketId + '/reopen',
+      payload,
+    )
   },
 
   claim(ticketId: string) {

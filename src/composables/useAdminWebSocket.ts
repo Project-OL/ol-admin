@@ -37,7 +37,8 @@ export type AdminWsServerFrame =
       t: 'SUPPORT_TICKET_STATUS_CHANGED'
       ticketId: string
       ticketPublicId: string
-      status: 'PENDING_REVIEW' | 'CLOSED'
+      /** `AWAITING_REPLY` means a super admin reopened the ticket. */
+      status: 'PENDING_REVIEW' | 'CLOSED' | 'AWAITING_REPLY'
       resolution: 'RESOLVED' | 'REJECTED' | null
       assignedAdminId: string | null
       changedAt: string
