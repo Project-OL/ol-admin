@@ -98,3 +98,4 @@ jobs:
 # Same as production.yml. Staging:
 #   https://admin-staging.offoolive.com  root /var/www/admins3jinyu.offoolive.com
 # Secrets: STAGING_EC2_HOST, STAGING_EC2_USER, STAGING_EC2_SSH_PRIVATE_KEY
+# retest 2026-09-05T04:29:20Z — box IP + DNS fixed, verifying staging deploy lands
