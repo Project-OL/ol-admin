@@ -108,12 +108,23 @@ const searchHits = ref<UserSearchItem[]>([])
 const searching = ref(false)
 const submitting = ref(false)
 
-/** Mint/adjust: treasury dropdown by default; optional search for other users. */
+/** Mint/adjust: house-account dropdown by default; optional search for other users. */
 const includeNonTreasuryUsers = ref(false)
-const selectedTreasuryUserId = ref('')
+const selectedHouseUserId = ref('')
 
 const treasuryHouseAccounts = computed(() =>
   houseAccounts.value.filter((a) => a.role === 'TREASURY' && a.isActive),
+)
+
+/** Any registered house account (treasury, company agency, or game house) — the
+ * pool the Mint/adjust dropdown picks from, since a user can hold more than one
+ * role and any of them can be a mint target (e.g. crediting DIAMOND into GAME_HOUSE). */
+const mintTargetAccounts = computed(() => houseAccounts.value.filter((a) => a.isActive))
+const gameHouseAccounts = computed(() =>
+  houseAccounts.value.filter((a) => a.role === 'GAME_HOUSE' && a.isActive),
+)
+const companyAgencyAccounts = computed(() =>
+  houseAccounts.value.filter((a) => a.role === 'COMPANY_AGENCY' && a.isActive),
 )
 
 const cashForm = reactive<CompanyCashCreateBody>({
@@ -886,39 +897,40 @@ function treasuryAccountLabel(acc: HouseAccountEntry): string {
   return `${tag}${name} (#${acc.user.publicId})`
 }
 
-function applyTreasurySelection(userId: string) {
-  const acc = treasuryHouseAccounts.value.find((a) => a.userId === userId)
+function applyHouseAccountSelection(userId: string) {
+  const acc = mintTargetAccounts.value.find((a) => a.userId === userId)
   if (!acc) return
   form.userId = acc.userId
   form.userLabel = treasuryAccountLabel(acc)
-  selectedTreasuryUserId.value = userId
+  selectedHouseUserId.value = userId
   form.userQuery = ''
   searchHits.value = []
   if (form.direction === 'credit') {
-    form.currency = 'TRADING_COIN'
+    // Game house settles the DIAMOND wallet; treasury/company agency sell trading coins.
+    form.currency = acc.role === 'GAME_HOUSE' ? 'DIAMOND' : 'TRADING_COIN'
   }
   void loadAdjustments(false)
 }
 
-function onTreasuryDropdownChange() {
-  if (!selectedTreasuryUserId.value) {
+function onHouseDropdownChange() {
+  if (!selectedHouseUserId.value) {
     clearSelectedUser()
     return
   }
-  applyTreasurySelection(selectedTreasuryUserId.value)
+  applyHouseAccountSelection(selectedHouseUserId.value)
 }
 
 function onIncludeNonTreasuryChange() {
   if (includeNonTreasuryUsers.value) return
   form.userQuery = ''
   searchHits.value = []
-  if (treasuryHouseAccounts.value.length) {
+  if (mintTargetAccounts.value.length) {
     const id =
-      selectedTreasuryUserId.value &&
-      treasuryHouseAccounts.value.some((a) => a.userId === selectedTreasuryUserId.value)
-        ? selectedTreasuryUserId.value
-        : treasuryHouseAccounts.value[0]!.userId
-    applyTreasurySelection(id)
+      selectedHouseUserId.value &&
+      mintTargetAccounts.value.some((a) => a.userId === selectedHouseUserId.value)
+        ? selectedHouseUserId.value
+        : mintTargetAccounts.value[0]!.userId
+    applyHouseAccountSelection(id)
   } else {
     clearSelectedUser()
   }
@@ -948,7 +960,7 @@ function pickUser(hit: UserSearchItem) {
   form.userLabel = [hit.name, hit.username, hit.publicId].filter(Boolean).join(' · ')
   form.userQuery = form.userLabel
   searchHits.value = []
-  selectedTreasuryUserId.value = treasuryHouseAccounts.value.some((a) => a.userId === id) ? id : ''
+  selectedHouseUserId.value = mintTargetAccounts.value.some((a) => a.userId === id) ? id : ''
   void loadAdjustments(false)
 }
 
@@ -966,7 +978,7 @@ function clearSelectedUser() {
   form.userLabel = ''
   form.userQuery = ''
   searchHits.value = []
-  selectedTreasuryUserId.value = ''
+  selectedHouseUserId.value = ''
   void loadAdjustments(false)
 }
 
@@ -1096,12 +1108,12 @@ watch(grain, (g) => {
   void refreshAll()
 })
 
-watch(treasuryHouseAccounts, (list) => {
+watch(mintTargetAccounts, (list) => {
   if (includeNonTreasuryUsers.value || !list.length) return
   if (!form.userId || !list.some((a) => a.userId === form.userId)) {
-    applyTreasurySelection(list[0]!.userId)
-  } else if (!selectedTreasuryUserId.value) {
-    selectedTreasuryUserId.value = form.userId
+    applyHouseAccountSelection(list[0]!.userId)
+  } else if (!selectedHouseUserId.value) {
+    selectedHouseUserId.value = form.userId
   }
 })
 
@@ -1498,6 +1510,7 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <select v-model="houseForm.role" class="admin-input">
           <option value="TREASURY">Treasury (sales inventory)</option>
           <option value="COMPANY_AGENCY">Company agency (takeover)</option>
+          <option value="GAME_HOUSE">Game house (diamond settlement)</option>
         </select>
         <input v-model="houseForm.label" class="admin-input" placeholder="Label (optional)" />
         <input v-model="houseForm.note" class="admin-input" placeholder="Note (optional)" />
@@ -1630,19 +1643,31 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
       <div class="space-y-2">
         <div class="flex flex-wrap items-end gap-3">
           <div class="min-w-[min(100%,280px)] flex-1">
-            <label class="mb-1 block text-xs text-admin-subtext">Treasury account</label>
+            <label class="mb-1 block text-xs text-admin-subtext">House account</label>
             <select
-              v-model="selectedTreasuryUserId"
+              v-model="selectedHouseUserId"
               class="admin-input w-full"
-              :disabled="includeNonTreasuryUsers && Boolean(form.userId) && !selectedTreasuryUserId"
-              @change="onTreasuryDropdownChange"
+              :disabled="includeNonTreasuryUsers && Boolean(form.userId) && !selectedHouseUserId"
+              @change="onHouseDropdownChange"
             >
               <option value="">
-                {{ treasuryHouseAccounts.length ? 'Select treasury account…' : 'No treasury accounts registered' }}
+                {{ mintTargetAccounts.length ? 'Select house account…' : 'No house accounts registered' }}
               </option>
-              <option v-for="acc in treasuryHouseAccounts" :key="acc.userId" :value="acc.userId">
-                {{ treasuryAccountLabel(acc) }}
-              </option>
+              <optgroup v-if="treasuryHouseAccounts.length" label="Treasury (sales inventory)">
+                <option v-for="acc in treasuryHouseAccounts" :key="acc.userId" :value="acc.userId">
+                  {{ treasuryAccountLabel(acc) }}
+                </option>
+              </optgroup>
+              <optgroup v-if="gameHouseAccounts.length" label="Game house (diamond settlement)">
+                <option v-for="acc in gameHouseAccounts" :key="acc.userId" :value="acc.userId">
+                  {{ treasuryAccountLabel(acc) }}
+                </option>
+              </optgroup>
+              <optgroup v-if="companyAgencyAccounts.length" label="Company agency (takeover)">
+                <option v-for="acc in companyAgencyAccounts" :key="acc.userId" :value="acc.userId">
+                  {{ treasuryAccountLabel(acc) }}
+                </option>
+              </optgroup>
             </select>
           </div>
           <label class="flex items-center gap-2 pb-2 text-sm text-admin-subtext">
@@ -1656,10 +1681,10 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         </div>
 
         <p
-          v-if="!includeNonTreasuryUsers && !treasuryHouseAccounts.length"
+          v-if="!includeNonTreasuryUsers && !mintTargetAccounts.length"
           class="text-xs text-admin-warn"
         >
-          Register a treasury account above, or enable non-treasury search to mint into any user.
+          Register a house account above, or enable non-treasury search to mint into any user.
         </p>
 
         <div v-if="includeNonTreasuryUsers" class="relative">
@@ -1692,10 +1717,10 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         <p v-if="form.userId" class="text-xs text-admin-subtext">
           Assign to: {{ form.userLabel }}
           <span
-            v-if="selectedTreasuryUserId && selectedTreasuryUserId === form.userId"
+            v-if="selectedHouseUserId && selectedHouseUserId === form.userId"
             class="ml-1 rounded bg-admin-bg px-1.5 py-0.5 text-[10px] uppercase text-admin-muted"
           >
-            Treasury
+            {{ mintTargetAccounts.find((a) => a.userId === form.userId)?.role ?? 'House' }}
           </span>
           <RouterLink class="ml-2 text-admin-accent underline" :to="`/admin/users/${form.userId}`">
             Open profile
@@ -1711,6 +1736,7 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
           <option value="COIN">Personal coins</option>
           <option value="POINT">Points</option>
           <option value="TRADING_COIN">Trading coins</option>
+          <option value="DIAMOND">Diamonds (game wallet)</option>
         </select>
         <select v-model="form.direction" class="admin-input">
           <option value="credit">Create (credit)</option>
@@ -1743,6 +1769,7 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
           <option value="COIN">Coins</option>
           <option value="POINT">Points</option>
           <option value="TRADING_COIN">Trading</option>
+          <option value="DIAMOND">Diamonds</option>
         </select>
         <select v-model="adjFilters.direction" class="admin-input">
           <option value="">All directions</option>

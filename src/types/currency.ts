@@ -1,4 +1,4 @@
-export type AdminCurrencyKind = 'COIN' | 'POINT' | 'TRADING_COIN'
+export type AdminCurrencyKind = 'COIN' | 'POINT' | 'TRADING_COIN' | 'DIAMOND'
 export type AdminCurrencyDirection = 'credit' | 'debit'
 export type LedgerGrain =
   | 'today'
@@ -9,7 +9,7 @@ export type LedgerGrain =
   | 'custom'
 export type CompanyCashDirection = 'IN' | 'OUT'
 export type CompanyCashReason = 'AGENCY_TRADING_PURCHASE' | 'EPAY_PAYOUT' | 'PAYROLL_TAKEOVER_PAYOUT'
-export type LedgerAccountRoleType = 'TREASURY' | 'COMPANY_AGENCY'
+export type LedgerAccountRoleType = 'TREASURY' | 'COMPANY_AGENCY' | 'GAME_HOUSE'
 export type TreasuryFlowKind = 'COIN_TRADING_TRANSFER' | 'AGENT_POINT_TRANSFER'
 export type TreasuryFlowClassification = 'SALE' | 'PROMO' | 'INTERNAL' | 'WRITE_OFF'
 
@@ -196,6 +196,12 @@ export type HouseAccountUpsertBody = {
   label?: string
   note?: string
   effectiveFrom?: string
+}
+
+export type HouseAccountDeactivateBody = {
+  /** Required if the user holds more than one role. */
+  role?: LedgerAccountRoleType
+  force?: boolean
 }
 
 export type TreasuryFlowEntry = {
