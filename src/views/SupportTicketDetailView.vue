@@ -264,21 +264,6 @@ async function submitResolve() {
   }
 }
 
-/** Resolve is one click: no confirmation dialog, no template, no note. */
-async function resolveNow() {
-  if (acting.value) return
-  acting.value = true
-  try {
-    await customerSupportApi.resolve(ticketId.value, { resolution: 'RESOLVED' })
-    showToast('Ticket resolved — pending user review', 'success')
-    await loadTicket(false, true)
-  } catch (err) {
-    showToast(ticketErrorMessage(err, 'Resolve failed'), 'error')
-  } finally {
-    acting.value = false
-  }
-}
-
 async function toggleStar() {
   if (!ticket.value || starring.value) return
   const next = !ticket.value.isStarred
@@ -506,8 +491,7 @@ onUnmounted(() => {
               type="button"
               class="admin-btn-secondary text-xs"
               :disabled="acting"
-              title="Marks the ticket resolved immediately — no note needed"
-              @click="resolveNow"
+              @click="resolveType = 'RESOLVED'; resolveNote = ''; selectedTemplateId = ''; resolveOpen = true; loadReplyTemplates()"
             >
               Resolve
             </button>
@@ -696,8 +680,10 @@ onUnmounted(() => {
     <BaseDialog :open="resolveOpen" :title="resolveType === 'RESOLVED' ? 'Resolve ticket' : 'Reject ticket'" @close="resolveOpen = false">
       <template #body>
         <p class="mb-3 text-sm text-admin-subtext">
-          Posts your reason into the user chat and moves the ticket to pending review.
-          The user will have the configured contest window to confirm-close or reply to contest.
+          Posts a reason into the user chat and moves the ticket to pending review.
+          Pick a template or type your own — both are optional, and leaving the note
+          empty posts a generic notice instead. The user will have the configured
+          contest window to confirm-close or reply to contest.
         </p>
         <div v-if="replyTemplates.length || loadingTemplates" class="mb-3">
           <label class="mb-1 block text-xs text-admin-subtext">Use template (optional)</label>
