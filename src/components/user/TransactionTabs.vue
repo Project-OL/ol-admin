@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { RouterLink, useRouter } from 'vue-router'
 import { format } from 'date-fns'
 import axios from 'axios'
@@ -20,7 +20,7 @@ const props = defineProps<{ userId: string }>()
 const store = useUserDetailStore()
 const router = useRouter()
 
-type TabId = 'coins' | 'points' | 'trading'
+type TabId = 'coins' | 'points' | 'trading' | 'diamonds'
 
 const activeTab = ref<TabId>('coins')
 const typesFilter = ref('')
@@ -170,7 +170,9 @@ async function requestPage(cursor?: string) {
       ? userAdminApi.getCoinTransactions(props.userId, params)
       : activeTab.value === 'points'
         ? userAdminApi.getPointTransactions(props.userId, params)
-        : userAdminApi.getTradingCoinTransactions(props.userId, params)
+        : activeTab.value === 'diamonds'
+          ? userAdminApi.getDiamondTransactions(props.userId, params)
+          : userAdminApi.getTradingCoinTransactions(props.userId, params)
 
   const { data } = await req
   const extracted = userAdminApi.extractTransactions(data) as ApiTransaction[]
@@ -230,6 +232,8 @@ function onScroll() {
 function updateFilterOptions() {
   if (activeTab.value === 'coins') filterOptions.value = store.transactionFilterTypes.coins
   else if (activeTab.value === 'points') filterOptions.value = store.transactionFilterTypes.points
+  else if (activeTab.value === 'diamonds')
+    filterOptions.value = store.transactionFilterTypes.diamonds
   else filterOptions.value = store.transactionFilterTypes.trading
 }
 
@@ -261,7 +265,11 @@ function toggleExpand(id: string) {
   expandedId.value = expandedId.value === id ? null : id
 }
 
+/** The global explorer has no diamonds tab yet, so the row action is hidden there. */
+const canOpenInExplorer = computed(() => activeTab.value !== 'diamonds')
+
 function openInExplorer(tx: CoinTransaction) {
+  if (!canOpenInExplorer.value) return
   const tab =
     activeTab.value === 'coins'
       ? 'coins'
@@ -452,6 +460,7 @@ onMounted(async () => {
             { id: 'coins', label: 'Coins' },
             { id: 'points', label: 'Points' },
             { id: 'trading', label: 'Trading' },
+            { id: 'diamonds', label: 'Diamonds' },
           ]"
           :key="tab.id"
           type="button"
@@ -486,6 +495,12 @@ onMounted(async () => {
     <p v-if="activeTab === 'coins'" class="mb-3 text-xs text-admin-muted">
       Revert appears only for personal COIN credits funded by an unreverted trading transfer
       (trading-coin source). Gifts and other personal spends are not admin-revertable.
+    </p>
+    <p v-else-if="activeTab === 'diamonds'" class="mb-3 text-xs text-admin-muted">
+      Game wagers, results and refunds, plus Coin↔Diamond conversions and admin adjustments.
+      Rows are not revertable — each game row is one leg of a double-entry pair settled against
+      the game house account on the provider's order ID. To correct a balance, use Currency →
+      Mint/adjust with currency Diamonds.
     </p>
 
     <div
@@ -581,13 +596,14 @@ onMounted(async () => {
                   Revert
                 </button>
                 <button
-                  v-else
+                  v-else-if="canOpenInExplorer"
                   type="button"
                   class="text-xs font-medium text-admin-accent hover:underline"
                   @click="openInExplorer(tx)"
                 >
                   Explorer
                 </button>
+                <span v-else class="text-xs text-admin-muted">—</span>
               </td>
             </tr>
             <tr v-if="expandedId === tx.id">
@@ -614,7 +630,7 @@ onMounted(async () => {
                     <p class="text-admin-muted">Linked</p>
                     <p>{{ tx.linkSummary }}</p>
                   </div>
-                  <div>
+                  <div v-if="canOpenInExplorer">
                     <button
                       type="button"
                       class="text-admin-accent hover:underline"

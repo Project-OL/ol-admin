@@ -113,6 +113,8 @@ export const useUserDetailStore = defineStore('userDetail', {
 
       trading: [] as string[],
 
+      diamonds: [] as string[],
+
     },
 
     posts: [] as Post[],
@@ -332,6 +334,8 @@ export const useUserDetailStore = defineStore('userDetail', {
           points: data.points?.filterValues ?? [],
 
           trading: data.tradingCoins?.filterValues ?? [],
+
+          diamonds: data.diamonds?.filterValues ?? [],
 
         }
 
