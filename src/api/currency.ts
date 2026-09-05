@@ -8,6 +8,7 @@ import type {
   CompanyCashDirection,
   CompanyCashJournalResponse,
   CompanyCashReason,
+  HouseAccountDeactivateBody,
   HouseAccountUpsertBody,
   HouseAccountsResponse,
   LedgerBreakageInvestigateResponse,
@@ -85,7 +86,7 @@ export const currencyApi = {
     return api.post('/admin/ledger/house-accounts', body)
   },
 
-  deactivateHouseAccount(userId: string, body: { force?: boolean } = {}) {
+  deactivateHouseAccount(userId: string, body: HouseAccountDeactivateBody = {}) {
     return api.delete(`/admin/ledger/house-accounts/${userId}`, { data: body })
   },
 
