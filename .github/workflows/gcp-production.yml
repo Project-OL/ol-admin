@@ -65,6 +65,27 @@ jobs:
           VITE_LIVE_API_BASE_URL: ${{ vars.VITE_LIVE_API_BASE_URL || 'https://live.offoolive.com/api' }}
           VITE_USE_MOCK: 'false'
 
+      # These are compiled into the bundle and cannot be changed after the build, so
+      # record what this artifact actually targets. The tracked .env is NOT what the
+      # GCP build uses - the env block above wins - and the defaults point at the AWS
+      # API, so until vars.VITE_API_BASE_URL is set this bundle talks to AWS.
+      - name: Record API targets
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://api.offoolive.com/api/v1' }}
+          VITE_LIVE_API_BASE_URL: ${{ vars.VITE_LIVE_API_BASE_URL || 'https://live.offoolive.com/api' }}
+        run: |
+          {
+            echo '### API targets compiled into this bundle'
+            echo '```'
+            echo "VITE_API_BASE_URL      : $VITE_API_BASE_URL"
+            echo "VITE_LIVE_API_BASE_URL : $VITE_LIVE_API_BASE_URL"
+            if [ -z "${{ vars.VITE_API_BASE_URL }}" ]; then
+              echo "note: vars.VITE_API_BASE_URL is unset - using the AWS default above"
+            fi
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          grep -c "$VITE_API_BASE_URL" -r dist/assets 2>/dev/null | head -1 || true
+
       - name: Pack artifact
         run: |
           tar -czf admin-artifact.tgz -C dist .
