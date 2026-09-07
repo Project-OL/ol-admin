@@ -1,0 +1,184 @@
+# Deploys the ol-admin Vite SPA to the shared GCE VM on GCP.
+# Triggered by pushes to `production`.
+#
+# Branch split (same convention across ol-node-rest, Live-server and ol-admin):
+#   production -> GCP  (this file)
+#   prodv2     -> AWS  (.github/workflows/production.yml, unchanged)
+#   staging    -> AWS  (.github/workflows/staging.yml, unchanged)
+#
+# Reuses .github/deploy/ec2-unpack-admin.sh verbatim -- it is provider-agnostic
+# (extract dist to a staging dir, then replace the docroot) and is piped over stdin.
+#
+# All three apps land on ONE VM:
+#   ol-node-rest  /opt/ol/apps/ol-node-rest  pm2 ol-api/ol-worker/ol-face-worker  :3000
+#   live-server   /opt/ol/apps/live-server   pm2 ol-live                          :5000
+#   ol-admin      /var/www/admins3jinyu.offoolive.com  (static, served by nginx)
+#
+# IMPORTANT: this is a STATIC build. VITE_* values are compiled into the bundle
+# at build time and cannot be changed on the VM afterwards -- pointing admin at
+# the GCP API means rebuilding, not editing a file on the box. They are exposed
+# as repository variables so the endpoints can change without touching this file.
+#
+# Required repository configuration:
+#   vars.GCP_PROJECT_ID, vars.GCP_ZONE, vars.GCE_INSTANCE
+#   vars.VITE_API_BASE_URL       (defaults to the current AWS production API)
+#   vars.VITE_LIVE_API_BASE_URL  (defaults to the current AWS production live API)
+#   secrets.GCP_WORKLOAD_IDENTITY_PROVIDER + secrets.GCP_DEPLOY_SERVICE_ACCOUNT (preferred)
+#   or secrets.GCP_SA_KEY
+#
+# The WIF pool's principalSet binding must include this repo
+# (repo:Project-OL/ol-admin) or auth fails.
+name: GCP production build and deploy
+
+on:
+  push:
+    branches: [production]
+  workflow_dispatch:
+
+concurrency:
+  group: gcp-production-gce-ol-admin
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+        env:
+          VITE_API_BASE_URL: ${{ vars.VITE_API_BASE_URL || 'https://api.offoolive.com/api/v1' }}
+          VITE_LIVE_API_BASE_URL: ${{ vars.VITE_LIVE_API_BASE_URL || 'https://live.offoolive.com/api' }}
+          VITE_USE_MOCK: 'false'
+
+      - name: Pack artifact
+        run: |
+          tar -czf admin-artifact.tgz -C dist .
+          ls -lh admin-artifact.tgz
+          tar -tzf admin-artifact.tgz | head
+
+      - name: Upload GitHub Actions artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ol-admin-gcp-${{ github.sha }}
+          path: admin-artifact.tgz
+          retention-days: 30
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production
+
+    env:
+      GCP_PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      GCP_ZONE: ${{ vars.GCP_ZONE }}
+      GCE_INSTANCE: ${{ vars.GCE_INSTANCE }}
+      APP_USER: olapp
+      APP_DIR: /var/www/admins3jinyu.offoolive.com
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ol-admin-gcp-${{ github.sha }}
+
+      # NOTE: the `secrets` context is NOT available in a step-level `if:`, so the
+      # auth mode is decided here and published as a step output instead.
+      # Referencing secrets in an `if:` makes the whole workflow fail to compile.
+      - name: Check GCP deploy configuration
+        id: cfg
+        env:
+          WIF_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          WIF_SA: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+          SA_KEY: ${{ secrets.GCP_SA_KEY }}
+        run: |
+          missing=0
+          if [ -z "$GCP_PROJECT_ID" ]; then
+            echo "::error::Set repository variable GCP_PROJECT_ID"
+            missing=1
+          fi
+          if [ -z "$GCP_ZONE" ]; then
+            echo "::error::Set repository variable GCP_ZONE"
+            missing=1
+          fi
+          if [ -z "$GCE_INSTANCE" ]; then
+            echo "::error::Set repository variable GCE_INSTANCE"
+            missing=1
+          fi
+          if [ -n "$SA_KEY" ]; then
+            echo "auth=key" >> "$GITHUB_OUTPUT"
+          elif [ -n "$WIF_PROVIDER" ] && [ -n "$WIF_SA" ]; then
+            echo "auth=wif" >> "$GITHUB_OUTPUT"
+          else
+            echo "::error::Set either secret GCP_SA_KEY, or both GCP_WORKLOAD_IDENTITY_PROVIDER and GCP_DEPLOY_SERVICE_ACCOUNT"
+            missing=1
+          fi
+          if [ "$missing" != "0" ]; then
+            exit 1
+          fi
+          echo "project=$GCP_PROJECT_ID zone=$GCP_ZONE instance=$GCE_INSTANCE"
+
+      - name: Authenticate to GCP (Workload Identity Federation)
+        if: steps.cfg.outputs.auth == 'wif'
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Authenticate to GCP (service-account key)
+        if: steps.cfg.outputs.auth == 'key'
+        uses: google-github-actions/auth@v2
+        with:
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Verify GCP identity
+        run: |
+          gcloud auth list --filter=status:ACTIVE --format="value(account)"
+          gcloud compute instances describe "$GCE_INSTANCE" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" \
+            --format="value(name,status)"
+
+      - name: Upload artifact to the VM
+        run: |
+          gcloud compute scp \
+            admin-artifact.tgz \
+            "${GCE_INSTANCE}:/tmp/admin-artifact.tgz" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" \
+            --tunnel-through-iap --quiet
+
+      - name: Unpack onto the docroot
+        run: |
+          gcloud compute ssh "$GCE_INSTANCE" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" \
+            --tunnel-through-iap --quiet \
+            --command "sudo APP_USER='${APP_USER}' APP_DIR='${APP_DIR}' ARTIFACT=/tmp/admin-artifact.tgz bash -s" \
+            < .github/deploy/ec2-unpack-admin.sh
+
+      # Static site: assert index.html landed. nginx must already serve APP_DIR.
+      - name: Verify deployed files
+        run: |
+          gcloud compute ssh "$GCE_INSTANCE" \
+            --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" \
+            --tunnel-through-iap --quiet \
+            --command "test -f '${APP_DIR}/index.html' && echo 'index.html present' && ls -la '${APP_DIR}' | head -20"
