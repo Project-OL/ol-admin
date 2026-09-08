@@ -2,6 +2,8 @@ export type TransactionsTab =
   | 'coins'
   | 'points'
   | 'trading-coins'
+  /** DIAMOND wallet ledger — conversions, game wagers/wins/refunds, and the GAME_HOUSE legs. */
+  | 'game-diamonds'
   /** @deprecated Explorer alias — mapped to `trading-coins`. Revert POST path still uses this key. */
   | 'coin-trading-transfers'
   | 'gifts'

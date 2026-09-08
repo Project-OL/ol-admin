@@ -27,14 +27,24 @@ const TABS: { value: TransactionsTab; label: string; short: string }[] = [
   { value: 'coins', label: 'Personal coins', short: 'Coins' },
   { value: 'points', label: 'Points', short: 'Points' },
   { value: 'trading-coins', label: 'Trading coins', short: 'Trading' },
+  { value: 'game-diamonds', label: 'Diamonds', short: 'Diamonds' },
   { value: 'gifts', label: 'Gifts', short: 'Gifts' },
   { value: 'subscriptions', label: 'Subscriptions', short: 'Subs' },
   { value: 'vip-purchases', label: 'VIP purchases', short: 'VIP' },
   { value: 'store-purchases', label: 'Store purchases', short: 'Store' },
 ]
 
-const LEDGER_TABS = new Set<TransactionsTab>(['coins', 'points', 'trading-coins'])
-/** Tabs that may show Revert when API sends canRevert (point / trading-coin sourced only). */
+const LEDGER_TABS = new Set<TransactionsTab>([
+  'coins',
+  'points',
+  'trading-coins',
+  'game-diamonds',
+])
+/**
+ * Tabs that may show Revert when API sends canRevert (point / trading-coin sourced only).
+ * Diamonds are deliberately absent: game legs are settled by the provider against
+ * `(providerId, orderId)`, so reverting one side here would desync us from them.
+ */
 const REVERTABLE_TABS = new Set<TransactionsTab>([
   'coins', // only when revertVia is coin_trading_transfer (trading-coin source)
   'points',

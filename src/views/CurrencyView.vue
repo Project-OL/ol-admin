@@ -12,6 +12,8 @@ import type {
   CompanyCashCreateBody,
   CompanyCashEntry,
   CompanyCashReason,
+  DiamondDailyReport,
+  DiamondDailyRow,
   HouseAccountEntry,
   LedgerAccountRoleType,
   LedgerBreakageInvestigateResponse,
@@ -299,6 +301,7 @@ type GlossaryTermId =
   | 'houseInventory'
   | 'float'
   | 'customerFloat'
+  | 'diamonds'
   | 'imputed'
   | 'companyFiatPayouts'
   | 'writeOffGrants'
@@ -397,6 +400,16 @@ const GLOSSARY: Record<GlossaryTermId, GlossaryTerm> = {
     scrollTarget: 'currency-inventory',
     relatedMetric: 'salesVsUsage',
   },
+  diamonds: {
+    title: 'Diamonds & game house',
+    literal:
+      'A separate in-app currency used only inside third-party games. Users buy diamonds with coins and can convert them back — like buying chips at a casino cage.',
+    inSystem:
+      'Diamonds ride the same ledger as coins, pegged at the same 10,000 units = $1. Buying and redeeming are 1:1 with coins, so conversion moves nothing in or out of the books — a user who converts has the same total float, just in a different wallet. Every wager debits the user and credits the registered GAME_HOUSE account; every win or refund does the reverse. The platform’s game profit is therefore the house edge — wagers absorbed minus wins and refunds paid — never the game house balance itself. Diamonds an admin mints into the game house are seeded inventory, not profit, and diamonds a user still holds are a liability because they redeem back to coins.',
+    onThisPage:
+      'Section “Diamonds & game house”, plus the User unspent diamonds row in customer float and the Game-house diamond inventory row in house inventory.',
+    scrollTarget: 'currency-diamonds',
+  },
   imputed: {
     title: 'Imputed (revenue / margin)',
     literal:
@@ -488,7 +501,7 @@ const GLOSSARY_GROUPS: { label: string; terms: GlossaryTermId[] }[] = [
   },
   {
     label: 'Balances & inventory',
-    terms: ['float', 'customerFloat', 'houseInventory', 'breakage', 'delta'],
+    terms: ['float', 'customerFloat', 'houseInventory', 'diamonds', 'breakage', 'delta'],
   },
   {
     label: 'Revenue & costs',
@@ -530,6 +543,10 @@ const activeHelp = computed(() => METRIC_HELP[activeHelpTopic.value])
 
 const supply = ref<AdminCurrencySupplySummary | null>(null)
 const supplyLoading = ref(false)
+const diamondDaily = ref<DiamondDailyReport | null>(null)
+const diamondDailyLoading = ref(false)
+/** Hide the all-zero days that dominate a long window until the operator asks for them. */
+const showQuietDiamondDays = ref(false)
 const adjFilters = reactive({
   currency: '' as '' | AdminCurrencyKind,
   direction: '' as '' | 'credit' | 'debit',
@@ -653,7 +670,10 @@ function usdLabel(usd: string) {
   return Number.isFinite(n) ? formatUsd(n) : `$${usd}`
 }
 
-function formatBucket(kind: 'coins' | 'points' | 'tradingCoins', value: string | undefined) {
+function formatBucket(
+  kind: 'coins' | 'points' | 'tradingCoins' | 'diamonds',
+  value: string | undefined,
+) {
   const n = Number(value ?? 0)
   if (kind === 'points') return formatPoints(n)
   return formatCoins(n)
@@ -722,6 +742,81 @@ function exportCsv() {
   const a = document.createElement('a')
   a.href = url
   a.download = `master-ledger-${d.period.grain}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+/**
+ * Own exporter rather than folding into `exportCsv`: the main sheet is Section/Line/Units/USD,
+ * which would flatten a day into ten unrelated rows.
+ */
+function exportDiamondDailyCsv() {
+  const r = diamondDaily.value
+  if (!r) return
+  const rows: string[][] = [
+    [
+      'Day (UTC)',
+      'Staked units',
+      'Staked USD',
+      'Won by users units',
+      'USD spent on user wins',
+      'Refunded units',
+      'Refunded USD',
+      'Company profit units',
+      'Company profit USD',
+      'Bought units',
+      'Redeemed units',
+      'Admin minted units',
+      'Admin burned units',
+      'Round legs',
+      'Closing users hold units',
+      'Closing house holds units',
+    ],
+  ]
+  for (const d of r.days) {
+    rows.push([
+      d.date,
+      d.wageredUnits,
+      d.wageredUsd,
+      d.wonByUsersUnits,
+      d.usdSpentOnUserWins,
+      d.refundedUnits,
+      d.refundedUsd,
+      d.profitUnits,
+      d.profitUsd,
+      d.boughtUnits,
+      d.redeemedUnits,
+      d.adminMintedUnits,
+      d.adminBurnedUnits,
+      String(d.roundLegCount),
+      d.closingUserHeldUnits,
+      d.closingHouseHeldUnits,
+    ])
+  }
+  rows.push([
+    'TOTAL',
+    r.totals.wageredUnits,
+    r.totals.wageredUsd,
+    r.totals.wonByUsersUnits,
+    r.totals.usdSpentOnUserWins,
+    r.totals.refundedUnits,
+    r.totals.refundedUsd,
+    r.totals.profitUnits,
+    r.totals.profitUsd,
+    r.totals.boughtUnits,
+    r.totals.redeemedUnits,
+    r.totals.adminMintedUnits,
+    r.totals.adminBurnedUnits,
+    String(r.totals.roundLegCount),
+    '',
+    '',
+  ])
+  const csv = rows.map((row) => row.map(csvEscape).join(',')).join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `diamonds-daily-${r.period.from.slice(0, 10)}-to-${r.period.to.slice(0, 10)}.csv`
   a.click()
   URL.revokeObjectURL(url)
 }
@@ -856,6 +951,24 @@ async function loadSupply() {
   }
 }
 
+async function loadDiamondDaily() {
+  diamondDailyLoading.value = true
+  try {
+    const { data } = await currencyApi.diamondDaily(periodParams.value)
+    diamondDaily.value = data
+  } catch (err) {
+    diamondDaily.value = null
+    showToast(
+      axios.isAxiosError(err)
+        ? err.response?.data?.message || 'Failed to load diamond daily report'
+        : 'Failed to load diamond daily report',
+      'error',
+    )
+  } finally {
+    diamondDailyLoading.value = false
+  }
+}
+
 async function refreshAll() {
   await loadDashboard()
   await Promise.all([
@@ -864,6 +977,7 @@ async function refreshAll() {
     loadSupply(),
     loadHouseAccounts(),
     loadTreasuryFlows(false),
+    loadDiamondDaily(),
   ])
 }
 
@@ -1222,6 +1336,79 @@ const reconciliation = computed(() => dashboard.value?.reconciliation ?? null)
 const treasuryNotConfigured = computed(() => {
   if (loading.value) return false
   return hero.value?.treasuryConfigured === false
+})
+
+const gameHouseNotConfigured = computed(() => {
+  if (loading.value) return false
+  return hero.value?.gameHouseConfigured === false
+})
+
+function lineById(lines: LedgerLine[], id: string): LedgerLine | null {
+  return lines.find((l) => l.id === id) ?? null
+}
+
+/**
+ * Diamond economics pulled out of the generic ledger tables. Diamonds are bought from
+ * coins 1:1, so buying them is float-neutral; the only profit is the house edge the
+ * game house keeps, and any diamonds a user still holds are a redeemable liability.
+ */
+const diamondSummary = computed(() => {
+  const d = dashboard.value
+  if (!d) return null
+  const memo = d.pnl.memo ?? []
+  return {
+    userHeld: { units: d.stock.customerDiamondUnits, usd: d.stock.customerDiamondUsd },
+    houseHeld: { units: d.stock.houseDiamondUnits, usd: d.stock.houseDiamondUsd },
+    edge: lineById(d.pnl.revenue, 'gameHouseEdge'),
+    wagers: lineById(memo, 'gameWagers'),
+    payouts: lineById(memo, 'gameWinPayouts'),
+    refunds: lineById(memo, 'gameRefunds'),
+    bought: lineById(d.unitFlow, 'diamondsBought'),
+    redeemed: lineById(d.unitFlow, 'diamondsRedeemed'),
+    created: supply.value?.created.diamonds ?? '0',
+    returned: supply.value?.returned.diamonds ?? '0',
+  }
+})
+
+function diamondDayIsQuiet(d: DiamondDailyRow): boolean {
+  return (
+    d.wageredUnits === '0' &&
+    d.wonByUsersUnits === '0' &&
+    d.refundedUnits === '0' &&
+    d.boughtUnits === '0' &&
+    d.redeemedUnits === '0' &&
+    d.adminMintedUnits === '0' &&
+    d.adminBurnedUnits === '0'
+  )
+}
+
+/** Newest day first — operators read the most recent day, not the start of the window. */
+const diamondDailyRows = computed<DiamondDailyRow[]>(() => {
+  const all = diamondDaily.value?.days ?? []
+  const visible = showQuietDiamondDays.value ? all : all.filter((d) => !diamondDayIsQuiet(d))
+  return [...visible].reverse()
+})
+
+const quietDiamondDayCount = computed(
+  () => (diamondDaily.value?.days ?? []).filter(diamondDayIsQuiet).length,
+)
+
+function holdRateLabel(bp: number | null | undefined): string {
+  if (bp === null || bp === undefined) return '—'
+  return `${(bp / 100).toFixed(2)}%`
+}
+
+/**
+ * Flow rows for the diamond table; empty rows are dropped so a quiet period reads clean.
+ * The edge is deliberately excluded — it is `wagers − payouts − refunds`, so listing it
+ * beside its own components invites reading the column as a sum. It has its own card.
+ */
+const diamondFlowRows = computed<LedgerLine[]>(() => {
+  const s = diamondSummary.value
+  if (!s) return []
+  return [s.bought, s.redeemed, s.wagers, s.payouts, s.refunds].filter(
+    (l): l is LedgerLine => l !== null && l.units !== '0',
+  )
 })
 
 async function scrollToSection(id: string) {
@@ -1621,6 +1808,12 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
           </p>
         </div>
         <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Created · Diamonds</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ supplyLoading ? '…' : formatBucket('diamonds', supply?.created.diamonds) }}
+          </p>
+        </div>
+        <div class="admin-card !p-3">
           <p class="text-xs text-admin-subtext">Returned · Coins</p>
           <p class="mt-1 text-xl font-semibold tabular-nums">
             {{ supplyLoading ? '…' : formatBucket('coins', supply?.returned.coins) }}
@@ -1636,6 +1829,12 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
           <p class="text-xs text-admin-subtext">Returned · Trading</p>
           <p class="mt-1 text-xl font-semibold tabular-nums">
             {{ supplyLoading ? '…' : formatBucket('tradingCoins', supply?.returned.tradingCoins) }}
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Returned · Diamonds</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ supplyLoading ? '…' : formatBucket('diamonds', supply?.returned.diamonds) }}
           </p>
         </div>
       </div>
@@ -1889,6 +2088,257 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
             </tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <section id="currency-diamonds" class="admin-card space-y-4">
+      <div>
+        <h2 class="text-sm font-semibold">Diamonds &amp; game house</h2>
+        <p class="mt-1 text-xs text-admin-subtext">
+          Diamonds are bought from coins 1:1 and redeem back 1:1, so converting them moves
+          nothing in or out of the books. Profit comes only from the house edge — wagers the
+          game house absorbs, less the wins and refunds it pays out. Diamonds a user still
+          holds are a liability, exactly like unspent coins.
+        </p>
+      </div>
+
+      <p
+        v-if="gameHouseNotConfigured"
+        class="rounded border border-admin-warn/40 bg-admin-warn/10 px-3 py-2 text-xs text-admin-warn"
+      >
+        No GAME_HOUSE account is registered. Game rounds cannot settle until one is added
+        under Treasury house accounts, and any diamonds already minted sit outside the
+        house/customer split.
+      </p>
+
+      <div class="admin-stats-grid">
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">User unspent diamonds (liability)</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ loading ? '…' : usdLabel(diamondSummary?.userHeld.usd ?? '0') }}
+          </p>
+          <p class="text-xs text-admin-muted tabular-nums">
+            {{ loading ? '' : formatCoins(Number(diamondSummary?.userHeld.units ?? 0)) }} units
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Game-house inventory</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ loading ? '…' : usdLabel(diamondSummary?.houseHeld.usd ?? '0') }}
+          </p>
+          <p class="text-xs text-admin-muted tabular-nums">
+            {{ loading ? '' : formatCoins(Number(diamondSummary?.houseHeld.units ?? 0)) }} units
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Game house edge (period)</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ loading ? '…' : usdLabel(diamondSummary?.edge?.usd ?? '0') }}
+          </p>
+          <p class="text-xs text-admin-muted tabular-nums">
+            {{ loading ? '' : formatCoins(Number(diamondSummary?.edge?.units ?? 0)) }} units
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Admin minted · returned</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ supplyLoading ? '…' : formatBucket('diamonds', diamondSummary?.created) }}
+            ·
+            {{ supplyLoading ? '…' : formatBucket('diamonds', diamondSummary?.returned) }}
+          </p>
+          <p class="text-xs text-admin-muted">Seeding the house is inventory, not profit</p>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Diamond flow (period)</th>
+              <th>Units</th>
+              <th>USD</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in diamondFlowRows" :key="row.id">
+              <td>{{ row.label }}</td>
+              <td class="tabular-nums font-semibold">{{ formatUnits(row.units, row.id) }}</td>
+              <td class="tabular-nums">{{ usdLabel(row.usd) }}</td>
+            </tr>
+            <tr v-if="diamondFlowRows.length === 0">
+              <td colspan="3" class="text-admin-subtext">No diamond activity in this period.</td>
+            </tr>
+            <tr v-else class="border-t-2 border-admin-border">
+              <td class="font-semibold">
+                Game house edge
+                <span class="block text-xs font-normal text-admin-muted">
+                  = wagered − wins − refunds. Not a sum of the rows above.
+                </span>
+              </td>
+              <td class="tabular-nums font-semibold">
+                {{ formatCoins(Number(diamondSummary?.edge?.units ?? 0)) }}
+              </td>
+              <td class="tabular-nums font-semibold">
+                {{ usdLabel(diamondSummary?.edge?.usd ?? '0') }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="currency-diamond-daily" class="admin-card space-y-4">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 class="text-sm font-semibold">Diamonds per day</h2>
+          <p class="mt-1 text-xs text-admin-subtext">
+            One row per UTC day in the selected period. Company profit is what the house kept
+            on the day — staked, less wins and refunds paid back out — so a day where players
+            ran hot shows negative. Buying and redeeming diamonds are 1:1 with coins and never
+            move profit.
+          </p>
+        </div>
+        <div class="flex shrink-0 flex-wrap gap-2">
+          <button
+            v-if="quietDiamondDayCount > 0"
+            type="button"
+            class="admin-btn-secondary text-xs"
+            @click="showQuietDiamondDays = !showQuietDiamondDays"
+          >
+            {{ showQuietDiamondDays ? 'Hide' : 'Show' }} {{ quietDiamondDayCount }} quiet
+            {{ quietDiamondDayCount === 1 ? 'day' : 'days' }}
+          </button>
+          <button
+            type="button"
+            class="admin-btn-secondary text-xs"
+            :disabled="!diamondDaily"
+            @click="exportDiamondDailyCsv"
+          >
+            Export CSV
+          </button>
+        </div>
+      </div>
+
+      <div class="admin-stats-grid">
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Staked (period)</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ diamondDailyLoading ? '…' : usdLabel(diamondDaily?.totals.wageredUsd ?? '0') }}
+          </p>
+          <p class="text-xs text-admin-muted tabular-nums">
+            {{
+              diamondDailyLoading
+                ? ''
+                : formatCoins(Number(diamondDaily?.totals.wageredUnits ?? 0))
+            }}
+            diamonds
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">USD spent on user wins</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{
+              diamondDailyLoading ? '…' : usdLabel(diamondDaily?.totals.usdSpentOnUserWins ?? '0')
+            }}
+          </p>
+          <p class="text-xs text-admin-muted tabular-nums">
+            {{
+              diamondDailyLoading
+                ? ''
+                : formatCoins(Number(diamondDaily?.totals.wonByUsersUnits ?? 0))
+            }}
+            diamonds paid out
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Company profit (period)</p>
+          <p
+            class="mt-1 text-xl font-semibold tabular-nums"
+            :class="
+              Number(diamondDaily?.totals.profitUnits ?? 0) < 0
+                ? 'text-admin-warn'
+                : 'text-admin-success'
+            "
+          >
+            {{ diamondDailyLoading ? '…' : usdLabel(diamondDaily?.totals.profitUsd ?? '0') }}
+          </p>
+          <p class="text-xs text-admin-muted tabular-nums">
+            {{
+              diamondDailyLoading ? '' : formatCoins(Number(diamondDaily?.totals.profitUnits ?? 0))
+            }}
+            diamonds
+          </p>
+        </div>
+        <div class="admin-card !p-3">
+          <p class="text-xs text-admin-subtext">Hold rate</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ diamondDailyLoading ? '…' : holdRateLabel(diamondDaily?.totals.holdRateBp) }}
+          </p>
+          <p class="text-xs text-admin-muted">Share of staked diamonds kept</p>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Day (UTC)</th>
+              <th>Staked</th>
+              <th>Won by users</th>
+              <th>Refunded</th>
+              <th>Company profit</th>
+              <th>Bought</th>
+              <th>Redeemed</th>
+              <th>Admin mint</th>
+              <th>Users hold</th>
+              <th>House holds</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="d in diamondDailyRows" :key="d.date">
+              <td class="whitespace-nowrap font-medium">{{ d.date }}</td>
+              <td class="tabular-nums">
+                {{ formatCoins(Number(d.wageredUnits)) }}
+                <span class="block text-xs text-admin-muted">{{ usdLabel(d.wageredUsd) }}</span>
+              </td>
+              <td class="tabular-nums">
+                {{ formatCoins(Number(d.wonByUsersUnits)) }}
+                <span class="block text-xs text-admin-muted">
+                  {{ usdLabel(d.usdSpentOnUserWins) }}
+                </span>
+              </td>
+              <td class="tabular-nums">
+                {{ formatCoins(Number(d.refundedUnits)) }}
+                <span class="block text-xs text-admin-muted">{{ usdLabel(d.refundedUsd) }}</span>
+              </td>
+              <td class="tabular-nums font-semibold">
+                <span
+                  :class="
+                    Number(d.profitUnits) < 0 ? 'text-admin-warn' : 'text-admin-success'
+                  "
+                >
+                  {{ usdLabel(d.profitUsd) }}
+                </span>
+                <span class="block text-xs text-admin-muted">
+                  {{ formatCoins(Number(d.profitUnits)) }} diamonds
+                </span>
+              </td>
+              <td class="tabular-nums">{{ formatCoins(Number(d.boughtUnits)) }}</td>
+              <td class="tabular-nums">{{ formatCoins(Number(d.redeemedUnits)) }}</td>
+              <td class="tabular-nums">{{ formatCoins(Number(d.adminMintedUnits)) }}</td>
+              <td class="tabular-nums">{{ formatCoins(Number(d.closingUserHeldUnits)) }}</td>
+              <td class="tabular-nums">{{ formatCoins(Number(d.closingHouseHeldUnits)) }}</td>
+            </tr>
+            <tr v-if="diamondDailyLoading && diamondDailyRows.length === 0">
+              <td colspan="10" class="text-admin-muted">Loading…</td>
+            </tr>
+            <tr v-else-if="diamondDailyRows.length === 0">
+              <td colspan="10" class="text-admin-subtext">
+                No diamond activity on any day in this period.
+              </td>
+            </tr>
+          </tbody>
+        </table>
       </div>
     </section>
 

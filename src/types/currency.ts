@@ -17,6 +17,8 @@ export type PlatformProfitBuckets = {
   coins: string
   points: string
   tradingCoins: string
+  /** Admin-minted diamonds (GAME_ADJUSTMENT / ADJUSTMENT on a DIAMOND wallet). */
+  diamonds: string
 }
 
 export type AdminCurrencyAdjustBody = {
@@ -87,6 +89,12 @@ export type MasterLedgerStock = {
   customerFloatUsd: string
   houseInventoryUnits: string
   houseInventoryUsd: string
+  /** Diamonds users still hold — redeemable 1:1 to coins, so part of the liability. */
+  customerDiamondUnits: string
+  customerDiamondUsd: string
+  /** Game-house diamond stock: wagers absorbed plus admin-seeded inventory. */
+  houseDiamondUnits: string
+  houseDiamondUsd: string
   netMinted: string
   houseMinted: string
   destroyedUnits: string
@@ -147,6 +155,12 @@ export type MasterLedgerDashboard = {
     customerFloatUsd: string
     houseInventoryUnits: string
     houseInventoryUsd: string
+    customerDiamondUnits: string
+    customerDiamondUsd: string
+    houseDiamondUnits: string
+    houseDiamondUsd: string
+    /** False when no GAME_HOUSE role is registered — game rounds cannot settle. */
+    gameHouseConfigured: boolean
     treasuryConfigured: boolean
     reconciliationOk: boolean
     reconciliationDelta: string
@@ -162,6 +176,66 @@ export type MasterLedgerDashboard = {
     cashProfitUsd: string
     recordedOnly?: boolean
   }
+}
+
+/** One UTC day of diamond activity. Units are at 10,000 = $1, same as every other currency. */
+export type DiamondDailyRow = {
+  /** `YYYY-MM-DD`, UTC. */
+  date: string
+  /** Diamonds users staked into games — the day's consumption. */
+  wageredUnits: string
+  wageredUsd: string
+  /** Diamonds the house paid out as wins. */
+  wonByUsersUnits: string
+  wonByUsersUsd: string
+  /** Same figure as `wonByUsersUsd`, named for the P&L read. */
+  usdSpentOnUserWins: string
+  refundedUnits: string
+  refundedUsd: string
+  /** Company diamond profit: wagered − won − refunded. Negative on a bad day. */
+  profitUnits: string
+  profitUsd: string
+  /** Coins converted into diamonds. */
+  boughtUnits: string
+  boughtUsd: string
+  /** Diamonds converted back to coins — returned to the platform, never revenue. */
+  redeemedUnits: string
+  redeemedUsd: string
+  adminMintedUnits: string
+  adminBurnedUnits: string
+  roundLegCount: number
+  closingUserHeldUnits: string
+  closingUserHeldUsd: string
+  closingHouseHeldUnits: string
+  closingHouseHeldUsd: string
+}
+
+export type DiamondDailyReport = {
+  period: { grain: LedgerGrain; from: string; to: string }
+  gameHouseConfigured: boolean
+  days: DiamondDailyRow[]
+  totals: {
+    wageredUnits: string
+    wageredUsd: string
+    wonByUsersUnits: string
+    wonByUsersUsd: string
+    usdSpentOnUserWins: string
+    refundedUnits: string
+    refundedUsd: string
+    profitUnits: string
+    profitUsd: string
+    boughtUnits: string
+    boughtUsd: string
+    redeemedUnits: string
+    redeemedUsd: string
+    adminMintedUnits: string
+    adminBurnedUnits: string
+    roundLegCount: number
+    /** Share of staked diamonds the company kept, in basis points. Null when nothing was staked. */
+    holdRateBp: number | null
+  }
+  openingUserHeldUnits: string
+  openingHouseHeldUnits: string
 }
 
 export type HouseAccountEntry = {

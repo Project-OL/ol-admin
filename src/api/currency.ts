@@ -8,6 +8,7 @@ import type {
   CompanyCashDirection,
   CompanyCashJournalResponse,
   CompanyCashReason,
+  DiamondDailyReport,
   HouseAccountDeactivateBody,
   HouseAccountUpsertBody,
   HouseAccountsResponse,
@@ -57,6 +58,16 @@ export const currencyApi = {
     } = {},
   ) {
     return api.get<MasterLedgerDashboard>('/admin/ledger/pnl', { params })
+  },
+
+  diamondDaily(
+    params: {
+      from?: string
+      to?: string
+      grain?: LedgerGrain
+    } = {},
+  ) {
+    return api.get<DiamondDailyReport>('/admin/ledger/diamond-daily', { params })
   },
 
   investigateBreakage(params: { at?: string } = {}) {

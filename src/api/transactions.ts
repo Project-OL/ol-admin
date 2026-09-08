@@ -44,6 +44,18 @@ export const transactionsApi = {
     )
   },
 
+  /**
+   * DIAMOND ledger. Both legs of every game round are here — the user's and the
+   * GAME_HOUSE counterparty's — so filtering by the house user id shows the house
+   * side of play, and `direction` separates bets taken (credit) from payouts (debit).
+   */
+  listGameDiamonds(params: AdminTransactionsListQuery = {}) {
+    return api.get<AdminTransactionsListResponse<AdminLedgerEntry>>(
+      '/admin/transactions/game-diamonds',
+      { params },
+    )
+  },
+
   listCoinTradingTransfers(params: AdminTransactionsListQuery = {}) {
     return api.get<AdminTransactionsListResponse<AdminCoinTradingTransfer>>(
       '/admin/transactions/coin-trading-transfers',
