@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
+import axios from 'axios'
 import { format } from 'date-fns'
 import { uploadAdminCatalogAsset } from '@/api/catalogAssetUpload'
 import { giftAdminApi, normalizeGiftCategories } from '@/api/giftAdmin'
@@ -453,6 +454,13 @@ async function submitEditGift() {
   }
 }
 
+function apiErrorMessage(err: unknown, fallback: string) {
+  if (!axios.isAxiosError(err)) return fallback
+  const body = err.response?.data as { code?: string; message?: string } | undefined
+  if (body?.message) return body.message
+  return fallback
+}
+
 async function toggleGift(gift: GiftAdminListItem) {
   await giftAdminApi.patchGift(gift.id, { isActive: gift.status !== 'active' })
   showToast(gift.status === 'active' ? 'Gift disabled' : 'Gift enabled', 'success')
@@ -461,9 +469,18 @@ async function toggleGift(gift: GiftAdminListItem) {
 
 async function confirmDeleteGift() {
   if (!deleteGiftId.value) return
-  await giftAdminApi.deleteGift(deleteGiftId.value)
-  showToast('Gift deleted', 'success')
-  deleteGiftId.value = null
+  try {
+    await giftAdminApi.deleteGift(deleteGiftId.value)
+    showToast('Gift deleted', 'success')
+  } catch (err) {
+    // A gift that has already been sent is refused with 409 GIFT_IN_USE — the
+    // server's message explains why and what to do instead, so surface it
+    // rather than a generic failure.
+    showToast(apiErrorMessage(err, 'Failed to delete gift'), 'error')
+    return
+  } finally {
+    deleteGiftId.value = null
+  }
   await Promise.all([loadGifts(giftsPage.value), loadAnalytics()])
 }
 
