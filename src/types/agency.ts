@@ -96,6 +96,36 @@ export interface AgencyApplicationListPage {
   take: number
 }
 
+/**
+ * A user whose agency row is gone while their agent application is still APPROVED — the state a
+ * deleted or banned agency used to leave behind. They can neither be re-approved nor re-apply.
+ */
+export interface StrandedApplicationItem {
+  applicationId: string
+  userId: string
+  username: string
+  publicId: string | null
+  isAgent: boolean
+  barred: boolean
+  barredAt: string | null
+  appliedAt: string
+  approvedAt: string | null
+}
+
+export interface StrandedApplicationsResponse {
+  items: StrandedApplicationItem[]
+  count: number
+}
+
+export interface RepairStrandedApplicationsResponse {
+  ok: boolean
+  dryRun: boolean
+  repaired: number
+  failed: number
+  items: StrandedApplicationItem[]
+  failures?: Array<{ userId: string; reason: string }>
+}
+
 /** @deprecated Use AgencyApplicationListPage */
 export type PendingApplicationsResponse = AgencyApplicationListPage
 

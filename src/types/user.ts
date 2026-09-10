@@ -84,6 +84,8 @@ export interface UserProfile {
   agencyApplication?: {
     id: string
     status: string
+    /** APPROVED but the agency row is gone (deleted/banned) — user cannot re-apply or be re-approved. */
+    stranded?: boolean
   } | null
   gender?: string
   country?: string

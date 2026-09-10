@@ -37,6 +37,7 @@ const recomputingMaster = ref(false)
 const approveBarred = ref(false)
 const unbarUserId = ref('')
 const unbarring = ref(false)
+const strandedDialog = ref(false)
 
 function usdLabel(value: string | undefined, points: string) {
   if (value != null && value !== '') return formatUsd(Number(value))
@@ -150,6 +151,16 @@ async function handleUnbarBanned() {
     await store.unbarUser(store.lastBannedAgencyUserId)
   } finally {
     unbarring.value = false
+  }
+}
+
+async function handleRepairStranded() {
+  if (store.repairingStranded) return
+  try {
+    await store.repairStranded()
+    strandedDialog.value = false
+  } catch {
+    // toast from interceptor / leave dialog open for retry
   }
 }
 
@@ -335,7 +346,13 @@ watch(activeTab, (tab) => {
 })
 
 onMounted(async () => {
-  await Promise.all([store.fetchStats(), loadAgencies(), store.fetchPending()])
+  await Promise.all([
+    store.fetchStats(),
+    loadAgencies(),
+    store.fetchPending(),
+    // Surfaces the banner only when someone is actually stuck.
+    store.fetchStranded().catch(() => []),
+  ])
 })
 </script>
 
@@ -380,6 +397,30 @@ onMounted(async () => {
         @click="handleUnbarBanned"
       >
         {{ unbarring ? 'Unbarring…' : 'Unbar owner' }}
+      </button>
+    </div>
+
+    <div
+      v-if="store.stranded.length"
+      class="admin-card flex flex-col gap-3 border-admin-warn/40 sm:flex-row sm:items-center sm:justify-between"
+    >
+      <div>
+        <p class="text-sm font-medium text-admin-warn">
+          {{ store.stranded.length }} user{{ store.stranded.length === 1 ? '' : 's' }} stuck on a
+          deleted agency
+        </p>
+        <p class="mt-1 text-xs text-admin-muted">
+          Their agency is gone but the application is still marked approved, so they can neither be
+          approved again nor apply again. Clearing it keeps KYC contact and government ID.
+        </p>
+      </div>
+      <button
+        type="button"
+        class="admin-btn-warn shrink-0 text-sm"
+        :disabled="store.repairingStranded"
+        @click="strandedDialog = true"
+      >
+        {{ store.repairingStranded ? 'Fixing…' : 'Fix deleted agencies' }}
       </button>
     </div>
 
@@ -908,6 +949,63 @@ onMounted(async () => {
           @click="handleApprove"
         >
           Approve
+        </button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :open="strandedDialog"
+      title="Fix deleted agencies"
+      @close="strandedDialog = false"
+    >
+      <template #body>
+        <div class="space-y-3">
+          <p class="text-sm">
+            These users had an agency that was deleted or banned. Their application is still marked
+            approved, which blocks both re-approval and a fresh application. Clearing it lets them
+            apply again — KYC contact and government ID are kept, and no agency is recreated.
+          </p>
+          <div class="max-h-64 overflow-y-auto rounded-md border border-admin-border">
+            <table class="w-full text-left text-xs">
+              <thead class="bg-admin-bg text-admin-subtext">
+                <tr>
+                  <th class="px-3 py-2">User</th>
+                  <th class="px-3 py-2">ID</th>
+                  <th class="px-3 py-2">Approved</th>
+                  <th class="px-3 py-2">Barred</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="item in store.stranded" :key="item.userId" class="border-t border-admin-border">
+                  <td class="px-3 py-2">{{ item.username }}</td>
+                  <td class="px-3 py-2 font-mono">{{ item.publicId ?? '—' }}</td>
+                  <td class="px-3 py-2">
+                    {{ item.approvedAt ? format(new Date(item.approvedAt), 'dd MMM yyyy') : '—' }}
+                  </td>
+                  <td class="px-3 py-2">
+                    <span v-if="item.barred" class="text-admin-warn">Yes</span>
+                    <span v-else class="text-admin-muted">No</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p v-if="store.stranded.some((s) => s.barred)" class="text-xs text-admin-subtext">
+            Barred users still need an unbar before they can be approved again.
+          </p>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="strandedDialog = false">
+          Cancel
+        </button>
+        <button
+          type="button"
+          class="admin-btn-warn"
+          :disabled="store.repairingStranded"
+          @click="handleRepairStranded"
+        >
+          {{ store.repairingStranded ? 'Fixing…' : `Fix ${store.stranded.length}` }}
         </button>
       </template>
     </BaseDialog>

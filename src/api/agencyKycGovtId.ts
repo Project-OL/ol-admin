@@ -76,5 +76,8 @@ export function reopenAgencyApplication(userId: string, via: 'user' | 'applicati
     userId: string
     reopened: boolean
     previousApplicationId: string
+    previousStatus?: string
+    /** True when this cleared a stale APPROVED row left behind by a deleted agency. */
+    stranded?: boolean
   }>(path)
 }

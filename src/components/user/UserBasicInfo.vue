@@ -56,6 +56,13 @@ const displayLegalName = computed(() => {
 const genderLocked = computed(() => props.user.genderEditable === false)
 const hasKyc = computed(() => props.user.kycContact != null)
 const isRejectedApplication = computed(() => props.user.agencyApplication?.status === 'REJECTED')
+/** Agency was deleted/banned but the APPROVED application stayed behind, blocking any way back in. */
+const isStrandedApplication = computed(() => props.user.agencyApplication?.stranded === true)
+const reopenDialogMessage = computed(() =>
+  isStrandedApplication.value
+    ? 'This user had an agency that was deleted, but the approved application was left behind so they can neither be re-approved nor apply again. Clearing it lets them apply for an agency from scratch. Their KYC contact and government ID are kept.'
+    : 'Remove the rejected application so this user can apply for an agency again. Their KYC contact and government ID are kept.',
+)
 
 function tagsEqual(a: string[], b: string[]) {
   if (a.length !== b.length) return false
@@ -594,6 +601,20 @@ async function confirmReopen() {
           Allow reapply
         </button>
       </div>
+      <div
+        v-if="isStrandedApplication"
+        class="mt-4 space-y-2 rounded-md border border-admin-warn/40 bg-admin-warn/5 p-3"
+      >
+        <p class="text-sm font-medium text-admin-warn">Agency deleted, application stuck</p>
+        <p class="text-xs text-admin-subtext">
+          This user's agency no longer exists but their application is still marked approved, so
+          they cannot be approved again or apply again. Clear it to unblock them. KYC contact and
+          government ID are kept.
+        </p>
+        <button type="button" class="admin-btn-warn text-xs" @click="showReopen = true">
+          Fix deleted agency
+        </button>
+      </div>
     </div>
 
     <ConfirmActionDialog
@@ -608,9 +629,9 @@ async function confirmReopen() {
     />
     <ConfirmActionDialog
       :open="showReopen"
-      title="Allow reapply"
-      message="Remove the rejected application so this user can apply for an agency again. Their KYC contact and government ID are kept."
-      confirm-label="Allow reapply"
+      :title="isStrandedApplication ? 'Fix deleted agency' : 'Allow reapply'"
+      :message="reopenDialogMessage"
+      :confirm-label="isStrandedApplication ? 'Clear application' : 'Allow reapply'"
       variant="warn"
       @close="showReopen = false"
       @confirm="confirmReopen"

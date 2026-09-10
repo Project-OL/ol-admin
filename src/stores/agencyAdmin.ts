@@ -15,6 +15,7 @@ import type {
   AgencyPeriodQuery,
   ApproveApplicationPayload,
   RejectApplicationPayload,
+  StrandedApplicationItem,
   SuspendAgencyPayload,
 } from '@/types/agency'
 import { showToast } from '@/utils/toast'
@@ -35,11 +36,15 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
     detail: null as AgencyDetail | null,
     /** Kept after ban so ops can unbar without hunting the UUID */
     lastBannedAgencyUserId: null as string | null,
+    /** Users stuck on an APPROVED application whose agency was deleted. */
+    stranded: [] as StrandedApplicationItem[],
     loadingStats: false,
     loadingList: false,
     loadingPending: false,
     loadingRejected: false,
     loadingDetail: false,
+    loadingStranded: false,
+    repairingStranded: false,
   }),
 
   actions: {
@@ -93,6 +98,41 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
         this.rejectedSkip = data.skip
       } finally {
         this.loadingRejected = false
+      }
+    },
+
+    async fetchStranded() {
+      this.loadingStranded = true
+      try {
+        const { data } = await agencyAdminApi.listStrandedApplications()
+        this.stranded = data.items
+        return data.items
+      } finally {
+        this.loadingStranded = false
+      }
+    },
+
+    /** Clears every stale APPROVED application whose agency is gone, then refreshes the lists. */
+    async repairStranded() {
+      this.repairingStranded = true
+      try {
+        const { data } = await agencyAdminApi.repairStrandedApplications(false)
+        if (data.repaired > 0) {
+          showToast(
+            `${data.repaired} user${data.repaired === 1 ? '' : 's'} unblocked — they can apply for an agency again`,
+            'success',
+          )
+        } else {
+          showToast('Nothing to fix — no deleted agency is blocking an application', 'info')
+        }
+        if (data.failed > 0) {
+          showToast(`${data.failed} could not be cleared — check the logs`, 'error')
+        }
+        await this.fetchStranded()
+        await Promise.all([this.fetchPending(), this.fetchRejected()])
+        return data
+      } finally {
+        this.repairingStranded = false
       }
     },
 

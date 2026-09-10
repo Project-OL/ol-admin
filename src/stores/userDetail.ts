@@ -721,9 +721,14 @@ export const useUserDetailStore = defineStore('userDetail', {
         showToast('Rejected status cleared — user can apply again', 'success')
         return
       }
-      await reopenAgencyApplication(id, 'user')
+      const { data } = await reopenAgencyApplication(id, 'user')
       await this.fetchUser(id)
-      showToast('Rejected status cleared — user can apply again', 'success')
+      showToast(
+        data?.stranded
+          ? 'Stale approved application cleared — user can apply for an agency again'
+          : 'Rejected status cleared — user can apply again',
+        'success',
+      )
     },
 
     async setUserStatus(id: string, options: StatusActionOptions) {

@@ -21,6 +21,8 @@ import type {
   AgencyUnbarResponse,
   ApproveApplicationPayload,
   RejectApplicationPayload,
+  RepairStrandedApplicationsResponse,
+  StrandedApplicationsResponse,
   SuspendAgencyPayload,
   TransferHostsPayload,
 } from '@/types/agency'
@@ -42,6 +44,18 @@ export const agencyAdminApi = {
     return api.get<AgencyApplicationListPage>('/admin/agency/applications/rejected', {
       params,
     })
+  },
+
+  /** Users whose agency was deleted but whose APPROVED application was left behind. */
+  listStrandedApplications() {
+    return api.get<StrandedApplicationsResponse>('/admin/agency/applications/stranded')
+  },
+
+  repairStrandedApplications(dryRun = false) {
+    return api.post<RepairStrandedApplicationsResponse>(
+      '/admin/agency/applications/repair-stranded',
+      { dryRun },
+    )
   },
 
   getApplicationKyc(userId: string) {

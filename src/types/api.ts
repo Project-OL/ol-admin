@@ -109,6 +109,8 @@ export interface ApiUserDetail {
   agencyApplication?: {
     id: string
     status: string
+    /** APPROVED with no agency row — deleted/banned agency left the application behind. */
+    stranded?: boolean
   } | null
   /** Face INDEXED or KYC face flag — gates gender edits. */
   faceVerified?: boolean
