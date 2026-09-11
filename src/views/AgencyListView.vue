@@ -569,6 +569,16 @@ onMounted(async () => {
                     >
                       Accept {{ agency.payrollEnabled ? 'ON' : 'OFF' }}
                     </span>
+                    <span
+                      :class="[
+                        'inline-flex w-fit rounded-full px-2 py-0.5 text-xs font-medium',
+                        agency.coinsellerListed
+                          ? 'bg-amber-500/15 text-amber-400'
+                          : 'bg-admin-muted/20 text-admin-subtext',
+                      ]"
+                    >
+                      Coinseller {{ agency.coinsellerListed ? 'ON' : 'OFF' }}
+                    </span>
                   </div>
                 </td>
                 <td>

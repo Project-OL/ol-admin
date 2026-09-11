@@ -23,6 +23,8 @@ export interface AgencyListItem {
   payrollPrivilegeGranted: boolean
   /** Agent accept-toggle (forced off when privilege revoked) */
   payrollEnabled: boolean
+  /** Owner has stored `coinseller` admin tag (discovery list + profile badge) */
+  coinsellerListed: boolean
   status: 'ACTIVE' | 'SUSPENDED' | string
   approvedAt: string
 }
@@ -179,6 +181,8 @@ export interface AgencyDetail {
   payrollPrivilegeGranted: boolean
   /** Agent accept-toggle (forced off when privilege revoked) */
   payrollEnabled: boolean
+  /** Owner has stored `coinseller` admin tag (discovery list + profile badge) */
+  coinsellerListed: boolean
   status: 'ACTIVE' | 'SUSPENDED' | string
   pausedUntil: string | null
 }
@@ -223,6 +227,13 @@ export type AgencyPayrollResponse = {
   agencyUserId: string
   payrollPrivilegeGranted: boolean
   payrollEnabled: boolean
+}
+
+export type AgencyCoinsellerResponse = {
+  ok: boolean
+  agencyUserId: string
+  coinsellerListed: boolean
+  adminTags: string[]
 }
 
 export type AgencyUnbarResponse = {

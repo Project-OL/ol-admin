@@ -287,6 +287,22 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
       return data
     },
 
+    /** Toggle owner `coinseller` admin tag (discovery list + profile / live card badge). */
+    async setCoinsellerListed(agencyIdentifier: string, enabled: boolean) {
+      const { data } = await agencyAdminApi.setCoinsellerListed(agencyIdentifier, enabled)
+      showToast(
+        enabled
+          ? 'Added to coinseller list — tag visible on profile'
+          : 'Removed from coinseller list',
+        'success',
+      )
+      if (this.detail) {
+        this.detail.coinsellerListed = data.coinsellerListed
+      }
+      await this.fetchDetail(agencyIdentifier)
+      return data
+    },
+
     /** @deprecated Prefer setPayrollPrivilege */
     async setPayroll(agencyIdentifier: string, payrollEnabled: boolean) {
       return this.setPayrollPrivilege(agencyIdentifier, payrollEnabled)
