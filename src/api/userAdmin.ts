@@ -327,6 +327,29 @@ export const userAdminApi = {
     })
   },
 
+  /** SUPER_ADMIN: presign PUT for attaching a face reference image. */
+  createFaceUploadUrl(id: string, mimeType?: 'image/jpeg' | 'image/jpg' | 'image/png') {
+    return api.post<{ uploadUrl: string; s3Key: string; expiresInSec: number }>(
+      `/admin/users/${id}/face-verification/upload-url`,
+      { mimeType: mimeType ?? 'image/jpeg' },
+    )
+  },
+
+  /** SUPER_ADMIN: index an uploaded face image into Rekognition. */
+  indexFaceFromUpload(
+    id: string,
+    body: { s3Key: string; reason?: string; replaceExisting?: boolean },
+  ) {
+    return api.post<{
+      success: true
+      userId: string
+      rekognitionFaceId: string
+      s3KeyReference: string
+      replaced: boolean
+      message: string
+    }>(`/admin/users/${id}/face-verification/index`, body)
+  },
+
   removeProfilePicture(id: string) {
     return api.post(`/admin/users/${id}/profile/remove-avatar`)
   },

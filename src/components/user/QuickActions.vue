@@ -11,16 +11,19 @@ import TemporaryPasswordDialog from '@/components/shared/TemporaryPasswordDialog
 import SendPlatformMessageDialog from '@/components/shared/SendPlatformMessageDialog.vue'
 import SendPushDialog from '@/components/push/SendPushDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import BaseDialog from '@/components/shared/BaseDialog.vue'
 import { pushNotificationsApi } from '@/api/pushNotifications'
 import { useUserDetailStore } from '@/stores/userDetail'
 import { usePlatformMessagesStore } from '@/stores/platformMessages'
 import { useAgencyAdminStore } from '@/stores/agencyAdmin'
+import { useAuthStore } from '@/stores/auth'
 import { showToast } from '@/utils/toast'
 
 const props = defineProps<{ user: UserProfile }>()
 const store = useUserDetailStore()
 const platformStore = usePlatformMessagesStore()
 const agencyStore = useAgencyAdminStore()
+const auth = useAuthStore()
 const router = useRouter()
 
 const postingRestricted = computed(() => {
@@ -53,11 +56,76 @@ const showTempPassword = ref(false)
 const showUnbar = ref(false)
 const unbarring = ref(false)
 
+const showIndexFace = ref(false)
+const indexingFace = ref(false)
+const indexFaceFile = ref<File | null>(null)
+const indexFacePreview = ref<string | null>(null)
+const indexFaceInput = ref<HTMLInputElement | null>(null)
+const replaceExistingFace = ref(false)
+const indexFaceReason = ref('')
+
 const faceDetail = computed(() => props.user.faceVerificationDetail)
 const livePhotoDetail = computed(() => props.user.livePhotoDetail)
 const relatedFaceUser = computed<FaceMatchedUser | null>(
   () => faceDetail.value?.matchedUser ?? faceDetail.value?.duplicateOfUser ?? null,
 )
+const alreadyIndexed = computed(
+  () =>
+    props.user.faceVerificationStatus === 'verified' ||
+    faceDetail.value?.statusLabel?.toLowerCase().includes('indexed') === true,
+)
+
+function openIndexFace() {
+  replaceExistingFace.value = alreadyIndexed.value
+  indexFaceFile.value = null
+  indexFaceReason.value = ''
+  if (indexFacePreview.value) {
+    URL.revokeObjectURL(indexFacePreview.value)
+    indexFacePreview.value = null
+  }
+  showIndexFace.value = true
+}
+
+function onIndexFaceFileChange(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  const file = input.files?.[0] ?? null
+  if (indexFacePreview.value) {
+    URL.revokeObjectURL(indexFacePreview.value)
+    indexFacePreview.value = null
+  }
+  indexFaceFile.value = file
+  if (file) indexFacePreview.value = URL.createObjectURL(file)
+}
+
+async function confirmIndexFace(payload: { reason?: string }) {
+  if (!indexFaceFile.value || indexingFace.value) return
+  indexingFace.value = true
+  try {
+    await store.indexFaceFromAdminUpload(props.user.id, indexFaceFile.value, {
+      reason: payload.reason,
+      replaceExisting: replaceExistingFace.value || alreadyIndexed.value,
+    })
+    showIndexFace.value = false
+    indexFaceFile.value = null
+    indexFaceReason.value = ''
+    if (indexFacePreview.value) {
+      URL.revokeObjectURL(indexFacePreview.value)
+      indexFacePreview.value = null
+    }
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const body = err.response?.data as { message?: string } | undefined
+      showToast(body?.message || 'Failed to index face', 'error')
+    } else if (err instanceof Error) {
+      showToast(err.message, 'error')
+    } else {
+      showToast('Failed to index face', 'error')
+    }
+  } finally {
+    indexingFace.value = false
+  }
+}
+
 const canRevokeFace = computed(() => {
   const status = props.user.faceVerificationStatus
   return status !== 'none' && status !== 'revoked'
@@ -305,6 +373,15 @@ async function handleUnbar() {
           </div>
         </RouterLink>
         <button
+          v-if="auth.isSuperAdmin"
+          type="button"
+          class="admin-btn-primary mb-2 w-full text-sm"
+          :disabled="indexingFace"
+          @click="openIndexFace"
+        >
+          {{ alreadyIndexed ? 'Replace & index face image' : 'Attach & index face image' }}
+        </button>
+        <button
           type="button"
           class="admin-btn-warn w-full text-sm"
           :disabled="revokingFace || !canRevokeFace"
@@ -496,6 +573,60 @@ async function handleUnbar() {
       @close="showRevokeFace = false"
       @confirm="revokeFace"
     />
+
+    <BaseDialog
+      :open="showIndexFace"
+      title="Attach & index face image"
+      size="sm"
+      @close="showIndexFace = false"
+    >
+      <template #body>
+        <p class="mb-3 text-sm text-admin-subtext">
+          Upload a clear face photo. It is indexed into Rekognition (skips liveness/quality gates) and
+          becomes the reference for live-photo matching and faceVerified.
+        </p>
+        <input
+          ref="indexFaceInput"
+          type="file"
+          accept="image/jpeg,image/png,.jpg,.jpeg,.png"
+          class="mb-3 block w-full text-xs text-admin-subtext file:mr-2 file:rounded file:border-0 file:bg-admin-accent/20 file:px-2 file:py-1 file:text-xs file:text-admin-accent"
+          @change="onIndexFaceFileChange"
+        />
+        <div
+          v-if="indexFacePreview"
+          class="mb-3 overflow-hidden rounded-md border border-admin-border bg-admin-bg"
+        >
+          <img :src="indexFacePreview" alt="Selected face" class="mx-auto max-h-48 w-full object-contain" />
+        </div>
+        <label
+          v-if="alreadyIndexed"
+          class="mb-3 flex items-start gap-2 text-xs text-admin-warn"
+        >
+          <input v-model="replaceExistingFace" type="checkbox" class="mt-0.5" />
+          <span>Replace the existing indexed face (required when already verified)</span>
+        </label>
+        <div>
+          <label class="mb-1 block text-xs font-medium text-admin-subtext">Reason</label>
+          <textarea
+            v-model="indexFaceReason"
+            rows="3"
+            class="admin-input resize-none"
+            placeholder="Why is this image being indexed?"
+          />
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="showIndexFace = false">Cancel</button>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="!indexFaceFile || !indexFaceReason.trim() || indexingFace || (alreadyIndexed && !replaceExistingFace)"
+          @click="confirmIndexFace({ reason: indexFaceReason.trim() })"
+        >
+          {{ indexingFace ? 'Indexing…' : 'Index face' }}
+        </button>
+      </template>
+    </BaseDialog>
 
     <ConfirmActionDialog
       :open="showTakeDownLivePhoto"

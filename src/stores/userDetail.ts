@@ -828,6 +828,45 @@ export const useUserDetailStore = defineStore('userDetail', {
 
     },
 
+    /**
+     * SUPER_ADMIN: presign → PUT → index a face reference image for live-photo matching.
+     */
+    async indexFaceFromAdminUpload(
+      id: string,
+      file: File,
+      options: { reason?: string; replaceExisting?: boolean } = {},
+    ) {
+      const mimeRaw = file.type === 'image/jpg' ? 'image/jpeg' : file.type
+      if (mimeRaw !== 'image/jpeg' && mimeRaw !== 'image/png') {
+        throw new Error('Use a JPEG or PNG image')
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        throw new Error('Image must be 10 MB or smaller')
+      }
+
+      const { data: presign } = await userAdminApi.createFaceUploadUrl(
+        id,
+        mimeRaw as 'image/jpeg' | 'image/png',
+      )
+      const putRes = await fetch(presign.uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': mimeRaw },
+        body: file,
+      })
+      if (!putRes.ok) {
+        throw new Error(`Upload failed: ${putRes.status}`)
+      }
+
+      const { data } = await userAdminApi.indexFaceFromUpload(id, {
+        s3Key: presign.s3Key,
+        reason: options.reason,
+        replaceExisting: options.replaceExisting,
+      })
+      await this.fetchUser(id)
+      showToast(data.message || 'Face indexed', 'success')
+      return data
+    },
+
     async removeLivePhoto(id: string, options: LivePhotoRemoveOptions = {}) {
 
       if (useMock) {
