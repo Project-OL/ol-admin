@@ -193,6 +193,8 @@ export interface AgencyListQuery {
   status?: 'ACTIVE' | 'SUSPENDED'
   country?: string
   q?: string
+  /** When true, only agencies at/above the trading-coin coinseller threshold. */
+  coinseller?: boolean
 }
 
 export interface ApproveApplicationPayload {
@@ -227,13 +229,6 @@ export type AgencyPayrollResponse = {
   agencyUserId: string
   payrollPrivilegeGranted: boolean
   payrollEnabled: boolean
-}
-
-export type AgencyCoinsellerResponse = {
-  ok: boolean
-  agencyUserId: string
-  coinsellerListed: boolean
-  adminTags: string[]
 }
 
 export type AgencyUnbarResponse = {

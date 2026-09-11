@@ -22,6 +22,7 @@ const activeTab = ref<'agencies' | 'pending' | 'rejected'>('agencies')
 const searchQuery = ref('')
 const statusFilter = ref<'ACTIVE' | 'SUSPENDED' | ''>('')
 const countryFilter = ref('')
+const coinsellerFilter = ref<'all' | 'yes' | 'no'>('all')
 
 const approveTarget = ref<AgencyApplicationListItem | null>(null)
 const rejectTarget = ref<AgencyApplicationListItem | null>(null)
@@ -81,6 +82,7 @@ async function loadAgencies(page = 0) {
     q: searchQuery.value.trim() || undefined,
     status: statusFilter.value || undefined,
     country: countryFilter.value.trim() || undefined,
+    coinseller: coinsellerFilter.value === 'yes' ? true : undefined,
   })
 }
 
@@ -492,6 +494,14 @@ onMounted(async () => {
             <option value="">All status</option>
             <option value="ACTIVE">Active</option>
             <option value="SUSPENDED">Suspended</option>
+          </select>
+          <select
+            v-model="coinsellerFilter"
+            class="admin-input w-auto"
+            @change="agenciesPage = 0; loadAgencies()"
+          >
+            <option value="all">All coinseller</option>
+            <option value="yes">Coinsellers only</option>
           </select>
           <input
             v-model="countryFilter"

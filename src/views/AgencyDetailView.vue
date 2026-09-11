@@ -47,7 +47,6 @@ const useSuspendUntil = ref(false)
 const acting = ref(false)
 const recomputing = ref(false)
 const togglingPayroll = ref(false)
-const togglingCoinseller = ref(false)
 const editingContact = ref(false)
 const savingContact = ref(false)
 const uploadingGovtId = ref(false)
@@ -295,16 +294,6 @@ async function confirmPayrollPrivilegeRevoke() {
     payrollOffDialog.value = false
   } finally {
     togglingPayroll.value = false
-  }
-}
-
-async function toggleCoinsellerListed() {
-  if (!agency.value || togglingCoinseller.value) return
-  togglingCoinseller.value = true
-  try {
-    await store.setCoinsellerListed(identifier.value, !agency.value.coinsellerListed)
-  } finally {
-    togglingCoinseller.value = false
   }
 }
 
@@ -592,33 +581,17 @@ async function recomputeTier() {
           </div>
 
           <div class="rounded-md border border-admin-border bg-admin-bg/40 p-3">
-            <div class="flex items-center justify-between gap-3">
-              <div class="min-w-0">
-                <p class="text-sm font-medium">Coinseller list</p>
-                <p class="mt-0.5 text-xs text-admin-muted">
-                  Adds the <code class="rounded bg-admin-bg px-1">coinseller</code> tag on the
-                  agency owner. Shows on live profile card / profile search, and on
-                  <code class="rounded bg-admin-bg px-1">GET /agency/coinsellers</code>.
-                </p>
-                <p class="mt-1 text-xs text-admin-subtext">
-                  Listed:
-                  <span class="font-medium">{{ agency.coinsellerListed ? 'yes' : 'no' }}</span>
-                </p>
-              </div>
-              <button
-                type="button"
-                class="admin-btn-secondary shrink-0 text-xs"
-                :disabled="togglingCoinseller"
-                @click="toggleCoinsellerListed"
-              >
-                {{
-                  togglingCoinseller
-                    ? '…'
-                    : agency.coinsellerListed
-                      ? 'Remove'
-                      : 'Add'
-                }}
-              </button>
+            <div class="min-w-0">
+              <p class="text-sm font-medium">Coinseller (automatic)</p>
+              <p class="mt-0.5 text-xs text-admin-muted">
+                Derived from the owner’s TRADING_COIN balance (≥ threshold). Shows on the coinseller
+                discovery list and as the <code class="rounded bg-admin-bg px-1">coinseller</code>
+                profile badge — not toggled manually.
+              </p>
+              <p class="mt-1 text-xs text-admin-subtext">
+                Listed:
+                <span class="font-medium">{{ agency.coinsellerListed ? 'yes' : 'no' }}</span>
+              </p>
             </div>
           </div>
 

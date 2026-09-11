@@ -15,7 +15,6 @@ import type {
   AgencyApplicationListPage,
   AgencyOverviewStats,
   AgencyPayrollResponse,
-  AgencyCoinsellerResponse,
   AgencyPeriodQuery,
   AgencyRecomputeLevelResponse,
   AgencyRecomputeMasterResponse,
@@ -121,14 +120,6 @@ export const agencyAdminApi = {
     return api.patch<AgencyPayrollResponse>(
       `/admin/agency/${encodeURIComponent(agencyIdentifier)}/payroll`,
       { payrollEnabled: privilegeGranted },
-    )
-  },
-
-  /** Grant/revoke the owner's stored `coinseller` admin tag (list + profile badge). */
-  setCoinsellerListed(agencyIdentifier: string, enabled: boolean) {
-    return api.patch<AgencyCoinsellerResponse>(
-      `/admin/agency/${encodeURIComponent(agencyIdentifier)}/coinseller`,
-      { enabled },
     )
   },
 
