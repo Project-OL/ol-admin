@@ -18,6 +18,10 @@ export type RegistrationSessionRow = {
   failureReason?: string | null
   /** Rekognition reference image captured on the failed attempt, when one was saved. */
   failureImageUrl?: string | null
+  /** True when admin can Accept (index) this terminal failure. */
+  canAccept?: boolean
+  /** Why Accept is disabled: NO_IMAGE | NOT_TERMINAL_FAILURE */
+  acceptBlockedReason?: string | null
   createdAt: string
   updatedAt: string
   stuckForSec: number
@@ -114,5 +118,14 @@ export type AcceptDuplicateBothResponse = {
   userId: string
   ownerUserId: string | null
   rekognitionFaceId: string
+  message: string
+}
+
+export type AcceptFailedRegistrationSessionResponse = {
+  success: true
+  userId: string
+  sessionId: string
+  rekognitionFaceId: string
+  s3KeyReference: string
   message: string
 }

@@ -29,6 +29,7 @@ const limit = 20
 const loading = ref(false)
 const recheckingId = ref<string | null>(null)
 const clearing = ref(false)
+const accepting = ref(false)
 
 const filters = reactive({
   minAgeSec: 5,
@@ -37,6 +38,9 @@ const filters = reactive({
 
 const clearTarget = ref<StuckRegistrationSessionRow | null>(null)
 const clearOpen = ref(false)
+
+const acceptTarget = ref<StuckRegistrationSessionRow | null>(null)
+const acceptOpen = ref(false)
 
 const clearAllOpen = ref(false)
 const clearingAll = ref(false)
@@ -111,6 +115,20 @@ function openClear(row: StuckRegistrationSessionRow) {
   clearOpen.value = true
 }
 
+function openAccept(row: StuckRegistrationSessionRow) {
+  if (!row.canAccept) {
+    showToast(
+      row.acceptBlockedReason === 'NO_IMAGE'
+        ? 'No captured image available — clear and have the user retry'
+        : 'This session cannot be accepted',
+      'error',
+    )
+    return
+  }
+  acceptTarget.value = row
+  acceptOpen.value = true
+}
+
 async function confirmClear(payload: { reason?: string }) {
   if (!clearTarget.value || clearing.value) return
   clearing.value = true
@@ -127,6 +145,26 @@ async function confirmClear(payload: { reason?: string }) {
     showToast(axiosMessage(err, 'Failed to clear stuck sessions'), 'error')
   } finally {
     clearing.value = false
+  }
+}
+
+async function confirmAccept(payload: { reason?: string }) {
+  if (!acceptTarget.value || accepting.value) return
+  accepting.value = true
+  try {
+    const { data } = await faceVerificationAdminApi.acceptFailedRegistrationSession(
+      acceptTarget.value.userId,
+      acceptTarget.value.sessionId,
+      payload.reason,
+    )
+    showToast(data.message || 'Face accepted and indexed', 'success')
+    acceptOpen.value = false
+    acceptTarget.value = null
+    await load(page.value)
+  } catch (err) {
+    showToast(axiosMessage(err, 'Failed to accept face'), 'error')
+  } finally {
+    accepting.value = false
   }
 }
 
@@ -168,8 +206,9 @@ onMounted(() => {
         liveness capture; one that's been PROCESSING for a while may indicate a worker outage), or a
         legitimate rejection (liveness/validation failure) they haven't retried past. A user who
         retries and succeeds, or whose latest attempt simply expired after starting a newer one, drops
-        off this list on its own. Recheck (hung sessions only) to force a fresh Rekognition poll, or
-        clear to reset rate limits and let the user start over.
+        off this list on its own. Recheck (hung sessions only) to force a fresh Rekognition poll;
+        Accept (failed sessions with a photo) to index the face and unlock live-photo / faceVerified;
+        or Clear to reset rate limits and let the user start over.
       </p>
     </div>
 
@@ -278,6 +317,15 @@ onMounted(() => {
                     {{ recheckingId === row.sessionId ? 'Checking…' : 'Recheck' }}
                   </button>
                   <button
+                    v-if="row.canAccept"
+                    type="button"
+                    class="admin-btn-primary py-1 text-xs"
+                    :disabled="accepting"
+                    @click="openAccept(row)"
+                  >
+                    Accept
+                  </button>
+                  <button
                     type="button"
                     class="admin-btn-danger py-1 text-xs"
                     @click="openClear(row)"
@@ -332,6 +380,17 @@ onMounted(() => {
       require-reason
       @close="clearOpen = false"
       @confirm="confirmClear"
+    />
+
+    <ConfirmActionDialog
+      :open="acceptOpen"
+      title="Accept and index face"
+      :message="`Indexes the captured photo for ${acceptTarget?.name ?? 'this user'} into Rekognition, marks their face profile INDEXED, and closes this failed session. Skips quality / liveness / duplicate gates. Live photo verification and faceVerified gates will work afterwards. Use only when the photo looks valid.`"
+      confirm-label="Accept and index"
+      variant="default"
+      require-reason
+      @close="acceptOpen = false"
+      @confirm="confirmAccept"
     />
 
     <ConfirmActionDialog

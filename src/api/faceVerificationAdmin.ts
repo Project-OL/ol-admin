@@ -1,6 +1,7 @@
 import api from '@/api/client'
 import type {
   AcceptDuplicateBothResponse,
+  AcceptFailedRegistrationSessionResponse,
   ClearAllStuckSessionsQuery,
   ClearAllStuckSessionsResponse,
   DuplicateOrderResponse,
@@ -22,6 +23,13 @@ export const faceVerificationAdminApi = {
     return api.post<ClearAllStuckSessionsResponse>(
       '/admin/face-verification/registration-sessions/clear-all',
       payload,
+    )
+  },
+
+  acceptFailedRegistrationSession(userId: string, sessionId: string, reason?: string) {
+    return api.post<AcceptFailedRegistrationSessionResponse>(
+      `/admin/face-verification/${userId}/registration-sessions/${sessionId}/accept`,
+      { reason },
     )
   },
 
