@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import { format } from 'date-fns'
 import type { UpdateUserPayload, UserProfile } from '@/types/user'
@@ -9,6 +9,14 @@ import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import AgencyGovtIdPanel from '@/components/agency/AgencyGovtIdPanel.vue'
 import { useUserDetailStore } from '@/stores/userDetail'
 import { showToast } from '@/utils/toast'
+import {
+  MANUAL_ADMIN_BADGE_OPTIONS,
+  type ManualAdminBadgeValue,
+  manualBadgeSummary,
+  matchManualBadge,
+  sanitizeStoredAdminTags,
+  toggleManualBadge,
+} from '@/constants/adminBadgeTags'
 
 const props = defineProps<{ user: UserProfile }>()
 const store = useUserDetailStore()
@@ -20,6 +28,8 @@ const revokingFace = ref(false)
 const uploadingGovtId = ref(false)
 const showReopen = ref(false)
 const reopening = ref(false)
+const tagsMenuOpen = ref(false)
+const tagsMenuRoot = ref<HTMLElement | null>(null)
 
 const form = reactive({
   username: '',
@@ -34,11 +44,34 @@ const form = reactive({
   tags: [] as string[],
 })
 
-const tagsInput = computed({
-  get: () => form.tags.join(', '),
-  set: (val: string) => {
-    form.tags = val.split(',').map((t) => t.trim()).filter(Boolean)
-  },
+const tagsSummary = computed(() => manualBadgeSummary(form.tags))
+const selectedManualCount = computed(
+  () => form.tags.map((t) => matchManualBadge(t)).filter(Boolean).length,
+)
+const displayBadgeTags = computed(() => sanitizeStoredAdminTags(props.user.tags))
+
+function isBadgeSelected(value: ManualAdminBadgeValue): boolean {
+  return form.tags.some((t) => matchManualBadge(t) === value)
+}
+
+function onToggleBadge(value: ManualAdminBadgeValue) {
+  form.tags = toggleManualBadge(form.tags, value)
+}
+
+function onDocumentClick(event: MouseEvent) {
+  const root = tagsMenuRoot.value
+  if (!root || !tagsMenuOpen.value) return
+  if (event.target instanceof Node && !root.contains(event.target)) {
+    tagsMenuOpen.value = false
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('click', onDocumentClick)
+})
+
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocumentClick)
 })
 
 /** Live header-style join while editing; prefer API `name` when not dirty. */
@@ -81,11 +114,13 @@ function startEdit() {
   form.kycEmail = props.user.kycContact?.email ?? ''
   form.gender = (props.user.gender ?? '').toLowerCase()
   form.country = props.user.country ?? ''
-  form.tags = [...props.user.tags]
+  form.tags = sanitizeStoredAdminTags(props.user.tags)
+  tagsMenuOpen.value = false
   editing.value = true
 }
 
 function cancelEdit() {
+  tagsMenuOpen.value = false
   editing.value = false
 }
 
@@ -201,7 +236,10 @@ function buildDirtyPayload(): UpdateUserPayload | null {
     payload.country = country
   }
 
-  if (!tagsEqual(form.tags, props.user.tags)) payload.tags = [...form.tags]
+  const nextTags = sanitizeStoredAdminTags(form.tags)
+  if (!tagsEqual(nextTags, props.user.tags)) {
+    payload.tags = nextTags
+  }
 
   const gender = form.gender.trim().toLowerCase()
   const currentGender = (props.user.gender ?? '').toLowerCase()
@@ -229,7 +267,7 @@ function isProfileUnchanged() {
     form.email.trim() === (props.user.email ?? '').trim() &&
     form.country.trim() === (props.user.country ?? '').trim() &&
     form.gender.trim().toLowerCase() === (props.user.gender ?? '').toLowerCase() &&
-    tagsEqual(form.tags, props.user.tags)
+    tagsEqual(sanitizeStoredAdminTags(form.tags), props.user.tags)
   )
 }
 
@@ -439,9 +477,40 @@ async function confirmReopen() {
           <label class="mb-1 block text-xs text-admin-subtext">Country (ISO code)</label>
           <input v-model="form.country" class="admin-input" placeholder="IN" />
         </div>
-        <div>
-          <label class="mb-1 block text-xs text-admin-subtext">Tags (comma separated)</label>
-          <input v-model="tagsInput" class="admin-input" />
+        <div ref="tagsMenuRoot" class="relative">
+          <label class="mb-1 block text-xs text-admin-subtext">Profile badges</label>
+          <button
+            type="button"
+            class="admin-input flex w-full items-center justify-between gap-2 text-left"
+            :aria-expanded="tagsMenuOpen"
+            @click="tagsMenuOpen = !tagsMenuOpen"
+          >
+            <span :class="selectedManualCount ? 'text-admin-text' : 'text-admin-muted'">
+              {{ tagsSummary }}
+            </span>
+            <span class="shrink-0 text-admin-muted">▾</span>
+          </button>
+          <div
+            v-if="tagsMenuOpen"
+            class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-admin-border bg-admin-card p-2 shadow-lg"
+          >
+            <label
+              v-for="opt in MANUAL_ADMIN_BADGE_OPTIONS"
+              :key="opt.value"
+              class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-admin-bg"
+            >
+              <input
+                type="checkbox"
+                class="rounded border-admin-border"
+                :checked="isBadgeSelected(opt.value)"
+                @change="onToggleBadge(opt.value)"
+              />
+              <span>{{ opt.label }}</span>
+            </label>
+          </div>
+          <p class="mt-1 text-xs text-admin-muted">
+            Agency, coinseller, gift collection, VIP/SVIP, and RICH are assigned automatically.
+          </p>
         </div>
       </template>
 
@@ -528,16 +597,16 @@ async function confirmReopen() {
           <span class="admin-kv-value">{{ user.country ?? '—' }}</span>
         </div>
         <div class="admin-kv-row">
-          <span class="admin-kv-label">Tags</span>
+          <span class="admin-kv-label">Profile badges</span>
           <div class="admin-kv-value flex flex-wrap gap-1 sm:justify-end">
             <span
-              v-for="tag in user.tags"
+              v-for="tag in displayBadgeTags"
               :key="tag"
               class="rounded bg-admin-accent/20 px-1.5 py-0.5 text-xs text-admin-accent"
             >
               {{ tag }}
             </span>
-            <span v-if="!user.tags.length" class="text-admin-muted">—</span>
+            <span v-if="!displayBadgeTags.length" class="text-admin-muted">—</span>
           </div>
         </div>
         <div class="admin-kv-row">
