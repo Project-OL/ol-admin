@@ -477,36 +477,38 @@ async function confirmReopen() {
           <label class="mb-1 block text-xs text-admin-subtext">Country (ISO code)</label>
           <input v-model="form.country" class="admin-input" placeholder="IN" />
         </div>
-        <div ref="tagsMenuRoot" class="relative">
+        <div>
           <label class="mb-1 block text-xs text-admin-subtext">Profile badges</label>
-          <button
-            type="button"
-            class="admin-input flex w-full items-center justify-between gap-2 text-left"
-            :aria-expanded="tagsMenuOpen"
-            @click="tagsMenuOpen = !tagsMenuOpen"
-          >
-            <span :class="selectedManualCount ? 'text-admin-text' : 'text-admin-muted'">
-              {{ tagsSummary }}
-            </span>
-            <span class="shrink-0 text-admin-muted">▾</span>
-          </button>
-          <div
-            v-if="tagsMenuOpen"
-            class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-admin-border bg-admin-card p-2 shadow-lg"
-          >
-            <label
-              v-for="opt in MANUAL_ADMIN_BADGE_OPTIONS"
-              :key="opt.value"
-              class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-admin-bg"
+          <div ref="tagsMenuRoot" class="relative z-30">
+            <button
+              type="button"
+              class="admin-input flex w-full items-center justify-between gap-2 text-left"
+              :aria-expanded="tagsMenuOpen"
+              @click="tagsMenuOpen = !tagsMenuOpen"
             >
-              <input
-                type="checkbox"
-                class="rounded border-admin-border"
-                :checked="isBadgeSelected(opt.value)"
-                @change="onToggleBadge(opt.value)"
-              />
-              <span>{{ opt.label }}</span>
-            </label>
+              <span :class="selectedManualCount ? 'text-admin-text' : 'text-admin-muted'">
+                {{ tagsSummary }}
+              </span>
+              <span class="shrink-0 text-admin-muted">▾</span>
+            </button>
+            <div
+              v-if="tagsMenuOpen"
+              class="absolute left-0 right-0 top-full z-50 mt-1 max-h-56 overflow-auto rounded-md border border-admin-border bg-admin-surface p-1 shadow-lg"
+            >
+              <label
+                v-for="opt in MANUAL_ADMIN_BADGE_OPTIONS"
+                :key="opt.value"
+                class="flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-sm text-admin-text hover:bg-admin-bg"
+              >
+                <input
+                  type="checkbox"
+                  class="rounded border-admin-border"
+                  :checked="isBadgeSelected(opt.value)"
+                  @change="onToggleBadge(opt.value)"
+                />
+                <span>{{ opt.label }}</span>
+              </label>
+            </div>
           </div>
           <p class="mt-1 text-xs text-admin-muted">
             Agency, coinseller, gift collection, VIP/SVIP, and RICH are assigned automatically.
