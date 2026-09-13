@@ -82,6 +82,8 @@ export type AdminPayrollAssignmentsQuery = {
   limit?: number
   cursor?: string
   status?: string
+  /** Default true server-side when status is unset; pass false to include EXPIRED. */
+  hideExpired?: boolean
   agencyUserId?: string
   /** Numeric agency public ID or owner public/display ID. */
   agencyPublicId?: string

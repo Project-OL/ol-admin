@@ -22,6 +22,9 @@ const UUID_RE =
 const activeTab = ref<'assignments' | 'disputed' | 'admin-pay' | 'assign-queue'>('assignments')
 
 const statusFilter = ref('')
+// Default view hides EXPIRED (usually the majority of rows and rarely actionable);
+// uncheck or "Reset filters" to see them again.
+const hideExpired = ref(true)
 const agencyFilter = ref('')
 const hostFilter = ref('')
 const withdrawalId = ref('')
@@ -36,6 +39,10 @@ const favourHostTargetId = ref<string | null>(null)
 const favourHostAgencyUserId = ref('')
 const favourAgentTargetId = ref<string | null>(null)
 const actingLocal = ref(false)
+// Rows the admin has already assigned (or is assigning) this session, so the row's
+// Assign button can't be re-clicked to fire a second assignment for the same withdrawal
+// while the queue hasn't refetched yet. Purely a UI guard - the real fix is server-side.
+const assignedRowIds = ref<Set<string>>(new Set())
 
 const ASSIGNMENT_STATUSES = ['PENDING', 'WAITING', 'COMPLETED', 'REJECTED', 'EXPIRED'] as const
 
@@ -86,6 +93,7 @@ function assignmentQuery(): AdminPayrollAssignmentsQuery | null {
   }
   return {
     status: statusFilter.value || undefined,
+    hideExpired: hideExpired.value,
     agencyUserId: agency.userId,
     agencyPublicId: agency.publicId,
     hostUserId: host.userId,
@@ -123,6 +131,10 @@ function toastPayrollError(err: unknown, fallback = 'Failed to load payroll assi
       showToast(body.message || 'EPAY withdrawals are paid by the platform', 'error')
       return
     }
+    if (body?.code === 'ALREADY_ASSIGNED') {
+      showToast(body.message || 'Withdrawal already has an active assignment', 'error')
+      return
+    }
     if (body?.code === 'INVALID_REQUEST') {
       showToast(body.message || 'Invalid payroll request', 'error')
       return
@@ -133,6 +145,17 @@ function toastPayrollError(err: unknown, fallback = 'Failed to load payroll assi
     }
   }
   showToast(fallback, 'error')
+}
+
+function resetAssignmentFilters() {
+  statusFilter.value = ''
+  hideExpired.value = true
+  agencyFilter.value = ''
+  hostFilter.value = ''
+  withdrawalId.value = ''
+  dateFrom.value = ''
+  dateTo.value = ''
+  void loadAssignments()
 }
 
 async function loadAssignments() {
@@ -189,6 +212,7 @@ async function handlePay() {
 
 async function handleAssign() {
   if (!assignTargetId.value || actingLocal.value) return
+  const targetId = assignTargetId.value
   const raw = assignAgencyUserId.value.trim().replace(/^#/, '')
   let agency: { agencyUserId?: string; agencyPublicId?: string } | undefined
   if (raw) {
@@ -200,13 +224,15 @@ async function handleAssign() {
     }
   }
   actingLocal.value = true
+  assignedRowIds.value.add(targetId)
   try {
-    await store.assignWithdrawal(assignTargetId.value, agency)
+    await store.assignWithdrawal(targetId, agency)
     assignTargetId.value = null
     assignAgencyUserId.value = ''
     if (activeTab.value === 'assign-queue') await store.fetchPendingAssign()
     else await loadAssignments()
   } catch (err) {
+    assignedRowIds.value.delete(targetId)
     toastPayrollError(err, 'Failed to assign withdrawal')
   } finally {
     actingLocal.value = false
@@ -398,6 +424,15 @@ onMounted(() => loadAssignments())
             <option value="">All statuses</option>
             <option v-for="s in ASSIGNMENT_STATUSES" :key="s" :value="s">{{ s }}</option>
           </select>
+          <label class="flex items-center gap-1.5 text-xs text-admin-subtext whitespace-nowrap">
+            <input
+              v-model="hideExpired"
+              type="checkbox"
+              :disabled="!!statusFilter"
+              @change="loadAssignments"
+            />
+            Hide expired
+          </label>
           <input
             v-model="agencyFilter"
             type="text"
@@ -427,6 +462,14 @@ onMounted(() => loadAssignments())
             @click="loadAssignments"
           >
             {{ store.loadingAssignments ? 'Loading…' : 'Search' }}
+          </button>
+          <button
+            type="button"
+            class="admin-btn-secondary"
+            :disabled="store.loadingAssignments"
+            @click="resetAssignmentFilters"
+          >
+            Reset filters
           </button>
         </div>
 
@@ -787,9 +830,10 @@ onMounted(() => loadAssignments())
                     <button
                       type="button"
                       class="admin-btn-primary text-xs"
+                      :disabled="assignedRowIds.has(row.id)"
                       @click="assignTargetId = row.id"
                     >
-                      Assign
+                      {{ assignedRowIds.has(row.id) ? 'Assigning…' : 'Assign' }}
                     </button>
                     <button
                       type="button"
