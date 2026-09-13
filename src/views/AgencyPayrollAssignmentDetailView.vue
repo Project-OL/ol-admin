@@ -30,10 +30,10 @@ const actingLocal = ref(false)
 
 const canReverse = computed(() => detail.value?.withdrawal.canRevert === true)
 
-const canAssign = computed(() => {
-  const w = detail.value?.withdrawal.status
-  return w === 'PENDING' || w === 'EXPIRED' || detail.value?.status === 'EXPIRED'
-})
+// A withdrawal only sits PENDING while it has one open (PENDING/WAITING) assignment - assigning
+// again would just hit 409 ALREADY_ASSIGNED. PENDING_PLATFORM is the only state with no open
+// assignment (no eligible agency, or attempts exhausted), so it's the only state that can assign.
+const canAssign = computed(() => detail.value?.withdrawal.status === 'PENDING_PLATFORM')
 
 const isDisputed = computed(() => detail.value?.withdrawal.status === 'DISPUTED')
 
@@ -95,6 +95,11 @@ async function handleAssign() {
       }
       if (body?.code === 'COUNTRY_MISMATCH') {
         showToast(body.message || 'Agency country does not match the host', 'error')
+        return
+      }
+      if (body?.code === 'ALREADY_ASSIGNED') {
+        showToast(body.message || 'Withdrawal already has an active assignment', 'error')
+        await load()
         return
       }
       if (body?.message) {
