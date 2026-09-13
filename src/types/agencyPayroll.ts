@@ -52,6 +52,8 @@ export type AdminPayrollAssignmentWithdrawal = {
   notes: string | null
   /** Admin may reverse within 4 days of requestedAt when status allows. */
   canRevert?: boolean
+  /** Admin may attach proof + mark complete for any chosen agency (PENDING/PENDING_PLATFORM, BANK only). */
+  canCompletePayrollManually?: boolean
 }
 
 export type AdminPayrollAssignment = {
@@ -184,6 +186,8 @@ export type AdminWithdrawalDetail = {
   failReason: string | null
   canRevert: boolean
   canPay: boolean
+  /** Admin may attach proof + mark complete for any chosen agency (PENDING/PENDING_PLATFORM, BANK only). */
+  canCompletePayrollManually: boolean
   localCurrencyAmount: string
   localCurrencyCode: string
   host: AdminPayrollUserCard

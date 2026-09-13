@@ -13,6 +13,8 @@ const config = computed(() => {
     suspended: { bg: 'bg-admin-warn/20', text: 'text-admin-warn', label: 'Suspended' },
     banned: { bg: 'bg-admin-danger/20', text: 'text-admin-danger', label: 'Banned' },
     success: { bg: 'bg-admin-success/20', text: 'text-admin-success', label: 'Success' },
+    completed: { bg: 'bg-admin-success/20', text: 'text-admin-success', label: 'Completed' },
+    paid: { bg: 'bg-admin-success/20', text: 'text-admin-success', label: 'Paid' },
     pending: { bg: 'bg-admin-warn/20', text: 'text-admin-warn', label: 'Pending' },
     warn: { bg: 'bg-admin-warn/20', text: 'text-admin-warn', label: 'Warning' },
     failed: { bg: 'bg-admin-danger/20', text: 'text-admin-danger', label: 'Failed' },

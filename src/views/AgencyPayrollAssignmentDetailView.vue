@@ -7,6 +7,8 @@ import StatusBadge from '@/components/shared/StatusBadge.vue'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useAgencyPayrollStore } from '@/stores/agencyPayroll'
+import { agencyAdminApi } from '@/api/agencyAdmin'
+import type { AgencyListItem } from '@/types/agency'
 import { formatLocalMoney, formatPoints, formatUsd } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 
@@ -28,12 +30,27 @@ const favourHostOpen = ref(false)
 const favourHostAgencyUserId = ref('')
 const actingLocal = ref(false)
 
+const completeOpen = ref(false)
+const completeAgencyQuery = ref('')
+const completeAgencyResults = ref<AgencyListItem[]>([])
+const completeAgencyUserId = ref('')
+const completeFile = ref<File | null>(null)
+const completeReason = ref('')
+
+const editProofOpen = ref(false)
+const editProofFile = ref<File | null>(null)
+const editProofReason = ref('')
+
 const canReverse = computed(() => detail.value?.withdrawal.canRevert === true)
 
 // A withdrawal only sits PENDING while it has one open (PENDING/WAITING) assignment - assigning
 // again would just hit 409 ALREADY_ASSIGNED. PENDING_PLATFORM is the only state with no open
 // assignment (no eligible agency, or attempts exhausted), so it's the only state that can assign.
 const canAssign = computed(() => detail.value?.withdrawal.status === 'PENDING_PLATFORM')
+
+const canCompleteManually = computed(
+  () => detail.value?.withdrawal.canCompletePayrollManually === true,
+)
 
 const isDisputed = computed(() => detail.value?.withdrawal.status === 'DISPUTED')
 
@@ -108,6 +125,123 @@ async function handleAssign() {
       }
     }
     showToast('Failed to assign withdrawal', 'error')
+  } finally {
+    actingLocal.value = false
+  }
+}
+
+async function searchCompleteAgency() {
+  const q = completeAgencyQuery.value.trim()
+  if (!q) {
+    completeAgencyResults.value = []
+    return
+  }
+  try {
+    const { data } = await agencyAdminApi.listAgencies({ q, take: 10, status: 'ACTIVE' })
+    completeAgencyResults.value = data.items
+  } catch {
+    completeAgencyResults.value = []
+  }
+}
+
+function pickCompleteAgency(hit: AgencyListItem) {
+  completeAgencyUserId.value = hit.agencyUserId
+  completeAgencyQuery.value = `${hit.userName} · #${hit.userPublicId}`
+  completeAgencyResults.value = []
+}
+
+function clearCompleteAgency() {
+  completeAgencyUserId.value = ''
+  completeAgencyQuery.value = ''
+  completeAgencyResults.value = []
+}
+
+function onCompleteFile(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  completeFile.value = input.files?.[0] ?? null
+}
+
+function resetCompleteForm() {
+  completeOpen.value = false
+  clearCompleteAgency()
+  completeFile.value = null
+  completeReason.value = ''
+}
+
+async function handleCompleteManually() {
+  if (!detail.value || actingLocal.value) return
+  if (!completeAgencyUserId.value) {
+    showToast('Search and select an agency', 'error')
+    return
+  }
+  if (!completeFile.value) {
+    showToast('Attach a proof screenshot', 'error')
+    return
+  }
+  actingLocal.value = true
+  try {
+    const result = await store.completePayrollManually(
+      detail.value.withdrawal.withdrawalId,
+      completeFile.value,
+      { agencyUserId: completeAgencyUserId.value },
+      completeReason.value,
+    )
+    resetCompleteForm()
+    // Completing supersedes the currently-open assignment and creates a fresh one for the
+    // chosen agency - if we were viewing the superseded one, follow to the new assignment.
+    if (result?.assignmentId && result.assignmentId !== assignmentId.value) {
+      await router.push(`/admin/agency-payroll/${result.assignmentId}`)
+    }
+  } catch (err) {
+    if (axios.isAxiosError(err)) {
+      const body = err.response?.data as { code?: string; message?: string } | undefined
+      if (body?.code === 'PAYROLL_AGENCY_INELIGIBLE') {
+        showToast(body.message || 'Agency is not eligible for payroll', 'error')
+        return
+      }
+      if (body?.code === 'PAYROLL_SELF_ASSIGN_FORBIDDEN') {
+        showToast(body.message || 'Cannot assign to the host or their own agency', 'error')
+        return
+      }
+      if (body?.message) {
+        showToast(body.message, 'error')
+        return
+      }
+    }
+    showToast('Failed to mark payroll complete', 'error')
+  } finally {
+    actingLocal.value = false
+  }
+}
+
+function onEditProofFile(ev: Event) {
+  const input = ev.target as HTMLInputElement
+  editProofFile.value = input.files?.[0] ?? null
+}
+
+function resetEditProofForm() {
+  editProofOpen.value = false
+  editProofFile.value = null
+  editProofReason.value = ''
+}
+
+async function handleEditProof() {
+  if (!detail.value || actingLocal.value) return
+  if (!editProofFile.value) {
+    showToast('Choose a screenshot', 'error')
+    return
+  }
+  actingLocal.value = true
+  try {
+    await store.updatePayrollProof(
+      detail.value.withdrawal.withdrawalId,
+      editProofFile.value,
+      { assignmentId: detail.value.assignmentId },
+      editProofReason.value,
+    )
+    resetEditProofForm()
+  } catch (err) {
+    showToast(err instanceof Error ? err.message : 'Failed to update screenshot', 'error')
   } finally {
     actingLocal.value = false
   }
@@ -310,6 +444,13 @@ onUnmounted(() => store.clearDetail())
             </a>
             <span v-else class="text-sm text-admin-muted">No proof uploaded</span>
           </div>
+          <button
+            type="button"
+            class="admin-btn-secondary text-xs"
+            @click="editProofOpen = true"
+          >
+            {{ detail.proofImageUrl ? 'Edit screenshot' : 'Add screenshot' }}
+          </button>
         </div>
 
         <!-- Timeline + payment -->
@@ -389,6 +530,14 @@ onUnmounted(() => store.clearDetail())
               Assign
             </button>
             <button
+              v-if="canCompleteManually"
+              type="button"
+              class="admin-btn-secondary text-sm"
+              @click="completeOpen = true"
+            >
+              Attach proof &amp; complete
+            </button>
+            <button
               v-if="canReverse"
               type="button"
               class="admin-btn-danger text-sm"
@@ -443,6 +592,123 @@ onUnmounted(() => store.clearDetail())
         <button type="button" class="admin-btn-secondary" @click="assignOpen = false">Cancel</button>
         <button type="button" class="admin-btn-primary" :disabled="actingLocal" @click="handleAssign">
           Assign
+        </button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :open="completeOpen"
+      title="Attach proof & mark complete"
+      @close="resetCompleteForm"
+    >
+      <template #body>
+        <div class="space-y-3">
+          <p class="text-sm text-admin-subtext">
+            Use this when an agency actually paid the host but the SLA expired (or it got
+            reassigned) before they could attach proof themselves. This supersedes whatever
+            assignment currently holds this withdrawal and credits the agency picked below -
+            same host review window as a normal agent completion.
+          </p>
+          <div class="relative">
+            <label class="mb-1 block text-xs text-admin-subtext">Agency</label>
+            <input
+              v-model="completeAgencyQuery"
+              type="text"
+              class="admin-input w-full"
+              placeholder="Search agency by name or public ID"
+              @input="searchCompleteAgency"
+            />
+            <button
+              v-if="completeAgencyUserId"
+              type="button"
+              class="absolute right-2 top-8 text-xs text-admin-muted hover:text-admin-text"
+              @click="clearCompleteAgency"
+            >
+              Clear
+            </button>
+            <div
+              v-if="completeAgencyResults.length"
+              class="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-md border border-admin-border bg-admin-surface shadow-lg"
+            >
+              <button
+                v-for="hit in completeAgencyResults"
+                :key="hit.agencyUserId"
+                type="button"
+                class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-admin-bg"
+                @click="pickCompleteAgency(hit)"
+              >
+                <span class="font-medium">{{ hit.userName }}</span>
+                <span class="text-xs text-admin-muted">#{{ hit.userPublicId }} · {{ hit.country || '—' }}</span>
+                <span v-if="!hit.payrollEnabled || !hit.payrollPrivilegeGranted" class="text-xs text-admin-warn">
+                  (payroll off)
+                </span>
+              </button>
+            </div>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Proof screenshot</label>
+            <input type="file" accept="image/*" class="admin-input w-full" @change="onCompleteFile" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Reason (optional)</label>
+            <textarea
+              v-model="completeReason"
+              rows="2"
+              class="admin-input w-full"
+              placeholder="e.g. Agency A paid via bank transfer, but was reassigned before attaching proof"
+            />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="resetCompleteForm">Cancel</button>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="actingLocal"
+          @click="handleCompleteManually"
+        >
+          {{ actingLocal ? 'Submitting…' : 'Mark complete' }}
+        </button>
+      </template>
+    </BaseDialog>
+
+    <BaseDialog
+      :open="editProofOpen"
+      title="Add or edit screenshot"
+      @close="resetEditProofForm"
+    >
+      <template #body>
+        <div class="space-y-3">
+          <p class="text-sm text-admin-subtext">
+            Replaces this assignment's proof screenshot - works regardless of status, so you can
+            correct a wrong screenshot even after it's already Completed / the withdrawal is Paid.
+            Does not change status or credits.
+          </p>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Proof screenshot</label>
+            <input type="file" accept="image/*" class="admin-input w-full" @change="onEditProofFile" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs text-admin-subtext">Reason (optional)</label>
+            <textarea
+              v-model="editProofReason"
+              rows="2"
+              class="admin-input w-full"
+              placeholder="e.g. Agency uploaded the wrong screenshot"
+            />
+          </div>
+        </div>
+      </template>
+      <template #footer>
+        <button type="button" class="admin-btn-secondary" @click="resetEditProofForm">Cancel</button>
+        <button
+          type="button"
+          class="admin-btn-primary"
+          :disabled="actingLocal"
+          @click="handleEditProof"
+        >
+          {{ actingLocal ? 'Uploading…' : 'Save screenshot' }}
         </button>
       </template>
     </BaseDialog>

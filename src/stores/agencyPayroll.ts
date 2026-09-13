@@ -170,6 +170,84 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
       }
     },
 
+    async updatePayrollProof(
+      withdrawalId: string,
+      file: File,
+      target: { assignmentId?: string; agencyUserId?: string; agencyPublicId?: string },
+      reason?: string,
+    ) {
+      this.acting = true
+      try {
+        const { data: presign } = await agencyPayrollAdminApi.getPayrollProofUploadUrl(
+          withdrawalId,
+          file.type || 'image/jpeg',
+        )
+        const putRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'image/jpeg' },
+          body: file,
+        })
+        if (!putRes.ok) {
+          throw new Error(`Screenshot upload failed: ${putRes.status}`)
+        }
+        const { data } = await agencyPayrollAdminApi.updatePayrollProof(withdrawalId, {
+          ...target,
+          proofS3Key: presign.s3Key,
+          proofS3Bucket: presign.s3Bucket,
+          reason: reason?.trim() || undefined,
+        })
+        showToast('Payroll screenshot updated', 'success')
+        if (this.detail?.withdrawal.withdrawalId === withdrawalId) {
+          await this.fetchDetail(this.detail.assignmentId)
+        }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
+        }
+        return data
+      } finally {
+        this.acting = false
+      }
+    },
+
+    async completePayrollManually(
+      withdrawalId: string,
+      file: File,
+      agency: { agencyUserId?: string; agencyPublicId?: string },
+      reason?: string,
+    ) {
+      this.acting = true
+      try {
+        const { data: presign } = await agencyPayrollAdminApi.getPayrollCompleteUploadUrl(
+          withdrawalId,
+          file.type || 'image/jpeg',
+        )
+        const putRes = await fetch(presign.uploadUrl, {
+          method: 'PUT',
+          headers: { 'Content-Type': file.type || 'image/jpeg' },
+          body: file,
+        })
+        if (!putRes.ok) {
+          throw new Error(`Screenshot upload failed: ${putRes.status}`)
+        }
+        const { data } = await agencyPayrollAdminApi.completePayrollManually(withdrawalId, {
+          ...agency,
+          proofS3Key: presign.s3Key,
+          proofS3Bucket: presign.s3Bucket,
+          reason: reason?.trim() || undefined,
+        })
+        showToast('Payroll marked complete - waiting on host review', 'success')
+        if (this.detail?.withdrawal.withdrawalId === withdrawalId) {
+          await this.fetchDetail(this.detail.assignmentId)
+        }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
+        }
+        return data
+      } finally {
+        this.acting = false
+      }
+    },
+
     async assignWithdrawal(
       withdrawalId: string,
       agency?: { agencyUserId?: string; agencyPublicId?: string },

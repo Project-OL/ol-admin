@@ -61,6 +61,58 @@ export const agencyPayrollAdminApi = {
     )
   },
 
+  getPayrollCompleteUploadUrl(withdrawalId: string, mimeType: string) {
+    return api.post<{ uploadUrl: string; s3Key: string; s3Bucket: string }>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/payroll-complete/upload-url`,
+      { mimeType },
+    )
+  },
+
+  completePayrollManually(
+    withdrawalId: string,
+    params: {
+      agencyUserId?: string
+      agencyPublicId?: string
+      proofS3Key: string
+      proofS3Bucket: string
+      reason?: string
+    },
+  ) {
+    return api.post<{
+      ok: boolean
+      assignmentId: string
+      agentRewardPoints: string
+      hostPayoutPoints: string
+      waitingExpiresAt: string
+    }>(`/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/payroll-complete`, params)
+  },
+
+  getPayrollProofUploadUrl(withdrawalId: string, mimeType: string) {
+    return api.post<{ uploadUrl: string; s3Key: string; s3Bucket: string }>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/payroll-proof/upload-url`,
+      { mimeType },
+    )
+  },
+
+  updatePayrollProof(
+    withdrawalId: string,
+    params: {
+      assignmentId?: string
+      agencyUserId?: string
+      agencyPublicId?: string
+      proofS3Key: string
+      proofS3Bucket: string
+      reason?: string
+    },
+  ) {
+    return api.post<{
+      ok: boolean
+      target: 'assignment' | 'withdrawal'
+      assignmentId: string | null
+      proofImageUrl: string
+    }>(`/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/payroll-proof`, params)
+  },
+
   reverseWithdrawal(withdrawalId: string, reason: string) {
     return api.post(`/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/reverse`, {
       reason,
