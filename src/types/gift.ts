@@ -27,6 +27,9 @@ export interface GiftAdminListItem {
   code: string
   displayImageUrl: string
   effectUrl: string | null
+  vapUrl: string | null
+  /** True when `vapUrl` is set — this gift renders as a VAP animation instead of the mp4. */
+  isVap: boolean
   category: { id: string; name: string; slug: string } | null
   coinCost: number
   displayOrder: number
@@ -99,6 +102,7 @@ export interface CreateGiftPayload {
   coinCost: number
   displayImageUrl: string
   effectUrl?: string | null
+  vapUrl?: string | null
   categoryId?: string | null
   displayOrder?: number
   vipOnly?: boolean
@@ -111,6 +115,7 @@ export interface PatchGiftPayload {
   coinCost?: number
   displayImageUrl?: string
   effectUrl?: string | null
+  vapUrl?: string | null
   categoryId?: string | null
   displayOrder?: number
   vipOnly?: boolean

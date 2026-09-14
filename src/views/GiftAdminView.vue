@@ -21,6 +21,7 @@ import { formatCoins, formatNumber } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import {
   GIFT_ASSET_ACCEPT,
+  GIFT_VAP_ASSET_ACCEPT,
   GIFT_CODE_PATTERN,
   CATEGORY_SLUG_PATTERN,
   isValidHttpUrl,
@@ -69,6 +70,7 @@ const giftForm = reactive({
   coinCost: 100,
   displayImageUrl: '',
   effectUrl: '',
+  vapUrl: '',
   categoryId: '',
   displayOrder: 0,
   vipOnly: false,
@@ -77,8 +79,10 @@ const giftForm = reactive({
 
 const displayAssetMode = ref<'url' | 'file'>('url')
 const effectAssetMode = ref<'url' | 'file'>('url')
+const vapAssetMode = ref<'url' | 'file'>('url')
 const displayFile = ref<File | null>(null)
 const effectFile = ref<File | null>(null)
+const vapFile = ref<File | null>(null)
 
 const giftFormErrors = reactive({
   name: '',
@@ -86,6 +90,7 @@ const giftFormErrors = reactive({
   coinCost: '',
   displayImageUrl: '',
   effectUrl: '',
+  vapUrl: '',
   displayOrder: '',
 })
 
@@ -140,6 +145,8 @@ const galleryGiftMap = computed(() => {
           code: g.code,
           displayImageUrl: g.displayImageUrl,
           effectUrl: null,
+          vapUrl: null,
+          isVap: false,
           category: null,
           coinCost: g.coinCost,
           displayOrder: g.sortOrder,
@@ -170,6 +177,7 @@ function clearGiftFormErrors() {
   giftFormErrors.coinCost = ''
   giftFormErrors.displayImageUrl = ''
   giftFormErrors.effectUrl = ''
+  giftFormErrors.vapUrl = ''
   giftFormErrors.displayOrder = ''
 }
 
@@ -179,14 +187,17 @@ function resetGiftForm() {
   giftForm.coinCost = 100
   giftForm.displayImageUrl = ''
   giftForm.effectUrl = ''
+  giftForm.vapUrl = ''
   giftForm.categoryId = ''
   giftForm.displayOrder = 0
   giftForm.vipOnly = false
   giftForm.isActive = true
   displayAssetMode.value = 'url'
   effectAssetMode.value = 'url'
+  vapAssetMode.value = 'url'
   displayFile.value = null
   effectFile.value = null
+  vapFile.value = null
   clearGiftFormErrors()
 }
 
@@ -241,6 +252,14 @@ function validateGiftForm(isEdit: boolean): boolean {
     // switched to file mode with leftover URL text — ok if optional empty file on edit
   }
 
+  // VAP is opt-in: leave both mode fields empty/untouched and the gift simply stays non-VAP.
+  if (vapAssetMode.value === 'url' && giftForm.vapUrl.trim()) {
+    if (!isValidHttpUrl(giftForm.vapUrl)) {
+      giftFormErrors.vapUrl = 'Enter a valid http(s) URL'
+      valid = false
+    }
+  }
+
   return valid
 }
 
@@ -248,7 +267,7 @@ async function resolveGiftAssetUrl(
   mode: 'url' | 'file',
   url: string,
   file: File | null,
-  role: 'display' | 'effect',
+  role: 'display' | 'effect' | 'vap',
   existingUrl?: string | null,
 ): Promise<string | null> {
   if (mode === 'url') {
@@ -344,14 +363,17 @@ function openEditGift(gift: GiftAdminListItem) {
   giftForm.coinCost = gift.coinCost
   giftForm.displayImageUrl = gift.displayImageUrl
   giftForm.effectUrl = gift.effectUrl ?? ''
+  giftForm.vapUrl = gift.vapUrl ?? ''
   giftForm.categoryId = gift.category?.id ?? ''
   giftForm.displayOrder = gift.displayOrder
   giftForm.vipOnly = gift.vipOnly
   giftForm.isActive = gift.status === 'active'
   displayAssetMode.value = 'url'
   effectAssetMode.value = 'url'
+  vapAssetMode.value = 'url'
   displayFile.value = null
   effectFile.value = null
+  vapFile.value = null
   clearGiftFormErrors()
 }
 
@@ -381,12 +403,20 @@ async function submitCreateGift() {
       effectUrl = await uploadAdminCatalogAsset({ domain: 'gift', role: 'effect', file: effectFile.value })
     }
 
+    let vapUrl: string | null = null
+    if (vapAssetMode.value === 'url') {
+      vapUrl = giftForm.vapUrl.trim() || null
+    } else if (vapFile.value) {
+      vapUrl = await uploadAdminCatalogAsset({ domain: 'gift', role: 'vap', file: vapFile.value })
+    }
+
     const payload: CreateGiftPayload = {
       name: giftForm.name.trim(),
       code: giftForm.code.trim(),
       coinCost: Number(giftForm.coinCost),
       displayImageUrl,
       effectUrl,
+      vapUrl,
       categoryId: giftForm.categoryId || null,
       displayOrder: Number(giftForm.displayOrder),
       vipOnly: giftForm.vipOnly,
@@ -433,12 +463,22 @@ async function submitEditGift() {
       effectUrl = editGift.value.effectUrl
     }
 
+    let vapUrl: string | null | undefined
+    if (vapAssetMode.value === 'url') {
+      vapUrl = giftForm.vapUrl.trim() || null
+    } else if (vapFile.value) {
+      vapUrl = await uploadAdminCatalogAsset({ domain: 'gift', role: 'vap', file: vapFile.value })
+    } else {
+      vapUrl = editGift.value.vapUrl
+    }
+
     await giftAdminApi.patchGift(editGift.value.id, {
       name: giftForm.name.trim(),
       code: giftForm.code.trim(),
       coinCost: Number(giftForm.coinCost),
       displayImageUrl,
       effectUrl,
+      vapUrl,
       categoryId: giftForm.categoryId || null,
       displayOrder: Number(giftForm.displayOrder),
       vipOnly: giftForm.vipOnly,
@@ -770,7 +810,15 @@ onMounted(async () => {
           :key="g.giftId"
           class="flex items-center gap-3 rounded-md border border-admin-border bg-admin-bg/40 px-3 py-2"
         >
-          <img :src="g.displayImageUrl" :alt="g.name" class="h-10 w-10 rounded object-cover" />
+          <div class="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded border border-admin-border bg-admin-bg flex items-center justify-center">
+            <img
+              :src="g.displayImageUrl"
+              :alt="g.name"
+              class="h-full w-full object-cover"
+              @error="(e) => ((e.target as HTMLElement).style.opacity = '0')"
+            />
+            <span class="absolute text-[10px] text-admin-muted pointer-events-none -z-0">🎁</span>
+          </div>
           <div>
             <p class="text-sm font-medium">{{ g.name }}</p>
             <p class="text-xs text-admin-subtext">
@@ -872,10 +920,40 @@ onMounted(async () => {
               <tr v-for="gift in sortedGifts" :key="gift.id">
                 <td>
                   <div class="flex items-center gap-3">
-                    <img :src="gift.displayImageUrl" :alt="gift.name" class="h-10 w-10 rounded object-cover" />
+                    <div class="relative h-10 w-10 flex-shrink-0 overflow-hidden rounded border border-admin-border bg-admin-bg flex items-center justify-center">
+                      <img
+                        :src="gift.displayImageUrl"
+                        :alt="gift.name"
+                        class="h-full w-full object-cover"
+                        @error="(e) => ((e.target as HTMLElement).style.opacity = '0')"
+                      />
+                      <span class="absolute text-[10px] text-admin-muted pointer-events-none -z-0">🎁</span>
+                    </div>
                     <div>
                       <p class="font-medium">{{ gift.name }}</p>
-                      <p class="text-xs text-admin-muted">Order {{ gift.displayOrder }}</p>
+                      <div class="flex items-center gap-2 text-xs">
+                        <span class="text-admin-muted">Order {{ gift.displayOrder }}</span>
+                        <a
+                          v-if="gift.effectUrl"
+                          :href="gift.effectUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-1 rounded bg-admin-accent/15 px-1 py-0.5 text-[10px] font-medium text-admin-accent hover:underline"
+                          title="Open effect video / animation in new tab"
+                        >
+                          <span>▶ Video</span>
+                        </a>
+                        <a
+                          v-if="gift.vapUrl"
+                          :href="gift.vapUrl"
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          class="inline-flex items-center gap-1 rounded bg-purple-500/15 px-1 py-0.5 text-[10px] font-medium text-purple-400 hover:underline"
+                          title="Open VAP animation file in new tab"
+                        >
+                          <span>✨ VAP</span>
+                        </a>
+                      </div>
                     </div>
                   </div>
                 </td>
@@ -1156,6 +1234,26 @@ onMounted(async () => {
               @update:url="giftForm.effectUrl = $event"
               @update:file="effectFile = $event"
             />
+          </div>
+          <div class="sm:col-span-2">
+            <CatalogAssetField
+              label="VAP animation"
+              :mode="vapAssetMode"
+              :url="giftForm.vapUrl"
+              :file="vapFile"
+              domain="gift"
+              :accept="GIFT_VAP_ASSET_ACCEPT"
+              optional
+              :error="giftFormErrors.vapUrl"
+              :existing-url="editGift?.vapUrl"
+              @update:mode="vapAssetMode = $event"
+              @update:url="giftForm.vapUrl = $event"
+              @update:file="vapFile = $event"
+            />
+            <p class="mt-1 text-xs text-admin-muted">
+              Optional. Built outside this system and uploaded as-is — leave empty to keep this gift a
+              plain mp4 effect.
+            </p>
           </div>
           <div>
             <label class="mb-1 block text-xs text-admin-subtext">Display order</label>

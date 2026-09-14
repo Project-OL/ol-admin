@@ -4,6 +4,8 @@ export const CATEGORY_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]*$/
 export const GIFT_ASSET_ACCEPT =
   '.png,.jpg,.jpeg,.webp,.svg,.gif,.json,.lottie,.riv,.mp4,.webm,image/*,video/*'
 
+export const GIFT_VAP_ASSET_ACCEPT = '.vap,.mp4'
+
 export const STORE_ASSET_ACCEPT =
   '.png,.jpg,.jpeg,.webp,.svg,.gif,.json,.lottie,.riv,.mp4,.webm,image/*,video/*'
 
@@ -19,6 +21,7 @@ const GIFT_EXTENSIONS = new Set([
   'riv',
   'mp4',
   'webm',
+  'vap',
 ])
 
 const STORE_EXTENSIONS = new Set([

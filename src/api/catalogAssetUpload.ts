@@ -1,6 +1,6 @@
 import api from '@/api/client'
 
-export type AdminCatalogAssetRole = 'display' | 'effect'
+export type AdminCatalogAssetRole = 'display' | 'effect' | 'vap'
 export type AdminCatalogDomain = 'gift' | 'store'
 
 export interface AdminCatalogAssetUploadUrlResponse {
