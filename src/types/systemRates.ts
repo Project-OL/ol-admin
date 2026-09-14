@@ -317,6 +317,55 @@ export type LivestreamRewardConfigUpdate = {
   pointsPerHour?: number
 }
 
+export type RoyalHostGiftingTier = {
+  threshold: string
+  cumulativePoints: string
+}
+
+export type RoyalHostRewardConfigDto = {
+  weeklyHoursRequired: number
+  dailyHoursCapMinutes: number
+  timingStep1Points: string
+  timingStep2Points: string
+  timingStep2EarningThreshold: string
+  giftingTiers: RoyalHostGiftingTier[]
+  consecutiveMissWeeksLimit: number
+  autoRevokeEarningThreshold: string
+  updatedAt: string
+}
+
+export type RoyalHostRewardConfigUpdate = Partial<Omit<RoyalHostRewardConfigDto, 'updatedAt'>>
+
+/** Editable gifting-tier row for the Royal Host reward editor. */
+export type RoyalHostGiftingTierDraft = {
+  threshold: string
+  cumulativePoints: string
+}
+
+export type NormalHostTier = {
+  thresholdPoints: string
+  hourlyRatePoints: string
+  hourCapHours: number
+  windowDays: number
+}
+
+export type NormalHostRewardConfigDto = {
+  tiers: NormalHostTier[]
+  updatedAt: string
+}
+
+export type NormalHostRewardConfigUpdate = {
+  tiers: NormalHostTier[]
+}
+
+/** Editable tier row for the Normal Host reward editor. */
+export type NormalHostTierDraft = {
+  thresholdPoints: string
+  hourlyRatePoints: string
+  hourCapHours: number
+  windowDays: number
+}
+
 export type VideoCallPriceCapTier = {
   minLevel: number
   maxLevel: number | null

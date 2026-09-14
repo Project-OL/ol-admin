@@ -33,6 +33,10 @@ import type {
   AgencyHostConfigDto,
   AgencyHostCooldownUnit,
   LivestreamRewardConfigDto,
+  RoyalHostRewardConfigDto,
+  RoyalHostGiftingTierDraft,
+  NormalHostRewardConfigDto,
+  NormalHostTierDraft,
   RestrictedIdentityWordsDto,
 } from '@/types/systemRates'
 import { showToast } from '@/utils/toast'
@@ -102,6 +106,8 @@ const savingAdminAuth = ref(false)
 const savingRestrictedWords = ref(false)
 const savingAgencyHost = ref(false)
 const savingLivestreamReward = ref(false)
+const savingRoyalHostReward = ref(false)
+const savingNormalHostReward = ref(false)
 
 const hostError = ref('')
 const callPriceError = ref('')
@@ -122,6 +128,8 @@ const adminAuthError = ref('')
 const restrictedWordsError = ref('')
 const agencyHostError = ref('')
 const livestreamRewardError = ref('')
+const royalHostRewardError = ref('')
+const normalHostRewardError = ref('')
 
 const hostSaved = ref<HostRevenueShares | null>(null)
 const hostForm = reactive({
@@ -200,6 +208,21 @@ const livestreamRewardForm = reactive({
   windowDays: 7 as number | null,
   pointsPerHour: 2500 as number | null,
 })
+
+const royalHostRewardSaved = ref<RoyalHostRewardConfigDto | null>(null)
+const royalHostRewardForm = reactive({
+  weeklyHoursRequired: 14 as number | null,
+  dailyHoursCapMinutes: 180 as number | null,
+  timingStep1Points: 40000 as number | null,
+  timingStep2Points: 60000 as number | null,
+  timingStep2EarningThreshold: 1_000_000 as number | null,
+  consecutiveMissWeeksLimit: 3 as number | null,
+  autoRevokeEarningThreshold: 1_000_000 as number | null,
+})
+const royalHostGiftingTiers = ref<RoyalHostGiftingTierDraft[]>([])
+
+const normalHostRewardSaved = ref<NormalHostRewardConfigDto | null>(null)
+const normalHostTierDrafts = ref<NormalHostTierDraft[]>([])
 
 const callPriceBands = ref<CallPriceBandDraft[]>([])
 
@@ -547,6 +570,23 @@ function applyLivestreamReward(cfg: LivestreamRewardConfigDto) {
   livestreamRewardForm.pointsPerHour = cfg.pointsPerHour
 }
 
+function applyRoyalHostReward(cfg: RoyalHostRewardConfigDto) {
+  royalHostRewardSaved.value = cfg
+  royalHostRewardForm.weeklyHoursRequired = cfg.weeklyHoursRequired
+  royalHostRewardForm.dailyHoursCapMinutes = cfg.dailyHoursCapMinutes
+  royalHostRewardForm.timingStep1Points = Number(cfg.timingStep1Points)
+  royalHostRewardForm.timingStep2Points = Number(cfg.timingStep2Points)
+  royalHostRewardForm.timingStep2EarningThreshold = Number(cfg.timingStep2EarningThreshold)
+  royalHostRewardForm.consecutiveMissWeeksLimit = cfg.consecutiveMissWeeksLimit
+  royalHostRewardForm.autoRevokeEarningThreshold = Number(cfg.autoRevokeEarningThreshold)
+  royalHostGiftingTiers.value = cfg.giftingTiers.map((t) => ({ ...t }))
+}
+
+function applyNormalHostReward(cfg: NormalHostRewardConfigDto) {
+  normalHostRewardSaved.value = cfg
+  normalHostTierDrafts.value = cfg.tiers.map((t) => ({ ...t }))
+}
+
 function defaultCallPriceBands(): CallPriceBandDraft[] {
   return [
     { minLevel: 1, maxLevel: 4, label: '≤Lv4', prices: [1800] },
@@ -676,6 +716,21 @@ async function loadAll() {
     } catch (err) {
       livestreamRewardError.value = apiErrorMessage(err, 'Failed to load platform reward settings.')
     }
+    try {
+      const royalHostReward = await systemSettingsApi.getRoyalHostRewardConfig()
+      applyRoyalHostReward(royalHostReward.data)
+    } catch (err) {
+      royalHostRewardError.value = apiErrorMessage(err, 'Failed to load Royal Host reward settings.')
+    }
+    try {
+      const normalHostReward = await systemSettingsApi.getNormalHostRewardConfig()
+      applyNormalHostReward(normalHostReward.data)
+    } catch (err) {
+      normalHostRewardError.value = apiErrorMessage(
+        err,
+        'Failed to load Normal Host reward settings.',
+      )
+    }
     if (!richTierDrafts.value.length) {
       try {
         const rich = await systemSettingsApi.getRichTierConfig()
@@ -768,6 +823,34 @@ function removeTier(rows: RateTierDraft[], index: number) {
   rows.splice(index, 1)
   const last = rows[rows.length - 1]
   if (last) last.maxUsd = null
+}
+
+function addRoyalHostGiftingTier() {
+  const last = royalHostGiftingTiers.value[royalHostGiftingTiers.value.length - 1]
+  royalHostGiftingTiers.value.push({
+    threshold: last ? String(BigInt(last.threshold || '0') * 2n) : '1000000',
+    cumulativePoints: last ? String(BigInt(last.cumulativePoints || '0') * 2n) : '60000',
+  })
+}
+
+function removeRoyalHostGiftingTier(index: number) {
+  if (royalHostGiftingTiers.value.length <= 1) return
+  royalHostGiftingTiers.value.splice(index, 1)
+}
+
+function addNormalHostTier() {
+  const last = normalHostTierDrafts.value[normalHostTierDrafts.value.length - 1]
+  normalHostTierDrafts.value.push({
+    thresholdPoints: last ? String(BigInt(last.thresholdPoints || '0') * 2n) : '100000',
+    hourlyRatePoints: last ? String(BigInt(last.hourlyRatePoints || '0') * 2n) : '1000',
+    hourCapHours: last?.hourCapHours ?? 1,
+    windowDays: last?.windowDays ?? 7,
+  })
+}
+
+function removeNormalHostTier(index: number) {
+  if (normalHostTierDrafts.value.length <= 1) return
+  normalHostTierDrafts.value.splice(index, 1)
 }
 
 async function saveHostShares() {
@@ -1747,6 +1830,167 @@ async function saveLivestreamReward() {
     showToast(livestreamRewardError.value, 'error')
   } finally {
     savingLivestreamReward.value = false
+  }
+}
+
+function validateRoyalHostRewardForm(): string | null {
+  const f = royalHostRewardForm
+  if (
+    f.weeklyHoursRequired == null ||
+    !Number.isInteger(f.weeklyHoursRequired) ||
+    f.weeklyHoursRequired < 1 ||
+    f.weeklyHoursRequired > 168
+  ) {
+    return 'Weekly hours required must be an integer from 1 to 168.'
+  }
+  if (
+    f.dailyHoursCapMinutes == null ||
+    !Number.isInteger(f.dailyHoursCapMinutes) ||
+    f.dailyHoursCapMinutes < 1 ||
+    f.dailyHoursCapMinutes > 1440
+  ) {
+    return 'Daily hours cap (minutes) must be an integer from 1 to 1440.'
+  }
+  if (f.timingStep1Points == null || f.timingStep1Points < 0) {
+    return 'Timing step 1 points must be ≥ 0.'
+  }
+  if (f.timingStep2Points == null || f.timingStep2Points < 0) {
+    return 'Timing step 2 points must be ≥ 0.'
+  }
+  if (f.timingStep2EarningThreshold == null || f.timingStep2EarningThreshold < 0) {
+    return 'Timing step 2 earning threshold must be ≥ 0.'
+  }
+  if (
+    f.consecutiveMissWeeksLimit == null ||
+    !Number.isInteger(f.consecutiveMissWeeksLimit) ||
+    f.consecutiveMissWeeksLimit < 1 ||
+    f.consecutiveMissWeeksLimit > 52
+  ) {
+    return 'Consecutive miss weeks limit must be an integer from 1 to 52.'
+  }
+  if (f.autoRevokeEarningThreshold == null || f.autoRevokeEarningThreshold < 0) {
+    return 'Auto-revoke earning threshold must be ≥ 0.'
+  }
+  if (!royalHostGiftingTiers.value.length) return 'Gifting tiers: add at least one tier.'
+  let prevThreshold = -1n
+  let prevCumulative = -1n
+  for (let i = 0; i < royalHostGiftingTiers.value.length; i++) {
+    const row = royalHostGiftingTiers.value[i]!
+    if (!/^\d+$/.test(row.threshold) || !/^\d+$/.test(row.cumulativePoints)) {
+      return `Gifting tier ${i + 1}: threshold and points must be whole numbers.`
+    }
+    const threshold = BigInt(row.threshold)
+    const cumulative = BigInt(row.cumulativePoints)
+    if (threshold <= prevThreshold) {
+      return `Gifting tier ${i + 1}: threshold must be greater than the previous tier.`
+    }
+    if (cumulative < prevCumulative) {
+      return `Gifting tier ${i + 1}: cumulative points must not decrease.`
+    }
+    prevThreshold = threshold
+    prevCumulative = cumulative
+  }
+  return null
+}
+
+async function saveRoyalHostReward() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  royalHostRewardError.value = ''
+  const validationError = validateRoyalHostRewardForm()
+  if (validationError) {
+    royalHostRewardError.value = validationError
+    return
+  }
+
+  savingRoyalHostReward.value = true
+  try {
+    const { data } = await systemSettingsApi.updateRoyalHostRewardConfig({
+      weeklyHoursRequired: Math.trunc(Number(royalHostRewardForm.weeklyHoursRequired)),
+      dailyHoursCapMinutes: Math.trunc(Number(royalHostRewardForm.dailyHoursCapMinutes)),
+      timingStep1Points: String(Math.trunc(Number(royalHostRewardForm.timingStep1Points))),
+      timingStep2Points: String(Math.trunc(Number(royalHostRewardForm.timingStep2Points))),
+      timingStep2EarningThreshold: String(
+        Math.trunc(Number(royalHostRewardForm.timingStep2EarningThreshold)),
+      ),
+      giftingTiers: royalHostGiftingTiers.value.map((t) => ({
+        threshold: t.threshold,
+        cumulativePoints: t.cumulativePoints,
+      })),
+      consecutiveMissWeeksLimit: Math.trunc(Number(royalHostRewardForm.consecutiveMissWeeksLimit)),
+      autoRevokeEarningThreshold: String(
+        Math.trunc(Number(royalHostRewardForm.autoRevokeEarningThreshold)),
+      ),
+    })
+    applyRoyalHostReward(data)
+    showToast('Royal Host reward settings saved.', 'success')
+  } catch (e) {
+    royalHostRewardError.value = apiErrorMessage(e, 'Failed to save Royal Host reward settings.')
+    showToast(royalHostRewardError.value, 'error')
+  } finally {
+    savingRoyalHostReward.value = false
+  }
+}
+
+function validateNormalHostRewardForm(): string | null {
+  if (!normalHostTierDrafts.value.length) return 'Add at least one tier.'
+  let prevThreshold = -1n
+  for (let i = 0; i < normalHostTierDrafts.value.length; i++) {
+    const row = normalHostTierDrafts.value[i]!
+    if (!/^\d+$/.test(row.thresholdPoints) || !/^\d+$/.test(row.hourlyRatePoints)) {
+      return `Tier ${i + 1}: threshold and hourly rate must be whole numbers.`
+    }
+    const threshold = BigInt(row.thresholdPoints)
+    if (threshold <= prevThreshold) {
+      return `Tier ${i + 1}: threshold must be greater than the previous tier.`
+    }
+    if (BigInt(row.hourlyRatePoints) <= 0n) {
+      return `Tier ${i + 1}: hourly rate must be positive.`
+    }
+    if (!Number.isInteger(row.hourCapHours) || row.hourCapHours < 1 || row.hourCapHours > 24) {
+      return `Tier ${i + 1}: hour cap must be an integer from 1 to 24.`
+    }
+    if (!Number.isInteger(row.windowDays) || row.windowDays < 1 || row.windowDays > 90) {
+      return `Tier ${i + 1}: window days must be an integer from 1 to 90.`
+    }
+    prevThreshold = threshold
+  }
+  return null
+}
+
+async function saveNormalHostReward() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  normalHostRewardError.value = ''
+  const validationError = validateNormalHostRewardForm()
+  if (validationError) {
+    normalHostRewardError.value = validationError
+    return
+  }
+
+  savingNormalHostReward.value = true
+  try {
+    const { data } = await systemSettingsApi.updateNormalHostRewardConfig({
+      tiers: normalHostTierDrafts.value.map((t) => ({
+        thresholdPoints: t.thresholdPoints,
+        hourlyRatePoints: t.hourlyRatePoints,
+        hourCapHours: Math.trunc(Number(t.hourCapHours)),
+        windowDays: Math.trunc(Number(t.windowDays)),
+      })),
+    })
+    applyNormalHostReward(data)
+    showToast('Normal Host reward settings saved.', 'success')
+  } catch (e) {
+    normalHostRewardError.value = apiErrorMessage(e, 'Failed to save Normal Host reward settings.')
+    showToast(normalHostRewardError.value, 'error')
+  } finally {
+    savingNormalHostReward.value = false
   }
 }
 
@@ -3309,78 +3553,339 @@ onMounted(() => {
         </form>
       </section>
 
-      <!-- Platform livestream reward -->
-      <section v-else-if="activeTab === 'platformReward'" class="admin-card max-w-xl space-y-3">
-        <div>
-          <h2 class="text-sm font-semibold text-admin-text">Platform livestream reward</h2>
-          <p class="mt-0.5 text-xs text-admin-subtext">
-            New members can claim points for streaming each UTC day during their first N membership
-            days. Two parts per day unlock at 1 hour and 2 hours streamed; each part pays the
-            configured per-hour amount. Existing claims keep the points amount recorded at claim
-            time.
-          </p>
-        </div>
-
-        <form class="grid grid-cols-1 gap-2 sm:grid-cols-2" @submit.prevent="saveLivestreamReward">
+      <!-- Platform rewards: livestream daily, Royal Host weekly, Normal Host daily -->
+      <section v-else-if="activeTab === 'platformReward'" class="space-y-6">
+        <div class="admin-card max-w-xl space-y-3">
           <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Duration (days)</label>
-            <InlineEditField
-              v-model="livestreamRewardForm.windowDays"
-              type="number"
-              :min="1"
-              :max="30"
-              step="1"
-              :disabled="savingLivestreamReward"
-            />
-          </div>
-          <div>
-            <label class="mb-0.5 block text-[11px] text-admin-subtext">Points per hour</label>
-            <InlineEditField
-              v-model="livestreamRewardForm.pointsPerHour"
-              type="number"
-              :min="1"
-              :max="1000000"
-              step="1"
-              :disabled="savingLivestreamReward"
-            />
+            <h2 class="text-sm font-semibold text-admin-text">Platform livestream reward</h2>
+            <p class="mt-0.5 text-xs text-admin-subtext">
+              New members can claim points for streaming each UTC day during their first N
+              membership days. Two parts per day unlock at 1 hour and 2 hours streamed; each part
+              pays the configured per-hour amount. Existing claims keep the points amount recorded
+              at claim time.
+            </p>
           </div>
 
-          <dl
-            class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+          <form
+            class="grid grid-cols-1 gap-2 sm:grid-cols-2"
+            @submit.prevent="saveLivestreamReward"
           >
             <div>
-              <dt class="text-xs text-admin-subtext">Daily max (2 parts)</dt>
-              <dd class="font-medium text-admin-text">
-                {{
-                  livestreamRewardForm.pointsPerHour != null
-                    ? `${(Number(livestreamRewardForm.pointsPerHour) * 2).toLocaleString()} pts`
-                    : '—'
-                }}
-              </dd>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Duration (days)</label>
+              <InlineEditField
+                v-model="livestreamRewardForm.windowDays"
+                type="number"
+                :min="1"
+                :max="30"
+                step="1"
+                :disabled="savingLivestreamReward"
+              />
             </div>
             <div>
-              <dt class="text-xs text-admin-subtext">Last updated</dt>
-              <dd class="font-medium text-admin-text">
-                {{ formatDt(livestreamRewardSaved?.updatedAt ?? null) }}
-              </dd>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Points per hour</label>
+              <InlineEditField
+                v-model="livestreamRewardForm.pointsPerHour"
+                type="number"
+                :min="1"
+                :max="1000000"
+                step="1"
+                :disabled="savingLivestreamReward"
+              />
             </div>
-          </dl>
 
-          <p v-if="livestreamRewardError" class="sm:col-span-2 text-xs text-admin-danger">
-            {{ livestreamRewardError }}
+            <dl
+              class="sm:col-span-2 grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2"
+            >
+              <div>
+                <dt class="text-xs text-admin-subtext">Daily max (2 parts)</dt>
+                <dd class="font-medium text-admin-text">
+                  {{
+                    livestreamRewardForm.pointsPerHour != null
+                      ? `${(Number(livestreamRewardForm.pointsPerHour) * 2).toLocaleString()} pts`
+                      : '—'
+                  }}
+                </dd>
+              </div>
+              <div>
+                <dt class="text-xs text-admin-subtext">Last updated</dt>
+                <dd class="font-medium text-admin-text">
+                  {{ formatDt(livestreamRewardSaved?.updatedAt ?? null) }}
+                </dd>
+              </div>
+            </dl>
+
+            <p v-if="livestreamRewardError" class="sm:col-span-2 text-xs text-admin-danger">
+              {{ livestreamRewardError }}
+            </p>
+
+            <div class="sm:col-span-2">
+              <button
+                type="button"
+                class="admin-btn-primary"
+                :disabled="savingLivestreamReward"
+                @mousedown.prevent="saveLivestreamReward"
+              >
+                {{ savingLivestreamReward ? 'Saving…' : 'Save platform rewards' }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="admin-card max-w-3xl space-y-3">
+          <div>
+            <h2 class="text-sm font-semibold text-admin-text">Royal Host weekly reward</h2>
+            <p class="mt-0.5 text-xs text-admin-subtext">
+              Weekly timing + gifting ladder for users tagged "royal host". Tag is auto-revoked
+              after this many consecutive weeks below the earning threshold. Existing claims keep
+              the points amount recorded at claim time.
+            </p>
+          </div>
+
+          <form class="grid grid-cols-1 gap-2 sm:grid-cols-3" @submit.prevent="saveRoyalHostReward">
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Weekly hours req.</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.weeklyHoursRequired"
+                type="number"
+                :min="1"
+                :max="168"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Daily hours cap (min)</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.dailyHoursCapMinutes"
+                type="number"
+                :min="1"
+                :max="1440"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Consecutive miss weeks limit</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.consecutiveMissWeeksLimit"
+                type="number"
+                :min="1"
+                :max="52"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Timing step 1 points</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.timingStep1Points"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Timing step 2 points</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.timingStep2Points"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Step 2 earning threshold</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.timingStep2EarningThreshold"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+            <div class="sm:col-span-3">
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Auto-revoke earning threshold</label>
+              <InlineEditField
+                v-model="royalHostRewardForm.autoRevokeEarningThreshold"
+                type="number"
+                :min="0"
+                step="1"
+                :disabled="savingRoyalHostReward"
+              />
+            </div>
+
+            <div class="sm:col-span-3 space-y-1.5">
+              <p class="text-xs font-semibold text-admin-text">Gifting tiers</p>
+              <div class="admin-table-wrap">
+                <table class="admin-table min-w-[420px]">
+                  <thead>
+                    <tr>
+                      <th>Earning threshold</th>
+                      <th>Cumulative points</th>
+                      <th class="w-20" />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr v-for="(row, idx) in royalHostGiftingTiers" :key="'rhgt-' + idx">
+                      <td>
+                        <InlineEditField
+                          v-model="row.threshold"
+                          type="text"
+                          :disabled="savingRoyalHostReward"
+                        />
+                      </td>
+                      <td>
+                        <InlineEditField
+                          v-model="row.cumulativePoints"
+                          type="text"
+                          :disabled="savingRoyalHostReward"
+                        />
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          class="text-xs text-admin-danger disabled:opacity-40"
+                          :disabled="savingRoyalHostReward || royalHostGiftingTiers.length <= 1"
+                          @click="removeRoyalHostGiftingTier(idx)"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <button
+                type="button"
+                class="admin-btn-secondary"
+                :disabled="savingRoyalHostReward"
+                @click="addRoyalHostGiftingTier"
+              >
+                Add tier
+              </button>
+            </div>
+
+            <p class="text-xs text-admin-subtext sm:col-span-3">
+              Last updated: {{ formatDt(royalHostRewardSaved?.updatedAt ?? null) }}
+            </p>
+            <p v-if="royalHostRewardError" class="sm:col-span-3 text-xs text-admin-danger">
+              {{ royalHostRewardError }}
+            </p>
+
+            <div class="sm:col-span-3">
+              <button
+                type="button"
+                class="admin-btn-primary"
+                :disabled="savingRoyalHostReward"
+                @mousedown.prevent="saveRoyalHostReward"
+              >
+                {{ savingRoyalHostReward ? 'Saving…' : 'Save Royal Host reward' }}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div class="admin-card max-w-3xl space-y-3">
+          <div>
+            <h2 class="text-sm font-semibold text-admin-text">Normal Host daily reward</h2>
+            <p class="mt-0.5 text-xs text-admin-subtext">
+              Default reward for hosts not tagged "royal host". Each tier is evaluated against a
+              rolling earnings window of its own length (days); the highest-threshold qualifying
+              tier applies. Each completed live hour (up to the tier's hour cap) is a separate
+              claimable slot, paid at whichever tier is current at the moment it's claimed.
+            </p>
+          </div>
+
+          <div class="admin-table-wrap">
+            <table class="admin-table min-w-[560px]">
+              <thead>
+                <tr>
+                  <th>Earning threshold</th>
+                  <th>Points / hour</th>
+                  <th>Hour cap</th>
+                  <th>Window (days)</th>
+                  <th class="w-20" />
+                </tr>
+              </thead>
+              <tbody>
+                <tr v-for="(row, idx) in normalHostTierDrafts" :key="'nht-' + idx">
+                  <td>
+                    <InlineEditField
+                      v-model="row.thresholdPoints"
+                      type="text"
+                      :disabled="savingNormalHostReward"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.hourlyRatePoints"
+                      type="text"
+                      :disabled="savingNormalHostReward"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.hourCapHours"
+                      type="number"
+                      :min="1"
+                      :max="24"
+                      step="1"
+                      :disabled="savingNormalHostReward"
+                    />
+                  </td>
+                  <td>
+                    <InlineEditField
+                      v-model="row.windowDays"
+                      type="number"
+                      :min="1"
+                      :max="90"
+                      step="1"
+                      :disabled="savingNormalHostReward"
+                    />
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      class="text-xs text-admin-danger disabled:opacity-40"
+                      :disabled="savingNormalHostReward || normalHostTierDrafts.length <= 1"
+                      @click="removeNormalHostTier(idx)"
+                    >
+                      Remove
+                    </button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p class="text-xs text-admin-subtext">
+            Last updated: {{ formatDt(normalHostRewardSaved?.updatedAt ?? null) }}
+          </p>
+          <p v-if="normalHostRewardError" class="text-xs text-admin-danger">
+            {{ normalHostRewardError }}
           </p>
 
-          <div class="sm:col-span-2">
+          <div class="flex flex-wrap gap-1.5">
+            <button
+              type="button"
+              class="admin-btn-secondary"
+              :disabled="savingNormalHostReward"
+              @click="addNormalHostTier"
+            >
+              Add tier
+            </button>
             <button
               type="button"
               class="admin-btn-primary"
-              :disabled="savingLivestreamReward"
-              @mousedown.prevent="saveLivestreamReward"
+              :disabled="savingNormalHostReward"
+              @click="saveNormalHostReward"
             >
-              {{ savingLivestreamReward ? 'Saving…' : 'Save platform rewards' }}
+              {{ savingNormalHostReward ? 'Saving…' : 'Save Normal Host reward' }}
             </button>
           </div>
-        </form>
+        </div>
       </section>
 
       <!-- Payroll -->

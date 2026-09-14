@@ -27,6 +27,10 @@ import type {
   AgencyHostConfigUpdate,
   LivestreamRewardConfigDto,
   LivestreamRewardConfigUpdate,
+  RoyalHostRewardConfigDto,
+  RoyalHostRewardConfigUpdate,
+  NormalHostRewardConfigDto,
+  NormalHostRewardConfigUpdate,
   RestrictedIdentityWordsBody,
   RestrictedIdentityWordsDto,
   SystemRatesAggregate,
@@ -203,6 +207,25 @@ export const systemSettingsApi = {
   updateLivestreamRewardConfig(payload: LivestreamRewardConfigUpdate) {
     return api.put<LivestreamRewardConfigDto>(
       '/admin/system-settings/livestream-reward',
+      payload,
+    )
+  },
+
+  getRoyalHostRewardConfig() {
+    return api.get<RoyalHostRewardConfigDto>('/admin/system-settings/royal-host-reward')
+  },
+
+  updateRoyalHostRewardConfig(payload: RoyalHostRewardConfigUpdate) {
+    return api.put<RoyalHostRewardConfigDto>('/admin/system-settings/royal-host-reward', payload)
+  },
+
+  getNormalHostRewardConfig() {
+    return api.get<NormalHostRewardConfigDto>('/admin/system-settings/normal-host-reward')
+  },
+
+  updateNormalHostRewardConfig(payload: NormalHostRewardConfigUpdate) {
+    return api.put<NormalHostRewardConfigDto>(
+      '/admin/system-settings/normal-host-reward',
       payload,
     )
   },
