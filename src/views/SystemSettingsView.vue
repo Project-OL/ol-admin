@@ -853,6 +853,38 @@ function removeNormalHostTier(index: number) {
   normalHostTierDrafts.value.splice(index, 1)
 }
 
+// ── Drag-to-reorder for tier tables (Royal Host gifting tiers, Normal Host tiers) ──
+// Native HTML5 drag-and-drop, restricted to a drag-handle cell so it never fights
+// with clicking into the row's InlineEditFields. Works on any array of tier rows —
+// dropping mid-list is exactly how an admin inserts a new tier "in between" others.
+const tierDrag = reactive<{ rows: unknown[] | null; fromIndex: number }>({
+  rows: null,
+  fromIndex: -1,
+})
+
+function onTierDragStart(rows: unknown[], index: number, event: DragEvent) {
+  tierDrag.rows = rows
+  tierDrag.fromIndex = index
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(index))
+  }
+}
+
+function onTierDragOver(rows: unknown[], index: number, event: DragEvent) {
+  event.preventDefault()
+  if (tierDrag.rows !== rows || tierDrag.fromIndex === -1 || tierDrag.fromIndex === index) return
+  const arr = rows as unknown[]
+  const [moved] = arr.splice(tierDrag.fromIndex, 1)
+  arr.splice(index, 0, moved)
+  tierDrag.fromIndex = index
+}
+
+function onTierDragEnd() {
+  tierDrag.rows = null
+  tierDrag.fromIndex = -1
+}
+
 async function saveHostShares() {
   hostError.value = ''
   for (const [label, value] of [
@@ -3722,13 +3754,31 @@ onMounted(() => {
                 <table class="admin-table min-w-[420px]">
                   <thead>
                     <tr>
+                      <th class="w-8" />
                       <th>Earning threshold</th>
                       <th>Cumulative points</th>
                       <th class="w-20" />
                     </tr>
                   </thead>
                   <tbody>
-                    <tr v-for="(row, idx) in royalHostGiftingTiers" :key="'rhgt-' + idx">
+                    <tr
+                      v-for="(row, idx) in royalHostGiftingTiers"
+                      :key="'rhgt-' + idx"
+                      :class="{ 'opacity-50': tierDrag.rows === royalHostGiftingTiers && tierDrag.fromIndex === idx }"
+                      @dragover="onTierDragOver(royalHostGiftingTiers, idx, $event)"
+                      @drop.prevent="onTierDragEnd"
+                    >
+                      <td class="w-8">
+                        <span
+                          draggable="true"
+                          class="cursor-grab select-none text-admin-subtext active:cursor-grabbing"
+                          title="Drag to reorder"
+                          @dragstart="onTierDragStart(royalHostGiftingTiers, idx, $event)"
+                          @dragend="onTierDragEnd"
+                        >
+                          ⠿
+                        </span>
+                      </td>
                       <td>
                         <InlineEditField
                           v-model="row.threshold"
@@ -3802,6 +3852,7 @@ onMounted(() => {
             <table class="admin-table min-w-[560px]">
               <thead>
                 <tr>
+                  <th class="w-8" />
                   <th>Earning threshold</th>
                   <th>Points / hour</th>
                   <th>Hour cap</th>
@@ -3810,7 +3861,24 @@ onMounted(() => {
                 </tr>
               </thead>
               <tbody>
-                <tr v-for="(row, idx) in normalHostTierDrafts" :key="'nht-' + idx">
+                <tr
+                  v-for="(row, idx) in normalHostTierDrafts"
+                  :key="'nht-' + idx"
+                  :class="{ 'opacity-50': tierDrag.rows === normalHostTierDrafts && tierDrag.fromIndex === idx }"
+                  @dragover="onTierDragOver(normalHostTierDrafts, idx, $event)"
+                  @drop.prevent="onTierDragEnd"
+                >
+                  <td class="w-8">
+                    <span
+                      draggable="true"
+                      class="cursor-grab select-none text-admin-subtext active:cursor-grabbing"
+                      title="Drag to reorder"
+                      @dragstart="onTierDragStart(normalHostTierDrafts, idx, $event)"
+                      @dragend="onTierDragEnd"
+                    >
+                      ⠿
+                    </span>
+                  </td>
                   <td>
                     <InlineEditField
                       v-model="row.thresholdPoints"
