@@ -119,6 +119,13 @@ const allNavItems: NavItem[] = [
     viewName: 'TransactionsView',
   },
   {
+    to: '/admin/rewards',
+    label: 'Rewards',
+    icon: 'ledger',
+    roles: ['SUPER_ADMIN'],
+    viewName: 'RewardsDashboardView',
+  },
+  {
     to: '/admin/currency',
     label: 'Currency',
     icon: 'transactions',

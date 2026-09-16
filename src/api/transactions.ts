@@ -99,6 +99,11 @@ export const transactionsApi = {
     return api.post(`/admin/transactions/points/${ledgerEntryId}/revert`, body)
   },
 
+  /** Single-wallet revert: admin ADJUSTMENT corrections and reward-claim credits (no counterparty). */
+  revertSinglePoint(ledgerEntryId: string, body: AdminTransactionRevertBody) {
+    return api.post(`/admin/transactions/points/${ledgerEntryId}/revert-single`, body)
+  },
+
   revertCoinTradingTransfer(transferId: string, body: AdminTransactionRevertBody) {
     return api.post(`/admin/transactions/coin-trading-transfers/${transferId}/revert`, body)
   },

@@ -192,6 +192,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/rewards',
+          name: 'rewards-dashboard',
+          component: () => import('../views/RewardsDashboardView.vue'),
+          meta: {
+            title: 'Rewards',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'RewardsDashboardView',
+          },
+        },
+        {
           path: 'admin/currency',
           name: 'currency',
           component: () => import('../views/CurrencyView.vue'),

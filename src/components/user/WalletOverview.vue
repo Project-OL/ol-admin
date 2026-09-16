@@ -29,6 +29,8 @@ const selected = reactive<Record<WalletKind, boolean>>({
 
 const pendingMode = ref<'freeze' | 'unfreeze' | null>(null)
 const submitting = ref(false)
+const deductOpen = ref(false)
+const deducting = ref(false)
 
 const selectedKinds = computed(() => WALLET_OPTIONS.filter((opt) => selected[opt.key]).map((opt) => opt.key))
 const selectedLabels = computed(() =>
@@ -99,6 +101,24 @@ async function handleConfirm() {
     )
   } finally {
     submitting.value = false
+  }
+}
+
+async function handleDeductPoints(payload: { reason?: string; amount?: number }) {
+  if (deducting.value || !payload.amount || payload.amount <= 0) return
+  deducting.value = true
+  try {
+    await userAdminApi.deductPoints(props.user.id, payload.amount, payload.reason)
+    await store.fetchUser(props.user.id)
+    showToast('Points deducted', 'success')
+    deductOpen.value = false
+  } catch (err) {
+    showToast(
+      axios.isAxiosError(err) ? err.response?.data?.message || 'Failed to deduct points' : 'Failed to deduct points',
+      'error',
+    )
+  } finally {
+    deducting.value = false
   }
 }
 </script>
@@ -177,6 +197,12 @@ async function handleConfirm() {
       </div>
     </div>
 
+    <div class="mt-4 border-t border-admin-border pt-4">
+      <button type="button" class="admin-btn-warn text-xs" @click="deductOpen = true">
+        Deduct points
+      </button>
+    </div>
+
     <ConfirmActionDialog
       v-if="pendingMode"
       :open="!!pendingMode"
@@ -186,6 +212,18 @@ async function handleConfirm() {
       :variant="pendingMode === 'unfreeze' ? 'default' : 'warn'"
       @close="pendingMode = null"
       @confirm="handleConfirm"
+    />
+
+    <ConfirmActionDialog
+      :open="deductOpen"
+      title="Deduct points"
+      :message="`Deduct points from ${user.username}'s point wallet.`"
+      confirm-label="Deduct"
+      variant="warn"
+      amount-input
+      require-reason
+      @close="deductOpen = false"
+      @confirm="handleDeductPoints"
     />
   </div>
 </template>
