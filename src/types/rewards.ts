@@ -23,6 +23,7 @@ export type RewardClaimUser = {
 export type ListRewardClaimsQuery = {
   country?: string
   type?: RewardClaimType
+  agencyUserId?: string
   from?: string
   to?: string
   page?: number
@@ -35,4 +36,10 @@ export type ListRewardClaimsResponse = {
   limit: number
   total: number
   hasMore: boolean
+}
+
+export type BulkDebitPointsResult = {
+  succeeded: number
+  failed: number
+  results: { userId: string; ok: boolean; error?: string }[]
 }

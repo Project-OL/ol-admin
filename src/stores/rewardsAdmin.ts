@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { rewardsAdminApi } from '@/api/rewardsAdmin'
 import { transactionsApi } from '@/api/transactions'
-import type { ListRewardClaimsQuery, RewardClaimUser } from '@/types/rewards'
+import type { BulkDebitPointsResult, ListRewardClaimsQuery, RewardClaimUser } from '@/types/rewards'
 
 export const useRewardsAdminStore = defineStore('rewardsAdmin', {
   state: () => ({
@@ -11,6 +11,7 @@ export const useRewardsAdminStore = defineStore('rewardsAdmin', {
     limit: 20,
     loading: false,
     reverting: null as string | null,
+    bulkDebiting: false,
   }),
 
   actions: {
@@ -42,6 +43,16 @@ export const useRewardsAdminStore = defineStore('rewardsAdmin', {
         }
       } finally {
         this.reverting = null
+      }
+    },
+
+    async bulkDebitPoints(userIds: string[], amount: number, description: string) {
+      this.bulkDebiting = true
+      try {
+        const { data } = await rewardsAdminApi.bulkDebitPoints({ userIds, amount, description })
+        return data as BulkDebitPointsResult
+      } finally {
+        this.bulkDebiting = false
       }
     },
   },
