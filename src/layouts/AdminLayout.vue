@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { RouterView, useRoute, useRouter } from 'vue-router'
 import AdminSidebar from '@/components/layout/AdminSidebar.vue'
 import SupportNotificationBell from '@/components/layout/SupportNotificationBell.vue'
+import SuperAdminNotificationBell from '@/components/layout/SuperAdminNotificationBell.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useSupportNotificationsStore } from '@/stores/supportNotifications'
 
@@ -101,6 +102,7 @@ onUnmounted(() => {
         </div>
 
         <SupportNotificationBell />
+        <SuperAdminNotificationBell />
 
         <div v-if="auth.admin" class="hidden min-w-0 items-center gap-2 md:flex">
           <span class="max-w-[140px] truncate text-xs text-admin-subtext lg:max-w-[220px]">{{ adminLabel }}</span>

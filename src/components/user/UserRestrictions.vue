@@ -10,18 +10,49 @@ import { showToast } from '@/utils/toast'
 
 const MAX_MESSAGING_TARGETS = 100
 
-const props = defineProps<{
-  userId: string
-  reportId?: string
-  initialType?: UserRestrictionType
-}>()
+const props = withDefaults(
+  defineProps<{
+    userId: string
+    reportId?: string
+    initialType?: UserRestrictionType
+    /** Restriction types this instance may apply. Default = all 4. */
+    allowedTypes?: UserRestrictionType[]
+    /** Also show the "Remove profile picture" action below the restrictions. */
+    showRemoveAvatar?: boolean
+  }>(),
+  {
+    allowedTypes: () => ['LIVE_CHAT_MUTE', 'LIVE_AUDIO_MUTE', 'MESSAGING_DISABLE', 'LIVE_STREAM_START_BAN'],
+    showRemoveAvatar: false,
+  },
+)
 
-const TYPE_OPTIONS: { value: UserRestrictionType; label: string }[] = [
+const ALL_TYPE_OPTIONS: { value: UserRestrictionType; label: string }[] = [
   { value: 'LIVE_CHAT_MUTE', label: 'Mute live chat (cannot send)' },
   { value: 'LIVE_AUDIO_MUTE', label: 'Mute live audio (cannot use mic)' },
   { value: 'MESSAGING_DISABLE', label: 'Disable messaging' },
   { value: 'LIVE_STREAM_START_BAN', label: 'Ban starting live streams' },
 ]
+
+const TYPE_OPTIONS = computed(() =>
+  ALL_TYPE_OPTIONS.filter((o) => props.allowedTypes.includes(o.value)),
+)
+
+const avatarReason = ref('')
+const removingAvatar = ref(false)
+
+async function removeAvatar() {
+  if (removingAvatar.value) return
+  removingAvatar.value = true
+  try {
+    await userAdminApi.removeProfilePicture(props.userId, avatarReason.value.trim() || undefined)
+    showToast('Profile picture removed', 'success')
+    avatarReason.value = ''
+  } catch {
+    showToast('Failed to remove profile picture', 'error')
+  } finally {
+    removingAvatar.value = false
+  }
+}
 
 type TargetChip = { userId: string; label: string }
 
@@ -30,7 +61,11 @@ const loading = ref(false)
 const applying = ref(false)
 const clearingId = ref<string | null>(null)
 
-const restrictionType = ref<UserRestrictionType>(props.initialType ?? 'MESSAGING_DISABLE')
+const restrictionType = ref<UserRestrictionType>(
+  props.initialType && props.allowedTypes.includes(props.initialType)
+    ? props.initialType
+    : (TYPE_OPTIONS.value[0]?.value ?? 'MESSAGING_DISABLE'),
+)
 const reason = ref('')
 const useUntilDate = ref(false)
 const restrictedUntil = ref('')
@@ -80,7 +115,7 @@ const canApply = computed(() => {
 })
 
 function typeLabel(type: string) {
-  return TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
+  return ALL_TYPE_OPTIONS.find((o) => o.value === type)?.label ?? type
 }
 
 function shortId(id: string) {
@@ -513,5 +548,26 @@ watch(restrictionType, (type) => {
         </button>
       </li>
     </ul>
+
+    <div v-if="showRemoveAvatar" class="space-y-2 rounded-md border border-admin-border p-3">
+      <h3 class="text-xs font-semibold uppercase tracking-wide text-admin-subtext">
+        Remove profile picture
+      </h3>
+      <input
+        v-model="avatarReason"
+        type="text"
+        class="admin-input text-sm"
+        placeholder="Reason (recommended)"
+        maxlength="500"
+      />
+      <button
+        type="button"
+        class="admin-btn-danger w-full text-xs"
+        :disabled="removingAvatar"
+        @click="removeAvatar"
+      >
+        {{ removingAvatar ? 'Removing…' : 'Remove profile picture' }}
+      </button>
+    </div>
   </div>
 </template>

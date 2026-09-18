@@ -54,6 +54,16 @@ const router = createRouter({
           meta: { title: 'Locations', roles: ['SUPER_ADMIN'], viewName: 'UserLocationsView' },
         },
         {
+          path: 'admin/country-users',
+          name: 'country-user-search',
+          component: () => import('../views/CountryUserSearchView.vue'),
+          meta: {
+            title: 'Country Users',
+            roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'MODERATOR'],
+            viewName: 'CountryUserSearchView',
+          },
+        },
+        {
           path: 'admin/agency',
           name: 'agency-list',
           component: () => import('../views/AgencyListView.vue'),

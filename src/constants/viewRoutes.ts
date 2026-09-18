@@ -30,6 +30,7 @@ export const VIEW_ROUTES: Record<string, string> = {
   SystemSettingsView: '/admin/system-settings',
   AccountDeletionsView: '/admin/account-deletions',
   FaceVerificationSessionsView: '/admin/face-verification-sessions',
+  CountryUserSearchView: '/admin/country-users',
 }
 
 /**
@@ -80,6 +81,7 @@ export const VIEW_NAV_PATHS: Record<string, string> = {
   SystemSettingsView: '/admin/system-settings',
   AccountDeletionsView: '/admin/account-deletions',
   FaceVerificationSessionsView: '/admin/face-verification-sessions',
+  CountryUserSearchView: '/admin/country-users',
 }
 
 export function isViewAllowed(viewName: string, assigned: Set<string>): boolean {
