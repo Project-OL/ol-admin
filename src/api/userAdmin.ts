@@ -350,8 +350,8 @@ export const userAdminApi = {
     }>(`/admin/users/${id}/face-verification/index`, body)
   },
 
-  removeProfilePicture(id: string) {
-    return api.post(`/admin/users/${id}/profile/remove-avatar`)
+  removeProfilePicture(id: string, reason?: string) {
+    return api.post(`/admin/users/${id}/profile/remove-avatar`, reason ? { reason } : {})
   },
 
   removeBio(id: string) {

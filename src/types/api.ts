@@ -488,6 +488,48 @@ export interface ApplyUserRestrictionPayload {
   extend?: boolean
 }
 
+/** Country-scoped moderation page: minimal, non-sensitive fields only. */
+export interface CountryScopedUser {
+  /** Present only to target restriction/remove-avatar actions — never render this column. */
+  userId: string
+  username: string
+  name: string
+  avatarUrl: string | null
+  publicId: string
+  displayPublicId: string
+  country: string | null
+}
+
+export interface AdminCountryAccess {
+  adminId: string
+  countries: string[]
+}
+
+export type ModerationNotificationType =
+  | 'LIVE_CHAT_MUTE'
+  | 'LIVE_AUDIO_MUTE'
+  | 'MESSAGING_DISABLE'
+  | 'PROFILE_PICTURE_REMOVED'
+
+export interface SuperAdminModerationNotification {
+  id: string
+  actionType: ModerationNotificationType
+  reason: string | null
+  /** null for PROFILE_PICTURE_REMOVED (instant, no duration). */
+  restrictedUntil: string | null
+  performedByAdminId: string
+  isRead: boolean
+  readAt: string | null
+  createdAt: string
+  targetUser: {
+    userId: string
+    username: string
+    name: string
+    publicId: string
+    displayPublicId: string
+  }
+}
+
 export interface AdminLiveStreamRow {
   source: 'host_live_session' | 'live_stream'
   id: string

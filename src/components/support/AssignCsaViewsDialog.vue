@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
 import { adminViewsApi } from '@/api/adminViews'
+import { adminCountryAccessApi } from '@/api/adminCountryAccess'
 import type { AdminViewCatalogItem } from '@/types/adminViews'
 import type { CsaAdmin } from '@/types/customerSupport'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
@@ -24,6 +25,7 @@ const acting = ref(false)
 const catalog = ref<AdminViewCatalogItem[]>([])
 const selected = ref<Set<string>>(new Set())
 const search = ref('')
+const countriesText = ref('')
 
 const filteredCatalog = computed(() => {
   const q = search.value.trim().toLowerCase()
@@ -57,16 +59,22 @@ function clearAll() {
   selected.value = new Set()
 }
 
+function parseCountries(text: string): string[] {
+  return [...new Set(text.split(',').map((c) => c.trim()).filter(Boolean))]
+}
+
 async function load() {
   if (!props.csa) return
   loading.value = true
   try {
-    const [catalogRes, assignedRes] = await Promise.all([
+    const [catalogRes, assignedRes, countryRes] = await Promise.all([
       adminViewsApi.listCatalog(),
       adminViewsApi.getCsaViews(props.csa.id),
+      adminCountryAccessApi.getForAdmin(props.csa.id),
     ])
     catalog.value = catalogRes.data.views ?? []
     selected.value = new Set((assignedRes.data.views ?? []).map((v) => v.name))
+    countriesText.value = (countryRes.data.countries ?? []).join(', ')
   } catch {
     showToast('Failed to load views for this CSA', 'error')
     emit('close')
@@ -79,9 +87,12 @@ async function save() {
   if (!props.csa) return
   acting.value = true
   try {
-    await adminViewsApi.assignCsaViews(props.csa.id, {
-      views: withCompanionViews(selected.value),
-    })
+    await Promise.all([
+      adminViewsApi.assignCsaViews(props.csa.id, {
+        views: withCompanionViews(selected.value),
+      }),
+      adminCountryAccessApi.setForAdmin(props.csa.id, parseCountries(countriesText.value)),
+    ])
     const assignedCount = withCompanionViews(selected.value).length
     showToast(
       assignedCount
@@ -189,6 +200,21 @@ watch(
         </div>
 
         <p class="text-sm text-admin-subtext">{{ selectedCount }} selected</p>
+
+        <div class="border-t border-admin-border pt-4">
+          <label class="mb-1 block text-sm font-medium">Country access</label>
+          <p class="mb-2 text-xs text-admin-subtext">
+            Countries this admin may search/act on via Country Users (comma-separated). Empty =
+            unrestricted (legacy). Only relevant if CountryUserSearchView is assigned above.
+          </p>
+          <input
+            v-model="countriesText"
+            type="text"
+            class="admin-input w-full"
+            placeholder="India, Philippines, Indonesia"
+            :disabled="loading"
+          />
+        </div>
       </div>
     </template>
     <template #footer>

@@ -40,6 +40,13 @@ const allNavItems: NavItem[] = [
     hidden: true,
   },
   {
+    to: '/admin/country-users',
+    label: 'Country Users',
+    icon: 'users',
+    roles: ['SUPER_ADMIN', 'CUSTOMER_SUPPORT', 'MODERATOR'],
+    viewName: 'CountryUserSearchView',
+  },
+  {
     to: '/admin/agency',
     label: 'Agency',
     icon: 'agency',
