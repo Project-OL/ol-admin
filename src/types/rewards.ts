@@ -10,6 +10,15 @@ export type RewardClaim = {
   reverted: boolean
 }
 
+export type AdminDeduction = {
+  ledgerEntryId: string
+  amount: string
+  description: string | null
+  adminUserId: string | null
+  createdAt: string
+  reverted: boolean
+}
+
 export type RewardClaimUser = {
   userId: string
   username: string
@@ -17,7 +26,11 @@ export type RewardClaimUser = {
   publicId: string
   totalPoints: string
   claimCount: number
+  totalDeducted: string
+  deductionCount: number
+  netPoints: string
   claims: RewardClaim[]
+  deductions: AdminDeduction[]
 }
 
 export type ListRewardClaimsQuery = {
