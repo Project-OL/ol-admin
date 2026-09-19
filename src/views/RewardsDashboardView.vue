@@ -4,11 +4,21 @@ import axios from 'axios'
 import { useRewardsAdminStore } from '@/stores/rewardsAdmin'
 import { rewardsAdminApi } from '@/api/rewardsAdmin'
 import { agencyAdminApi } from '@/api/agencyAdmin'
-import { formatPoints } from '@/utils/format'
+import { formatPoints, getInitials } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
-import type { RewardClaim, RewardClaimType } from '@/types/rewards'
+import type { RewardClaimType, RewardClaimUser } from '@/types/rewards'
 import type { AgencyListItem } from '@/types/agency'
+
+type ActivityRow = {
+  kind: 'CREDIT' | 'DEBIT'
+  ledgerEntryId: string
+  label: string
+  amount: string
+  dateLabel: string
+  recordedAt: string
+  reverted: boolean
+}
 
 const store = useRewardsAdminStore()
 
@@ -163,11 +173,37 @@ async function exportClaims() {
   }
 }
 
-function openRevert(ledgerEntryId: string, username: string, claim: RewardClaim) {
-  if (claim.reverted) return
+function userActivity(user: RewardClaimUser): ActivityRow[] {
+  const credits: ActivityRow[] = user.claims.map((c) => ({
+    kind: 'CREDIT',
+    ledgerEntryId: c.ledgerEntryId,
+    label: c.typeLabel,
+    amount: c.pointsAmount,
+    dateLabel: c.date,
+    recordedAt: c.claimedAt,
+    reverted: c.reverted,
+  }))
+  const debits: ActivityRow[] = user.deductions.map((d) => ({
+    kind: 'DEBIT',
+    ledgerEntryId: d.ledgerEntryId,
+    label: d.description?.trim() || 'Admin deduction',
+    amount: d.amount,
+    dateLabel: d.createdAt.slice(0, 10),
+    recordedAt: d.createdAt,
+    reverted: d.reverted,
+  }))
+  return [...credits, ...debits].sort(
+    (a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime(),
+  )
+}
+
+function openRevertActivity(row: ActivityRow, username: string) {
+  if (row.reverted) return
+  const what = row.kind === 'CREDIT' ? `${row.label} claim` : row.label
+  const direction = row.kind === 'CREDIT' ? 'from' : 'for'
   revertTarget.value = {
-    ledgerEntryId,
-    label: `${claim.typeLabel} claim of ${formatPoints(Number(claim.pointsAmount))} pts from ${username} (${claim.date})`,
+    ledgerEntryId: row.ledgerEntryId,
+    label: `${what} of ${formatPoints(Number(row.amount))} pts ${direction} ${username} (${row.dateLabel})`,
   }
 }
 
@@ -296,64 +332,127 @@ onMounted(() => {
       No reward claims found for this filter
     </div>
 
-    <div v-for="user in store.users" :key="user.userId" class="admin-card">
-      <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div class="flex items-center gap-3">
+    <div
+      v-for="user in store.users"
+      :key="user.userId"
+      class="admin-card transition-all duration-200 hover:border-admin-accent/40 hover:shadow-lg hover:shadow-black/20"
+    >
+      <div
+        class="-m-4 flex flex-wrap items-center justify-between gap-3 rounded-lg p-4 transition-colors duration-200 hover:bg-admin-accent/5"
+        role="button"
+        tabindex="0"
+        @click="toggleExpanded(user.userId)"
+        @keydown.enter="toggleExpanded(user.userId)"
+      >
+        <div class="flex min-w-0 items-center gap-3">
           <input
             type="checkbox"
             class="accent-admin-accent"
             :checked="selectedUserIds.has(user.userId)"
+            @click.stop
             @change="toggleSelected(user.userId)"
           />
-          <button type="button" class="flex items-center gap-2 text-left" @click="toggleExpanded(user.userId)">
-            <span class="text-xs text-admin-subtext">{{ expandedUserIds.has(user.userId) ? '▾' : '▸' }}</span>
-            <div>
-              <p class="font-medium">{{ user.username }}</p>
-              <p class="text-xs text-admin-subtext">
-                Public ID {{ user.publicId }} · {{ user.country ?? 'Unknown country' }}
-              </p>
-            </div>
-          </button>
+          <span
+            class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-admin-accent/15 text-xs font-semibold text-admin-accent"
+          >
+            {{ getInitials(user.username) }}
+          </span>
+          <div class="min-w-0">
+            <p class="truncate font-medium">{{ user.username }}</p>
+            <p class="text-xs text-admin-subtext">
+              Public ID {{ user.publicId }} · {{ user.country ?? 'Unknown country' }}
+            </p>
+          </div>
+          <svg
+            class="h-4 w-4 shrink-0 text-admin-subtext transition-transform duration-200"
+            :class="{ 'rotate-90': expandedUserIds.has(user.userId) }"
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+          >
+            <path
+              fill-rule="evenodd"
+              d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z"
+              clip-rule="evenodd"
+            />
+          </svg>
         </div>
-        <div class="text-right">
-          <p class="tabular-nums text-lg font-semibold">{{ formatPoints(Number(user.totalPoints)) }} pts</p>
-          <p class="text-xs text-admin-subtext">{{ user.claimCount }} claim(s)</p>
+        <div class="flex items-center gap-4 text-right">
+          <div>
+            <p class="text-[11px] uppercase tracking-wide text-admin-subtext">Credited</p>
+            <p class="tabular-nums text-sm font-semibold text-admin-success">
+              +{{ formatPoints(Number(user.totalPoints)) }}
+            </p>
+          </div>
+          <div v-if="Number(user.deductionCount) > 0">
+            <p class="text-[11px] uppercase tracking-wide text-admin-subtext">Deducted</p>
+            <p class="tabular-nums text-sm font-semibold text-admin-danger">
+              -{{ formatPoints(Number(user.totalDeducted)) }}
+            </p>
+          </div>
+          <div>
+            <p class="text-[11px] uppercase tracking-wide text-admin-subtext">Net</p>
+            <p class="tabular-nums text-lg font-semibold">{{ formatPoints(Number(user.netPoints)) }} pts</p>
+          </div>
         </div>
       </div>
 
-      <div v-if="expandedUserIds.has(user.userId)" class="admin-table-wrap">
-        <table class="admin-table">
-          <thead>
-            <tr>
-              <th>Type</th>
-              <th>Date</th>
-              <th>Points</th>
-              <th>Claimed At</th>
-              <th />
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="claim in user.claims" :key="claim.ledgerEntryId">
-              <td>{{ claim.typeLabel }}</td>
-              <td>{{ claim.date }}</td>
-              <td class="tabular-nums">{{ formatPoints(Number(claim.pointsAmount)) }}</td>
-              <td class="text-xs whitespace-nowrap">{{ new Date(claim.claimedAt).toLocaleString() }}</td>
-              <td class="text-right">
-                <span v-if="claim.reverted" class="text-xs text-admin-muted">Reverted</span>
-                <button
-                  v-else
-                  type="button"
-                  class="admin-btn-warn text-xs"
-                  :disabled="store.reverting === claim.ledgerEntryId"
-                  @click="openRevert(claim.ledgerEntryId, user.username, claim)"
+      <Transition name="fade">
+        <div v-if="expandedUserIds.has(user.userId)" class="admin-table-wrap mt-3">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Type</th>
+                <th>Detail</th>
+                <th>Date</th>
+                <th>Points</th>
+                <th>Recorded At</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="row in userActivity(user)" :key="row.ledgerEntryId">
+                <td>
+                  <span
+                    class="rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide"
+                    :class="
+                      row.kind === 'CREDIT'
+                        ? 'bg-admin-success/10 text-admin-success'
+                        : 'bg-admin-danger/10 text-admin-danger'
+                    "
+                  >
+                    {{ row.kind === 'CREDIT' ? 'Credit' : 'Debit' }}
+                  </span>
+                </td>
+                <td>{{ row.label }}</td>
+                <td>{{ row.dateLabel }}</td>
+                <td
+                  class="tabular-nums"
+                  :class="row.kind === 'CREDIT' ? 'text-admin-success' : 'text-admin-danger'"
                 >
-                  Revert
-                </button>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
+                  {{ row.kind === 'CREDIT' ? '+' : '-' }}{{ formatPoints(Number(row.amount)) }}
+                </td>
+                <td class="text-xs whitespace-nowrap">{{ new Date(row.recordedAt).toLocaleString() }}</td>
+                <td class="text-right">
+                  <span v-if="row.reverted" class="text-xs text-admin-muted">Reverted</span>
+                  <button
+                    v-else
+                    type="button"
+                    class="admin-btn-warn text-xs"
+                    :disabled="store.reverting === row.ledgerEntryId"
+                    @click="openRevertActivity(row, user.username)"
+                  >
+                    Revert
+                  </button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+          <p v-if="userActivity(user).length === 0" class="p-4 text-center text-sm text-admin-muted">
+            No activity recorded
+          </p>
+        </div>
+      </Transition>
     </div>
 
     <div v-if="store.total > 0" class="admin-pagination">
@@ -375,7 +474,7 @@ onMounted(() => {
 
     <ConfirmActionDialog
       :open="!!revertTarget"
-      title="Revert reward claim"
+      title="Revert entry"
       :message="revertTarget?.label"
       confirm-label="Revert"
       variant="warn"
@@ -397,3 +496,14 @@ onMounted(() => {
     />
   </div>
 </template>
+
+<style scoped>
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.15s ease;
+}
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>

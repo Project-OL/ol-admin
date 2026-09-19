@@ -40,6 +40,8 @@ export const useRewardsAdminStore = defineStore('rewardsAdmin', {
         for (const user of this.users) {
           const claim = user.claims.find((c) => c.ledgerEntryId === ledgerEntryId)
           if (claim) claim.reverted = true
+          const deduction = user.deductions.find((d) => d.ledgerEntryId === ledgerEntryId)
+          if (deduction) deduction.reverted = true
         }
       } finally {
         this.reverting = null
