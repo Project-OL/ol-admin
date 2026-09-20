@@ -278,12 +278,6 @@ const router = createRouter({
           meta: { title: 'Admin Views', roles: ['SUPER_ADMIN'] },
         },
         {
-          path: 'admin/infra-cost',
-          name: 'infra-cost',
-          component: () => import('../views/InfraCostView.vue'),
-          meta: { title: 'Infra & AWS Cost', roles: ['SUPER_ADMIN'] },
-        },
-        {
           path: 'admin/gcp-infra',
           name: 'gcp-infra',
           component: () => import('../views/GcpInfraView.vue'),

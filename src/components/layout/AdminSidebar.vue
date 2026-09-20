@@ -182,13 +182,6 @@ const allNavItems: NavItem[] = [
     superAdminOnly: true,
   },
   {
-    to: '/admin/infra-cost',
-    label: 'Infra & Cost',
-    icon: 'settings',
-    roles: ['SUPER_ADMIN'],
-    superAdminOnly: true,
-  },
-  {
     to: '/admin/gcp-infra',
     label: 'GCP Infra & Cost',
     icon: 'settings',

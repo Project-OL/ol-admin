@@ -71,6 +71,12 @@ export const customerSupportApi = {
     return api.patch<{ csa: CsaAdmin }>('/admin/support/csas/' + adminId + '/status', { status })
   },
 
+  setCsaAutoAssign(adminId: string, autoAssignEnabled: boolean) {
+    return api.patch<{ csa: CsaAdmin }>('/admin/support/csas/' + adminId + '/auto-assign', {
+      autoAssignEnabled,
+    })
+  },
+
   getCsaStats(adminId: string) {
     return api.get<{ adminId: string; stats: CsaPerformance }>(
       '/admin/support/csas/' + adminId + '/stats',
