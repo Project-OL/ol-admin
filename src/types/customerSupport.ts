@@ -96,6 +96,8 @@ export interface CsaAdmin {
   lockedUntil: string | null
   /** Convenience: lockedUntil is in the future (login lockout, not SUSPENDED/DISABLED). */
   isLocked?: boolean
+  /** While false, this CSA is skipped for new-ticket auto-assignment. Existing assigned tickets are unaffected. */
+  autoAssignEnabled: boolean
   isOnline?: boolean
   /** Append-only failed attempts in the last 24h (kept after a successful login). */
   failedAttemptCount24h?: number

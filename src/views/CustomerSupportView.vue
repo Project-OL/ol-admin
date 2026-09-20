@@ -476,6 +476,19 @@ async function submitEditCsa() {
   }
 }
 
+async function setCsaAutoAssign(csa: CsaAdmin, autoAssignEnabled: boolean) {
+  acting.value = true
+  try {
+    await customerSupportApi.setCsaAutoAssign(csa.id, autoAssignEnabled)
+    showToast(autoAssignEnabled ? 'New tickets resumed' : 'New tickets paused for this CSA', 'success')
+    await loadCsas(csasPage.value)
+  } catch {
+    showToast('Failed to update auto-assignment', 'error')
+  } finally {
+    acting.value = false
+  }
+}
+
 async function setCsaStatus(csa: CsaAdmin, status: AdminStatus) {
   acting.value = true
   try {
@@ -1388,6 +1401,25 @@ onMounted(() => {
                       @click="setCsaStatus(csa, 'DISABLED')"
                     >
                       Disable
+                    </button>
+                    <button
+                      v-if="csa.autoAssignEnabled"
+                      type="button"
+                      class="admin-btn-secondary py-1 text-xs"
+                      :disabled="acting"
+                      title="Stop routing new tickets to this CSA — existing assigned tickets are unaffected"
+                      @click="setCsaAutoAssign(csa, false)"
+                    >
+                      Pause new tickets
+                    </button>
+                    <button
+                      v-else
+                      type="button"
+                      class="admin-btn-primary py-1 text-xs"
+                      :disabled="acting"
+                      @click="setCsaAutoAssign(csa, true)"
+                    >
+                      Resume new tickets
                     </button>
                   </div>
                 </td>
