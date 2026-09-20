@@ -87,7 +87,7 @@ onMounted(() => {
           v-model="query"
           type="text"
           class="admin-input min-w-0 flex-1"
-          placeholder="Name or username…"
+          placeholder="Name, username, or public ID…"
           @keydown.enter="search"
         />
         <button
