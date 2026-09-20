@@ -45,6 +45,14 @@ export function formatLocalMoney(
   return `${prefix}${amount}`
 }
 
+/** Seconds -> "Xh Ym" (or "Ym" under an hour, "0m" for 0). */
+export function formatDuration(totalSeconds: number): string {
+  const minutes = Math.floor(Math.max(0, totalSeconds) / 60)
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+  return hours > 0 ? `${hours}h ${remainingMinutes}m` : `${remainingMinutes}m`
+}
+
 export function getInitials(name: string): string {
   return name
     .split(' ')

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { useUserDetailStore } from '@/stores/userDetail'
 import UserHeader from '@/components/user/UserHeader.vue'
 import UserBasicInfo from '@/components/user/UserBasicInfo.vue'
@@ -23,11 +23,16 @@ import UserGuardianPanel from '@/components/user/UserGuardianPanel.vue'
 import UserLocationsPanel from '@/components/user/UserLocationsPanel.vue'
 
 const route = useRoute()
+const router = useRouter()
 const store = useUserDetailStore()
 const sidebarOpen = ref(false)
 
 const userId = computed(() => route.params.id as string)
 const isDetails = computed(() => store.activeTab === 'details')
+
+const rewardsOverviewHref = computed(
+  () => router.resolve({ name: 'user-rewards-overview', params: { id: userId.value } }).href,
+)
 
 const tabs = [
   { id: 'details', label: 'User Details' },
@@ -74,7 +79,7 @@ function setTab(tab: string) {
     <div v-else-if="store.user" class="admin-page !space-y-0">
       <UserHeader :user="store.user" />
 
-      <div class="mt-4 border-b border-admin-border sm:mt-6">
+      <div class="mt-4 flex flex-wrap items-center justify-between gap-2 border-b border-admin-border sm:mt-6">
         <nav class="-mb-px flex gap-1 overflow-x-auto pb-px [-webkit-overflow-scrolling:touch]">
           <button
             v-for="tab in tabs"
@@ -91,6 +96,9 @@ function setTab(tab: string) {
             {{ tab.label }}
           </button>
         </nav>
+        <a :href="rewardsOverviewHref" target="_blank" rel="noopener noreferrer" class="admin-btn-secondary mb-2 shrink-0 text-xs">
+          Rewards &amp; Live Timing ↗
+        </a>
       </div>
 
       <button

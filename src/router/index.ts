@@ -48,6 +48,16 @@ const router = createRouter({
           meta: { title: 'User Detail', roles: ['SUPER_ADMIN'], viewName: 'UserDetailView' },
         },
         {
+          path: 'admin/users/:id/rewards',
+          name: 'user-rewards-overview',
+          component: () => import('../views/UserRewardsOverviewView.vue'),
+          meta: {
+            title: 'User Rewards Overview',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'UserDetailView',
+          },
+        },
+        {
           path: 'admin/locations',
           name: 'user-locations',
           component: () => import('../views/UserLocationsView.vue'),
