@@ -135,6 +135,37 @@ export type MasterLedgerReconciliation = {
   openingFloatSource: 'snapshot' | 'live'
 }
 
+/**
+ * The same period's profit under three rules for when a unit handed to a customer is a cost:
+ * cash (only when paid out as fiat), operating (when credited), expected (at the redemption rate).
+ */
+export type MasterLedgerProfitViews = {
+  cashProfitUnits: string
+  cashProfitUsd: string
+  operatingProfitUnits: string
+  operatingProfitUsd: string
+  expectedProfitUnits: string
+  expectedProfitUsd: string
+  givenAwayUnits: string
+  givenAwayUsd: string
+  deltaCustomerFloatUnits: string
+  deltaCustomerFloatUsd: string
+  unredeemedAdjustmentUnits: string
+  unredeemedAdjustmentUsd: string
+  /** Basis points, 0–10000. */
+  redemptionRateBp: number
+  redemptionRateSource: 'override' | 'estimated' | 'unavailable'
+  redemptionEstimate: {
+    windowFrom: string
+    windowTo: string
+    issuedUnits: string
+    issuedUsd: string
+    payoutUnits: string
+    payoutUsd: string
+    rateBp: number | null
+  }
+}
+
 export type MasterLedgerDashboard = {
   period: { grain: LedgerGrain; from: string; to: string }
   hero: {
@@ -168,6 +199,8 @@ export type MasterLedgerDashboard = {
   stock: MasterLedgerStock
   pnl: MasterLedgerPnl
   imputed: MasterLedgerImputed
+  /** Absent on servers that predate the profit comparison. */
+  profitViews?: MasterLedgerProfitViews
   reconciliation: MasterLedgerReconciliation
   unitFlow: LedgerLine[]
   cash: {

@@ -55,6 +55,7 @@ export const currencyApi = {
       to?: string
       grain?: LedgerGrain
       at?: string
+      redemptionRateBp?: number
     } = {},
   ) {
     return api.get<MasterLedgerDashboard>('/admin/ledger/pnl', { params })

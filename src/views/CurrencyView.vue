@@ -142,6 +142,7 @@ type HelpTopic =
   | 'companyPayouts'
   | 'netSalesMargin'
   | 'operatingProfit'
+  | 'profitViews'
   | 'booksBalanced'
   | 'salesVsUsage'
 
@@ -246,6 +247,26 @@ const METRIC_HELP: Record<
       'Company fiat payouts (subtracted in Net sales margin, and again inside withdrawal retention here)',
     ],
   },
+  profitViews: {
+    title: 'Cash vs expected vs operating profit',
+    cardLabel: 'Profit views',
+    summary:
+      'The same period read three ways. They differ only in when a reward, promo grant, or game win handed to a user counts as a cost. Most of these units are never withdrawn — they stay in wallets — so charging them in full the moment they are credited understates real profit.',
+    formula:
+      'Cash = gross unit sales − company payouts. Operating = consumption profit with every reward charged when credited. Expected = operating + change in customer float × (1 − redemption rate).',
+    includes: [
+      'Cash profit: a reward costs nothing until it leaves as company fiat (EPAY or takeover payout). Equals operating profit + change in customer float when the sales vs usage check is OK.',
+      'Operating profit: conservative — assumes every unit credited will eventually be paid out.',
+      'Expected profit: charges only the share of the float build-up that history says will be paid out. Rate 0% gives cash profit, 100% gives operating profit.',
+      'Redemption rate (estimated): company payouts ÷ units issued (gross sales + rewards + promotional mints + treasury giveaways) over the trailing 365 days ending today or at period end.',
+      'Override: type a rate to see profit under a different payout assumption. The override is not saved.',
+    ],
+    excludes: [
+      'Units are interchangeable, so a withdrawal cannot be traced to the reward that funded it — the rate is platform-wide, not per reward type.',
+      'A fast-growing float lowers the estimated rate because recent units have not had time to be withdrawn yet, which flatters expected profit. Treat it as an estimate.',
+      'Unwithdrawn balances are still a liability until they expire (Expired coins in operating revenue). Expected profit is not cash in the bank — cash profit is.',
+    ],
+  },
   booksBalanced: {
     title: 'Books balanced',
     cardLabel: 'Books balanced',
@@ -288,6 +309,7 @@ const HELP_TOPICS: HelpTopic[] = [
   'companyPayouts',
   'netSalesMargin',
   'operatingProfit',
+  'profitViews',
   'booksBalanced',
   'salesVsUsage',
 ]
@@ -694,6 +716,36 @@ function exportCsv() {
     ['1 Imputed', 'Company payouts', d.hero.companyPayoutUnits, d.hero.companyPayoutUsd],
     ['1 Imputed', 'Net sales margin', d.hero.netImputedMarginUnits, d.hero.netImputedMarginUsd],
     ['1 Imputed', 'Operating profit', d.hero.operatingProfitUnits, d.hero.operatingProfitUsd],
+    ...(d.profitViews
+      ? [
+          ['1 Profit views', 'Cash profit', d.profitViews.cashProfitUnits, d.profitViews.cashProfitUsd],
+          [
+            '1 Profit views',
+            `Expected profit (redemption ${bpLabel(d.profitViews.redemptionRateBp)}, ${d.profitViews.redemptionRateSource})`,
+            d.profitViews.expectedProfitUnits,
+            d.profitViews.expectedProfitUsd,
+          ],
+          [
+            '1 Profit views',
+            'Operating profit',
+            d.profitViews.operatingProfitUnits,
+            d.profitViews.operatingProfitUsd,
+          ],
+          ['1 Profit views', 'Given away this period', d.profitViews.givenAwayUnits, d.profitViews.givenAwayUsd],
+          [
+            '1 Profit views',
+            'Change in customer float',
+            d.profitViews.deltaCustomerFloatUnits,
+            d.profitViews.deltaCustomerFloatUsd,
+          ],
+          [
+            '1 Profit views',
+            'Not expected to be paid out',
+            d.profitViews.unredeemedAdjustmentUnits,
+            d.profitViews.unredeemedAdjustmentUsd,
+          ],
+        ]
+      : []),
     [
       '1 Checks',
       'Books balanced',
@@ -821,10 +873,43 @@ function exportDiamondDailyCsv() {
   URL.revokeObjectURL(url)
 }
 
+/** Percent typed by the operator; blank means use the server's estimated redemption rate. */
+const redemptionOverridePct = ref<string | number>('')
+const appliedRedemptionBp = ref<number | undefined>(undefined)
+
+function applyRedemptionOverride() {
+  // `v-model` on a number input yields a number once typed, '' when cleared.
+  const raw = String(redemptionOverridePct.value ?? '').trim()
+  if (raw === '') {
+    appliedRedemptionBp.value = undefined
+  } else {
+    const pct = Number(raw)
+    if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+      showToast('Redemption rate must be between 0 and 100%', 'error')
+      return
+    }
+    appliedRedemptionBp.value = Math.round(pct * 100)
+  }
+  void loadDashboard()
+}
+
+function clearRedemptionOverride() {
+  redemptionOverridePct.value = ''
+  appliedRedemptionBp.value = undefined
+  void loadDashboard()
+}
+
+function bpLabel(bp: number | null | undefined) {
+  return bp === null || bp === undefined ? '—' : `${(bp / 100).toFixed(2)}%`
+}
+
 async function loadDashboard() {
   loading.value = true
   try {
-    const { data } = await currencyApi.ledgerPnl(periodParams.value)
+    const { data } = await currencyApi.ledgerPnl({
+      ...periodParams.value,
+      redemptionRateBp: appliedRedemptionBp.value,
+    })
     dashboard.value = data
   } catch (err) {
     dashboard.value = null
@@ -1324,6 +1409,7 @@ const {
 })
 
 const hero = computed(() => dashboard.value?.hero ?? null)
+const profitViews = computed(() => dashboard.value?.profitViews ?? null)
 const customerFloat = computed<LedgerLine[]>(() => dashboard.value?.stock.customerFloat ?? [])
 const houseInventory = computed<LedgerLine[]>(() => dashboard.value?.stock.houseInventory ?? [])
 const imputedRevenue = computed<LedgerLine[]>(() => dashboard.value?.imputed.revenue ?? [])
@@ -1617,6 +1703,132 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
         </button>
       </div>
     </div>
+
+    <section v-if="profitViews" id="currency-profit-views" class="admin-card space-y-3">
+      <div class="flex items-center justify-between gap-2">
+        <h2 class="text-sm font-semibold">Profit: cash vs expected vs operating</h2>
+        <button
+          type="button"
+          class="inline-flex h-5 w-5 items-center justify-center rounded-full border border-admin-border text-[10px] font-semibold hover:border-admin-accent hover:text-admin-accent"
+          aria-label="How are the three profit figures calculated?"
+          @click="openHelp('profitViews')"
+        >
+          i
+        </button>
+      </div>
+      <p class="text-xs text-admin-subtext">
+        Rewards, promos and game wins mostly stay in wallets rather than being withdrawn. These figures
+        differ only in when those units count as a cost.
+      </p>
+      <p
+        v-if="hero?.reconciliationOk === false"
+        class="rounded-md border border-admin-warn/40 bg-admin-warn/10 px-3 py-2 text-xs text-admin-subtext"
+      >
+        Sales vs usage check shows DELTA ({{ hero.reconciliationDelta }} units), so expected profit
+        at 0% will not match cash profit by that amount. Resolve the delta before relying on these
+        figures.
+      </p>
+
+      <div class="grid gap-3 sm:grid-cols-3">
+        <div class="rounded-md border border-admin-border p-3">
+          <p class="text-xs text-admin-subtext">Cash profit</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ loading ? '…' : usdLabel(profitViews.cashProfitUsd) }}
+          </p>
+          <p class="text-xs text-admin-muted">
+            Sales − fiat paid out. A reward costs nothing until it is withdrawn.
+          </p>
+        </div>
+        <div class="rounded-md border border-admin-accent/60 p-3">
+          <p class="text-xs text-admin-subtext">Expected profit</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ loading ? '…' : usdLabel(profitViews.expectedProfitUsd) }}
+          </p>
+          <p class="text-xs text-admin-muted">
+            Rewards charged at the {{ bpLabel(profitViews.redemptionRateBp) }} redemption rate
+            ({{ profitViews.redemptionRateSource }}).
+          </p>
+        </div>
+        <div class="rounded-md border border-admin-border p-3">
+          <p class="text-xs text-admin-subtext">Operating profit</p>
+          <p class="mt-1 text-xl font-semibold tabular-nums">
+            {{ loading ? '…' : usdLabel(profitViews.operatingProfitUsd) }}
+          </p>
+          <p class="text-xs text-admin-muted">
+            Every reward charged in full when credited. Worst case.
+          </p>
+        </div>
+      </div>
+
+      <div class="admin-table-wrap">
+        <table class="admin-table">
+          <thead>
+            <tr>
+              <th>Line</th>
+              <th>Units</th>
+              <th>USD</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>Rewards, promos and giveaways credited this period</td>
+              <td class="tabular-nums">{{ formatCoins(Number(profitViews.givenAwayUnits)) }}</td>
+              <td class="tabular-nums">{{ usdLabel(profitViews.givenAwayUsd) }}</td>
+            </tr>
+            <tr>
+              <td>Change in customer float (units still held, not withdrawn)</td>
+              <td class="tabular-nums">{{ formatCoins(Number(profitViews.deltaCustomerFloatUnits)) }}</td>
+              <td class="tabular-nums">{{ usdLabel(profitViews.deltaCustomerFloatUsd) }}</td>
+            </tr>
+            <tr>
+              <td>Of that, not expected to be paid out (added to operating profit)</td>
+              <td class="tabular-nums font-semibold">
+                {{ formatCoins(Number(profitViews.unredeemedAdjustmentUnits)) }}
+              </td>
+              <td class="tabular-nums font-semibold">{{ usdLabel(profitViews.unredeemedAdjustmentUsd) }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="flex flex-wrap items-end gap-3 text-xs text-admin-subtext">
+        <p>
+          Estimated redemption rate:
+          <span class="font-medium tabular-nums text-admin-text">
+            {{ bpLabel(profitViews.redemptionEstimate.rateBp) }}
+          </span>
+          — {{ usdLabel(profitViews.redemptionEstimate.payoutUsd) }} paid out of
+          {{ usdLabel(profitViews.redemptionEstimate.issuedUsd) }} issued,
+          {{ formatDt(profitViews.redemptionEstimate.windowFrom) }} →
+          {{ formatDt(profitViews.redemptionEstimate.windowTo) }}
+        </p>
+        <label class="flex items-center gap-2">
+          Override %
+          <input
+            v-model="redemptionOverridePct"
+            type="number"
+            min="0"
+            max="100"
+            step="0.1"
+            class="admin-input w-24"
+            placeholder="auto"
+            @keydown.enter.prevent="applyRedemptionOverride"
+          />
+        </label>
+        <button type="button" class="admin-btn-secondary text-xs" :disabled="loading" @click="applyRedemptionOverride">
+          Apply
+        </button>
+        <button
+          v-if="appliedRedemptionBp !== undefined"
+          type="button"
+          class="admin-btn-secondary text-xs"
+          :disabled="loading"
+          @click="clearRedemptionOverride"
+        >
+          Use estimate
+        </button>
+      </div>
+    </section>
 
     <p
       v-if="treasuryNotConfigured"
