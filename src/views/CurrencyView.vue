@@ -1055,13 +1055,13 @@ async function loadDiamondDaily() {
 }
 
 async function refreshAll() {
-  await loadDashboard()
+  // Only the lists filtered by `windowParams()` need the dashboard's resolved period;
+  // the rest start alongside the dashboard instead of queueing behind it.
   await Promise.all([
-    loadCash(false),
-    loadAdjustments(false),
-    loadSupply(),
+    loadDashboard().then(() =>
+      Promise.all([loadCash(false), loadAdjustments(false), loadSupply(), loadTreasuryFlows(false)]),
+    ),
     loadHouseAccounts(),
-    loadTreasuryFlows(false),
     loadDiamondDaily(),
   ])
 }
