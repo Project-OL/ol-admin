@@ -238,7 +238,7 @@ const METRIC_HELP: Record<
       '• Admin clawbacks from customers (Adjust debits on coins, trading coins, or points)',
       'Costs subtracted:',
       '• Login / weekly / platform coin rewards (DAILY_LOGIN, WEEKLY_TOPUP, PLATFORM_REWARD coins, VIP_REWARD)',
-      '• Livestream streak + platform point rewards (LIVESTREAM_STREAK_REWARD, PLATFORM_REWARD points)',
+      '• Livestream streak, platform, Normal Host and Royal Host point rewards (LIVESTREAM_STREAK_REWARD, PLATFORM_REWARD, NORMAL_HOST_REWARD, ROYAL_HOST_REWARD points)',
       '• Promotional admin Adjust credits',
       '• Treasury promo / write-off grants',
     ],
@@ -427,7 +427,7 @@ const GLOSSARY: Record<GlossaryTermId, GlossaryTerm> = {
     literal:
       'A separate in-app currency used only inside third-party games. Users buy diamonds with coins and can convert them back — like buying chips at a casino cage.',
     inSystem:
-      'Diamonds ride the same ledger as coins, pegged at the same 10,000 units = $1. Buying and redeeming are 1:1 with coins, so conversion moves nothing in or out of the books — a user who converts has the same total float, just in a different wallet. Every wager debits the user and credits the registered GAME_HOUSE account; every win or refund does the reverse. The platform’s game profit is therefore the house edge — wagers absorbed minus wins and refunds paid — never the game house balance itself. Diamonds an admin mints into the game house are seeded inventory, not profit, and diamonds a user still holds are a liability because they redeem back to coins.',
+      'Diamonds ride the same ledger as coins, pegged at the same 10,000 units = $1. Buying and redeeming are 1:1 with coins, so conversion moves nothing in or out of the books — a user who converts has the same total float, just in a different wallet. Every wager debits the user and credits the registered GAME_HOUSE account; every win or refund does the reverse. The platform’s game profit is therefore the house edge — wagers absorbed minus wins and refunds paid — never the game house balance itself. Bets placed by a house account itself (someone playing from the treasury or game-house login) are house-to-house and are left out of the edge and the per-day diamond report. Diamonds an admin mints into the game house are seeded inventory, not profit, and diamonds a user still holds are a liability because they redeem back to coins.',
     onThisPage:
       'Section “Diamonds & game house”, plus the User unspent diamonds row in customer float and the Game-house diamond inventory row in house inventory.',
     scrollTarget: 'currency-diamonds',
