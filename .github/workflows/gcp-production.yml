@@ -203,3 +203,17 @@ jobs:
             --project "$GCP_PROJECT_ID" --zone "$GCP_ZONE" \
             --tunnel-through-iap --quiet \
             --command "test -f '${APP_DIR}/index.html' && echo 'index.html present' && ls -la '${APP_DIR}' | head -20"
+
+      # Keeps <bucket>/ol-admin/latest.tgz equal to what is actually served, so a VM the
+      # MIG (re)creates via ol-node-rest's .github/deploy/gce-bootstrap.sh comes up with
+      # this build in nginx's docroot. Runs only after the files were verified. Opt-in:
+      # skipped until vars.GCP_RELEASE_BUCKET (e.g. gs://ol-node-rest-releases) is set,
+      # because the deploy service account also needs roles/storage.objectUser on it.
+      - name: Publish release for the MIG bootstrap
+        if: vars.GCP_RELEASE_BUCKET != ''
+        env:
+          RELEASE_BUCKET: ${{ vars.GCP_RELEASE_BUCKET }}
+        run: |
+          gcloud storage cp admin-artifact.tgz "$RELEASE_BUCKET/ol-admin/$GITHUB_SHA.tgz" --quiet
+          gcloud storage cp admin-artifact.tgz "$RELEASE_BUCKET/ol-admin/latest.tgz" --quiet
+          gcloud storage ls -l "$RELEASE_BUCKET/ol-admin/latest.tgz"
