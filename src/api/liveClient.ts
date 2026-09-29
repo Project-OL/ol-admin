@@ -1,6 +1,7 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
 import { getAccessToken } from '@/api/client'
-import { showToast } from '@/utils/toast'
+import { apiErrorCode, apiErrorMessage } from '@/utils/apiError'
+import { showApiErrorToast } from '@/utils/toast'
 
 /** Live streaming backend REST root (`/api`). Restriction routes are `/v1/admin/users/...`. */
 export const LIVE_API_BASE_URL =
@@ -20,9 +21,14 @@ liveApi.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 liveApi.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    const body = error.response?.data as { code?: string; message?: string } | undefined
-    if (error.response?.status === 403 && body?.code === 'ADMIN_VIEW_FORBIDDEN') {
-      showToast('This feature is outside your assigned views', 'error')
+    if (apiErrorCode(error) === 'ADMIN_VIEW_FORBIDDEN') {
+      showApiErrorToast('This feature is outside your assigned views')
+    } else if (
+      error.response?.status !== 401 &&
+      !error.config?.skipErrorToast &&
+      !axios.isCancel(error)
+    ) {
+      showApiErrorToast(apiErrorMessage(error))
     }
     return Promise.reject(error)
   },

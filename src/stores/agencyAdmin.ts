@@ -1,5 +1,4 @@
 import { defineStore } from 'pinia'
-import axios from 'axios'
 import { agencyAdminApi } from '@/api/agencyAdmin'
 import { reopenAgencyApplication, uploadAdminGovtId } from '@/api/agencyKycGovtId'
 import { usePlatformMessagesStore } from '@/stores/platformMessages'
@@ -203,23 +202,12 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
       await Promise.all([this.fetchPending(), this.fetchRejected()])
     },
 
+    /** Failures (host in another agency, barred, KYC incomplete, ...) are toasted by the API client. */
     async approveApplication(applicantUserId: string, payload: ApproveApplicationPayload) {
-      try {
-        const { data } = await agencyAdminApi.approveApplication(applicantUserId, payload)
-        showToast(`Agency approved (${data.agencyPublicId})`, 'success')
-        await Promise.all([this.fetchPending(), this.fetchStats(), this.fetchAgencies()])
-        return data
-      } catch (err) {
-        const code = axios.isAxiosError(err)
-          ? (err.response?.data as { code?: string } | undefined)?.code
-          : undefined
-        if (code === 'AGENCY_BARRED') {
-          showToast('User is agency-barred — unbar before approving', 'error')
-        } else if (code === 'KYC_INCOMPLETE') {
-          showToast('KYC incomplete — face, government ID, and contact are required', 'error')
-        }
-        throw err
-      }
+      const { data } = await agencyAdminApi.approveApplication(applicantUserId, payload)
+      showToast(`Agency approved (${data.agencyPublicId})`, 'success')
+      await Promise.all([this.fetchPending(), this.fetchStats(), this.fetchAgencies()])
+      return data
     },
 
     async rejectApplication(applicantUserId: string, payload: RejectApplicationPayload) {
@@ -302,20 +290,10 @@ export const useAgencyAdminStore = defineStore('agencyAdmin', {
     },
 
     async unbarUser(userId: string) {
-      try {
-        const { data } = await agencyAdminApi.unbarUser(userId)
-        showToast('Agency bar cleared — user can re-apply', 'success')
-        if (this.lastBannedAgencyUserId === userId) this.lastBannedAgencyUserId = null
-        return data
-      } catch (err) {
-        const code = axios.isAxiosError(err)
-          ? (err.response?.data as { code?: string } | undefined)?.code
-          : undefined
-        if (code === 'NOT_AGENCY_BARRED') {
-          showToast('User is not agency-barred', 'error')
-        }
-        throw err
-      }
+      const { data } = await agencyAdminApi.unbarUser(userId)
+      showToast('Agency bar cleared — user can re-apply', 'success')
+      if (this.lastBannedAgencyUserId === userId) this.lastBannedAgencyUserId = null
+      return data
     },
 
     async deleteAgency(agencyIdentifier: string) {

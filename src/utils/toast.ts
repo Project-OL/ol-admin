@@ -2,6 +2,16 @@ type ToastType = 'success' | 'error' | 'info'
 
 let toastContainer: HTMLDivElement | null = null
 
+/** Messages currently on screen, so the same text is never stacked twice. */
+const visibleMessages = new Set<string>()
+
+/**
+ * When the API client has just toasted a failed request's own message, a view's catch block
+ * usually follows with its own generic error toast for the same failure. Drop that one.
+ */
+const API_ERROR_SUPPRESS_MS = 1500
+let lastApiErrorToastAt = 0
+
 function ensureContainer(): HTMLDivElement {
   if (!toastContainer) {
     toastContainer = document.createElement('div')
@@ -12,7 +22,9 @@ function ensureContainer(): HTMLDivElement {
   return toastContainer
 }
 
-export function showToast(message: string, type: ToastType = 'info'): void {
+function render(message: string, type: ToastType): void {
+  if (visibleMessages.has(message)) return
+  visibleMessages.add(message)
   const container = ensureContainer()
   const el = document.createElement('div')
   const colors = {
@@ -25,5 +37,17 @@ export function showToast(message: string, type: ToastType = 'info'): void {
   container.appendChild(el)
   setTimeout(() => {
     el.remove()
-  }, 4000)
+    visibleMessages.delete(message)
+  }, type === 'error' ? 6000 : 4000)
+}
+
+export function showToast(message: string, type: ToastType = 'info'): void {
+  if (type === 'error' && Date.now() - lastApiErrorToastAt < API_ERROR_SUPPRESS_MS) return
+  render(message, type)
+}
+
+/** Used by the axios interceptors: shows the backend's own error message for a failed request. */
+export function showApiErrorToast(message: string): void {
+  lastApiErrorToastAt = Date.now()
+  render(message, 'error')
 }

@@ -140,7 +140,9 @@ export const userAdminApi = {
   },
 
   getTransactionFilterTypes() {
-    return api.get<TransactionFilterTypes>('/admin/users/transactions/filter-types')
+    return api.get<TransactionFilterTypes>('/admin/users/transactions/filter-types', {
+      skipErrorToast: true,
+    })
   },
 
   getCoinTransactions(id: string, params: TransactionQuery) {
@@ -289,7 +291,10 @@ export const userAdminApi = {
   },
 
   getFaceVerification(id: string) {
-    return api.get<FaceVerificationResponse>(`/admin/users/${id}/face-verification`)
+    // Optional panel: users who never verified get a 404 here.
+    return api.get<FaceVerificationResponse>(`/admin/users/${id}/face-verification`, {
+      skipErrorToast: true,
+    })
   },
 
   listUserRegistrationSessions(id: string) {
@@ -312,7 +317,8 @@ export const userAdminApi = {
   },
 
   getLivePhoto(id: string) {
-    return api.get<LivePhotoResponse>(`/admin/users/${id}/live-photo`)
+    // Optional panel: users without a live photo get a 404 here.
+    return api.get<LivePhotoResponse>(`/admin/users/${id}/live-photo`, { skipErrorToast: true })
   },
 
   removeLivePhoto(id: string, reason?: string) {
