@@ -1,5 +1,6 @@
 import axios, { type AxiosError, type InternalAxiosRequestConfig } from 'axios'
-import { showToast } from '@/utils/toast'
+import { apiErrorCode, apiErrorMessage } from '@/utils/apiError'
+import { showApiErrorToast } from '@/utils/toast'
 
 const ACCESS_KEY = 'admin_token'
 const REFRESH_KEY = 'admin_refresh_token'
@@ -73,16 +74,25 @@ api.interceptors.response.use(
       if (import.meta.env.VITE_USE_MOCK !== 'true') {
         window.location.href = '/login'
       }
-    } else if (error.response?.status === 403) {
-      const body = error.response.data as { code?: string } | undefined
-      if (body?.code === 'ADMIN_VIEW_FORBIDDEN') {
-        showToast('This feature is outside your assigned views', 'error')
-        void import('@/stores/auth').then(({ useAuthStore }) => {
-          void useAuthStore().fetchMyViews()
-        })
-      } else {
-        showToast('Insufficient permissions', 'error')
-      }
+    } else if (apiErrorCode(error) === 'ADMIN_VIEW_FORBIDDEN') {
+      showApiErrorToast('This feature is outside your assigned views')
+      void import('@/stores/auth').then(({ useAuthStore }) => {
+        void useAuthStore().fetchMyViews()
+      })
+    } else if (
+      error.response?.status !== 401 &&
+      !isAuthRoute &&
+      !original?.skipErrorToast &&
+      !axios.isCancel(error)
+    ) {
+      // Every failed call surfaces the backend's own `message`, so views that only
+      // `catch {}` (or show a generic fallback) still tell the admin what went wrong.
+      showApiErrorToast(
+        apiErrorMessage(
+          error,
+          error.response?.status === 403 ? 'Insufficient permissions' : 'Something went wrong',
+        ),
+      )
     }
 
     return Promise.reject(error)

@@ -18,7 +18,8 @@ export const adminAuthApi = {
   },
 
   me() {
-    return api.get<MeResponse>('/admin/auth/me')
+    // Session bootstrap; a failure just clears tokens and lands on /login.
+    return api.get<MeResponse>('/admin/auth/me', { skipErrorToast: true })
   },
 
   logout() {

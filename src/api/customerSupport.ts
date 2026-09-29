@@ -252,7 +252,10 @@ export const customerSupportApi = {
 
   // --- Notifications ---
   getBadge() {
-    return api.get<NotificationBadge>('/admin/support/notifications/badge')
+    // Polled every 30s: a transient failure must not toast on every tick.
+    return api.get<NotificationBadge>('/admin/support/notifications/badge', {
+      skipErrorToast: true,
+    })
   },
 
   listNotifications(params: { unreadOnly?: boolean; page?: number; limit?: number } = {}) {

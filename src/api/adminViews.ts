@@ -13,7 +13,8 @@ import type {
 
 export const adminViewsApi = {
   me() {
-    return api.get<MyViewsResponse>('/admin/views/me')
+    // Background refresh; the store keeps the last known views on failure.
+    return api.get<MyViewsResponse>('/admin/views/me', { skipErrorToast: true })
   },
 
   listCatalog() {

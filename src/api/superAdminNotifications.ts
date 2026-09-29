@@ -7,7 +7,10 @@ export interface SuperAdminNotificationBadge {
 
 export const superAdminNotificationsApi = {
   getBadge() {
-    return api.get<SuperAdminNotificationBadge>('/admin/super-notifications/badge')
+    // Polled every 30s: a transient failure must not toast on every tick.
+    return api.get<SuperAdminNotificationBadge>('/admin/super-notifications/badge', {
+      skipErrorToast: true,
+    })
   },
 
   list(params: { unreadOnly?: boolean; page?: number; limit?: number } = {}) {
