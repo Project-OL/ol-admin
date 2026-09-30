@@ -1,3 +1,5 @@
+import type { AdminReversalSummary } from './transactions'
+
 export type AdminRole =
   | 'SUPER_ADMIN'
   | 'MODERATOR'
@@ -308,6 +310,7 @@ export interface ApiTransaction {
     endpoint: 'coin_ledger' | 'coin_trading_transfer'
     id: string
   } | null
+  reversal?: AdminReversalSummary | null
 }
 
 export interface ApiTransactionListResponse {

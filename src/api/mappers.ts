@@ -229,6 +229,7 @@ export function mapTransaction(tx: ApiTransaction): CoinTransaction {
     linkSummary: linkParts.length ? linkParts.join(' · ') : null,
     canRevert: tx.canRevert === true,
     revertVia: tx.revertVia ?? null,
+    reversal: tx.reversal ?? null,
   }
 }
 
@@ -248,6 +249,7 @@ export function mapPointTransaction(tx: ApiTransaction): PointTransaction {
     counterpartyDetails: mapped.counterpartyDetails,
     canRevert: mapped.canRevert,
     revertVia: mapped.revertVia ?? null,
+    reversal: mapped.reversal ?? null,
   }
 }
 

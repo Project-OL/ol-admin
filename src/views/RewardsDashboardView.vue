@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import axios from 'axios'
 import { useRewardsAdminStore } from '@/stores/rewardsAdmin'
 import { rewardsAdminApi } from '@/api/rewardsAdmin'
@@ -7,6 +7,13 @@ import { agencyAdminApi } from '@/api/agencyAdmin'
 import { formatPoints, getInitials } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import RevertPreviewPanel from '@/components/shared/RevertPreviewPanel.vue'
+import {
+  formatAmount,
+  isInsufficientRevertError,
+  revertSuccessMessage,
+  useTransactionRevert,
+} from '@/composables/useTransactionRevert'
 import type { RewardClaimType, RewardClaimUser } from '@/types/rewards'
 import type { AgencyListItem } from '@/types/agency'
 
@@ -31,6 +38,12 @@ const filters = reactive({
 
 const exporting = ref(false)
 const revertTarget = ref<{ ledgerEntryId: string; label: string } | null>(null)
+const revertFlow = useTransactionRevert()
+const revertConfirmLabel = computed(() =>
+  revertFlow.mode.value === 'force'
+    ? `Force reverse (recover ${formatAmount(revertFlow.preview.value?.recoverable)})`
+    : 'Revert',
+)
 const expandedUserIds = ref<Set<string>>(new Set())
 const selectedUserIds = ref<Set<string>>(new Set())
 const bulkDebitOpen = ref(false)
@@ -205,17 +218,24 @@ function openRevertActivity(row: ActivityRow, username: string) {
     ledgerEntryId: row.ledgerEntryId,
     label: `${what} of ${formatPoints(Number(row.amount))} pts ${direction} ${username} (${row.dateLabel})`,
   }
+  void revertFlow.loadPreview({ kind: 'single-point', id: row.ledgerEntryId })
 }
 
 async function confirmRevert(payload: { reason?: string }) {
   const target = revertTarget.value
   const reason = payload.reason?.trim()
-  if (!target || !reason) return
+  const mode = revertFlow.mode.value
+  if (!target || !reason || !mode) return
   try {
-    await store.revertClaim(target.ledgerEntryId, reason)
-    showToast('Claim reverted', 'success')
+    const result = await store.revertClaim(target.ledgerEntryId, reason, mode)
+    showToast(result.forced ? revertSuccessMessage(result) : 'Claim reverted', 'success')
     revertTarget.value = null
   } catch (err) {
+    if (isInsufficientRevertError(err)) {
+      showToast('User balance changed — review the updated amounts', 'error')
+      await revertFlow.loadPreview({ kind: 'single-point', id: target.ledgerEntryId })
+      return
+    }
     showToast(errorMessage(err, 'Failed to revert claim'), 'error')
   }
 }
@@ -476,12 +496,21 @@ onMounted(() => {
       :open="!!revertTarget"
       title="Revert entry"
       :message="revertTarget?.label"
-      confirm-label="Revert"
+      :confirm-label="revertConfirmLabel"
+      :confirm-disabled="!revertFlow.mode.value || !!store.reverting"
       variant="warn"
       require-reason
       @close="revertTarget = null"
       @confirm="confirmRevert"
-    />
+    >
+      <template #extra>
+        <RevertPreviewPanel
+          :preview="revertFlow.preview.value"
+          :loading="revertFlow.previewLoading.value"
+          :error="revertFlow.previewError.value"
+        />
+      </template>
+    </ConfirmActionDialog>
 
     <ConfirmActionDialog
       :open="bulkDebitOpen"

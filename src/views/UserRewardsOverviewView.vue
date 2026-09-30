@@ -3,10 +3,16 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { userRewardsOverviewApi } from '@/api/userRewardsOverview'
-import { transactionsApi } from '@/api/transactions'
 import { formatDuration, formatPoints, getInitials } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import RevertPreviewPanel from '@/components/shared/RevertPreviewPanel.vue'
+import {
+  formatAmount,
+  isInsufficientRevertError,
+  revertSuccessMessage,
+  useTransactionRevert,
+} from '@/composables/useTransactionRevert'
 import type { UserRewardsOverview } from '@/types/userRewardsOverview'
 
 const route = useRoute()
@@ -17,6 +23,12 @@ const loadError = ref<string | null>(null)
 const overview = ref<UserRewardsOverview | null>(null)
 const reverting = ref<string | null>(null)
 const revertTarget = ref<{ ledgerEntryId: string; label: string } | null>(null)
+const revertFlow = useTransactionRevert()
+const revertConfirmLabel = computed(() =>
+  revertFlow.mode.value === 'force'
+    ? `Force reverse (recover ${formatAmount(revertFlow.preview.value?.recoverable)})`
+    : 'Revert',
+)
 
 function errorMessage(err: unknown, fallback: string) {
   if (!axios.isAxiosError(err)) return fallback
@@ -81,22 +93,31 @@ function openRevert(row: ActivityRow) {
     ledgerEntryId: row.ledgerEntryId,
     label: `${what} of ${formatPoints(Number(row.amount))} pts ${direction} ${overview.value.user.username} (${row.dateLabel})`,
   }
+  void revertFlow.loadPreview({ kind: 'single-point', id: row.ledgerEntryId })
 }
 
 async function confirmRevert(payload: { reason?: string }) {
   const target = revertTarget.value
   const reason = payload.reason?.trim()
-  if (!target || !reason) return
+  const mode = revertFlow.mode.value
+  if (!target || !reason || !mode) return
   reverting.value = target.ledgerEntryId
+  const action = { kind: 'single-point' as const, id: target.ledgerEntryId }
   try {
-    await transactionsApi.revertSinglePoint(target.ledgerEntryId, {
+    const result = await revertFlow.execute(action, {
       reason,
       idempotencyKey: `admin-reward-revert-${target.ledgerEntryId}-${Date.now()}`,
+      mode,
     })
-    showToast('Reverted', 'success')
+    showToast(revertSuccessMessage(result), 'success')
     revertTarget.value = null
     await load()
   } catch (err) {
+    if (isInsufficientRevertError(err)) {
+      showToast('User balance changed — review the updated amounts', 'error')
+      await revertFlow.loadPreview(action)
+      return
+    }
     showToast(errorMessage(err, 'Revert failed'), 'error')
   } finally {
     reverting.value = null
@@ -414,11 +435,20 @@ function fmtDate(iso: string) {
       :open="!!revertTarget"
       title="Revert entry"
       :message="revertTarget?.label"
-      confirm-label="Revert"
+      :confirm-label="revertConfirmLabel"
+      :confirm-disabled="!revertFlow.mode.value || !!reverting"
       variant="warn"
       require-reason
       @close="revertTarget = null"
       @confirm="confirmRevert"
-    />
+    >
+      <template #extra>
+        <RevertPreviewPanel
+          :preview="revertFlow.preview.value"
+          :loading="revertFlow.previewLoading.value"
+          :error="revertFlow.previewError.value"
+        />
+      </template>
+    </ConfirmActionDialog>
   </div>
 </template>

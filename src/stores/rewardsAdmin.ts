@@ -2,6 +2,7 @@ import { defineStore } from 'pinia'
 import { rewardsAdminApi } from '@/api/rewardsAdmin'
 import { transactionsApi } from '@/api/transactions'
 import type { BulkDebitPointsResult, ListRewardClaimsQuery, RewardClaimUser } from '@/types/rewards'
+import type { AdminRevertMode } from '@/types/transactions'
 
 export const useRewardsAdminStore = defineStore('rewardsAdmin', {
   state: () => ({
@@ -30,12 +31,14 @@ export const useRewardsAdminStore = defineStore('rewardsAdmin', {
       }
     },
 
-    async revertClaim(ledgerEntryId: string, reason: string) {
+    /** `mode: 'force'` (SUPER_ADMIN) claws back only what the user still has. */
+    async revertClaim(ledgerEntryId: string, reason: string, mode: AdminRevertMode = 'full') {
       this.reverting = ledgerEntryId
       try {
-        await transactionsApi.revertSinglePoint(ledgerEntryId, {
+        const { data } = await transactionsApi.revertSinglePoint(ledgerEntryId, {
           reason,
           idempotencyKey: `admin-reward-revert-${ledgerEntryId}-${Date.now()}`,
+          mode,
         })
         for (const user of this.users) {
           const claim = user.claims.find((c) => c.ledgerEntryId === ledgerEntryId)
@@ -43,6 +46,7 @@ export const useRewardsAdminStore = defineStore('rewardsAdmin', {
           const deduction = user.deductions.find((d) => d.ledgerEntryId === ledgerEntryId)
           if (deduction) deduction.reverted = true
         }
+        return data as { forced?: boolean; recoveredAmount?: string; shortfallAmount?: string }
       } finally {
         this.reverting = null
       }

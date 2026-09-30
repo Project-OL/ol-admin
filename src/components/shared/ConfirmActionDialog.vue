@@ -10,6 +10,8 @@ const props = defineProps<{
   variant?: 'danger' | 'warn' | 'default'
   requireReason?: boolean
   amountInput?: boolean
+  /** Extra gate on the confirm button (e.g. while a preview is loading). */
+  confirmDisabled?: boolean
 }>()
 
 const emit = defineEmits<{
@@ -27,6 +29,7 @@ const variantClass = computed(() => {
 })
 
 const canSubmit = computed(() => {
+  if (props.confirmDisabled) return false
   if (props.requireReason && !reason.value.trim()) return false
   if (props.amountInput && (!amount.value || Number(amount.value) <= 0)) return false
   return true
@@ -55,6 +58,7 @@ function handleConfirm() {
   <BaseDialog :open="open" :title="title" size="sm" @close="emit('close')">
     <template #body>
       <p v-if="message" class="mb-4 text-sm text-admin-subtext">{{ message }}</p>
+      <slot name="extra" />
       <div class="space-y-3">
         <div v-if="amountInput">
           <label class="mb-1 block text-xs font-medium text-admin-subtext">Amount</label>
