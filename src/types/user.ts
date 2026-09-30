@@ -1,3 +1,5 @@
+import type { AdminReversalSummary } from './transactions'
+
 export type UserStatus = 'active' | 'inactive' | 'banned' | 'suspended'
 export type TransactionStatus = 'success' | 'pending' | 'failed'
 export type FaceVerificationStatus =
@@ -185,6 +187,8 @@ export interface CoinTransaction {
     endpoint: 'coin_ledger' | 'coin_trading_transfer' | 'withdrawal'
     id: string
   } | null
+  /** Set once this row's transaction was reverted (full or forced). */
+  reversal?: AdminReversalSummary | null
 }
 
 export interface PointTransaction {
@@ -204,6 +208,7 @@ export interface PointTransaction {
     endpoint: 'coin_ledger' | 'coin_trading_transfer' | 'withdrawal'
     id: string
   } | null
+  reversal?: AdminReversalSummary | null
 }
 
 export interface Post {

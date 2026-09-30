@@ -133,6 +133,8 @@ export type AdminLedgerEntry = {
   canRevert: boolean
   /** Additive: exact revert route for personal/trading coin ledger. */
   revertVia?: AdminCoinRevertVia
+  /** Additive: set when this row's transaction (or its transfer) was already reverted. */
+  reversal?: AdminReversalSummary | null
   platformProfit?: PlatformProfitBuckets
 }
 
@@ -150,6 +152,7 @@ export type AdminCoinTradingTransfer = {
   reversedBy: AdminUserBrief | null
   createdAt: string
   canRevert: boolean
+  reversal?: AdminReversalSummary | null
 }
 
 export type AdminGiftTransaction = {
@@ -239,7 +242,39 @@ export type PlatformProfitSummaryResponse = {
   platformProfitTotals: PlatformProfitBuckets
 }
 
+export type AdminRevertMode = 'full' | 'force'
+
 export type AdminTransactionRevertBody = {
-  reason: string
+  /** Required unless `dryRun`. */
+  reason?: string
   idempotencyKey?: string
+  /** `force` (SUPER_ADMIN only): recover what the receiver still has; shortfall is final. */
+  mode?: AdminRevertMode
+  /** Preview only — no money moves. */
+  dryRun?: boolean
+}
+
+/** `dryRun: true` response. Amounts are integer strings. */
+export type AdminRevertPreview = {
+  ok: true
+  dryRun: true
+  /** Withdrawal rows forward to the withdrawal reverse; no amounts, no force. */
+  via?: 'withdrawal'
+  currency?: string
+  originalAmount?: string
+  receiverAvailable?: string
+  /** What a force reverse would recover now (= original when sufficient). */
+  recoverable?: string
+  shortfall?: string
+  sufficient: boolean
+  forceAllowed: boolean
+}
+
+/** Set on a row once its transaction was reverted (full or forced). */
+export type AdminReversalSummary = {
+  reversedAt: string
+  forced: boolean
+  /** Null for reverts made before partial reverts existed. */
+  recoveredAmount: string | null
+  shortfallAmount: string
 }

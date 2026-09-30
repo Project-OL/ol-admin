@@ -11,6 +11,14 @@ import { transactionsApi } from '@/api/transactions'
 import { formatCoins, formatNumber, formatPoints } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 import { resolveUserWalletRevert } from '@/utils/transactionRevert'
+import RevertPreviewPanel from '@/components/shared/RevertPreviewPanel.vue'
+import {
+  formatAmount as formatRevertAmount,
+  isInsufficientRevertError,
+  revertSuccessMessage,
+  useTransactionRevert,
+} from '@/composables/useTransactionRevert'
+import type { AdminReversalSummary } from '@/types/transactions'
 import type { ApiTransaction } from '@/types/api'
 import type { CoinTransaction, TxCounterpartyDetails } from '@/types/user'
 import SortableTh from '@/components/shared/SortableTh.vue'
@@ -41,6 +49,17 @@ const revertOpen = ref(false)
 const revertTarget = ref<CoinTransaction | null>(null)
 const revertReason = ref('')
 const reverting = ref(false)
+const revertFlow = useTransactionRevert()
+
+/** "Reversed" / "Reversed (partial 80,000 / 100,000)" label, or null. */
+function reversalLabel(tx: CoinTransaction): string | null {
+  const r = tx.reversal
+  if (r?.forced && r.recoveredAmount != null) {
+    const total = BigInt(r.recoveredAmount) + BigInt(r.shortfallAmount)
+    return `Reversed (partial ${formatRevertAmount(r.recoveredAmount)} / ${formatRevertAmount(total.toString())})`
+  }
+  return r ? 'Reversed' : null
+}
 
 /** Defensive normalize — keep enrichment; never invent canRevert. */
 function normalizeEntry(raw: ApiTransaction | Record<string, unknown>): CoinTransaction {
@@ -126,6 +145,7 @@ function normalizeEntry(raw: ApiTransaction | Record<string, unknown>): CoinTran
     linkSummary: linkParts.length ? linkParts.join(' · ') : null,
     // Strict: only true when API sends canRevert === true (never from counterpartyId).
     canRevert: tx.canRevert === true,
+    reversal: (tx.reversal as AdminReversalSummary | null | undefined) ?? null,
     revertVia:
       tx.revertVia &&
       typeof tx.revertVia === 'object' &&
@@ -287,6 +307,9 @@ function openRevert(tx: CoinTransaction) {
   revertTarget.value = tx
   revertReason.value = ''
   revertOpen.value = true
+  const action = resolveUserWalletRevert(activeTab.value, tx)
+  if (action) void revertFlow.loadPreview(action)
+  else revertFlow.reset()
 }
 
 function closeRevert() {
@@ -307,10 +330,16 @@ function revertErrorMessage(err: unknown): string {
       if (body.details?.transferId) {
         return 'Not revertable here — open Trading coins in the explorer'
       }
-      return 'This row cannot be reverted'
+      return body.message || 'This row cannot be reverted'
     case 'ALREADY_REVERTED':
     case 'TRANSFER_ALREADY_REVERSED':
       return 'Already reverted'
+    case 'FORCE_REVERSE_FORBIDDEN':
+      return 'Only a super admin can force-reverse'
+    case 'NOTHING_TO_RECOVER':
+      return 'Receiver has nothing left to recover'
+    case 'FORCE_NOT_SUPPORTED':
+      return 'Force reverse is not available for withdrawals'
     case 'INSUFFICIENT_COINS':
       return 'Receiver personal coins too low to cover revert'
     case 'INSUFFICIENT_TRADING_COINS':
@@ -347,30 +376,28 @@ async function confirmRevert() {
     return
   }
 
+  const mode = revertFlow.mode.value
+  if (!mode) return
+
   reverting.value = true
   try {
-    const body = {
+    const result = await revertFlow.execute(action, {
       reason,
       idempotencyKey: `admin-user-tx-revert-${action.kind}-${action.id}-${Date.now()}`,
-    }
+      mode,
+    })
 
-    if (action.kind === 'points') {
-      await transactionsApi.revertPoint(action.id, body)
-    } else if (action.kind === 'withdrawal') {
-      await transactionsApi.revertWithdrawal(action.id, body)
-    } else if (action.kind === 'coin-trading-transfer') {
-      // Prefer dedicated transfer revert when coinTradingTransferId is present.
-      await transactionsApi.revertCoinTradingTransfer(action.id, body)
-    } else {
-      // TRADING_COIN peer → POST /transactions/coins/:id/revert (path quirk).
-      await transactionsApi.revertCoin(action.id, body)
-    }
-
-    showToast('Transaction reverted', 'success')
+    showToast(revertSuccessMessage(result), 'success')
     revertOpen.value = false
     revertTarget.value = null
     await fetchPage(false)
   } catch (err) {
+    // Receiver spent some in the meantime: refresh the check so the force option shows.
+    if (isInsufficientRevertError(err)) {
+      showToast('Receiver balance changed — review the updated amounts', 'error')
+      await revertFlow.loadPreview(action)
+      return
+    }
     // If ledger route says use transfer id, retry once on the transfer endpoint.
     if (
       axios.isAxiosError(err) &&
@@ -584,6 +611,12 @@ onMounted(async () => {
                 >
                   Revertable
                 </span>
+                <span
+                  v-else-if="reversalLabel(tx)"
+                  class="inline-flex rounded-full bg-admin-muted/20 px-2 py-0.5 text-xs font-medium"
+                >
+                  {{ reversalLabel(tx) }}
+                </span>
                 <StatusBadge v-else :status="tx.status" />
               </td>
               <td class="text-right" @click.stop>
@@ -677,6 +710,11 @@ onMounted(async () => {
             · {{ formatAmount(revertTarget) }}
             <span class="mt-1 block font-mono text-admin-muted">{{ revertTarget.id }}</span>
           </p>
+          <RevertPreviewPanel
+            :preview="revertFlow.preview.value"
+            :loading="revertFlow.previewLoading.value"
+            :error="revertFlow.previewError.value"
+          />
           <div>
             <label class="mb-1 block text-xs text-admin-subtext">Reason (required)</label>
             <textarea
@@ -695,10 +733,14 @@ onMounted(async () => {
         <button
           type="button"
           class="admin-btn-primary"
-          :disabled="reverting || !revertReason.trim()"
+          :disabled="reverting || !revertReason.trim() || !revertFlow.mode.value"
           @click="confirmRevert"
         >
-          {{ reverting ? 'Reverting…' : 'Confirm revert' }}
+          <template v-if="reverting">Reverting…</template>
+          <template v-else-if="revertFlow.mode.value === 'force'">
+            Force reverse (recover {{ formatRevertAmount(revertFlow.preview.value?.recoverable) }})
+          </template>
+          <template v-else>Confirm revert</template>
         </button>
       </template>
     </BaseDialog>
