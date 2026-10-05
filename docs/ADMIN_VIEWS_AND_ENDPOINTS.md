@@ -200,6 +200,9 @@ Route: `/admin/system-settings` · Sidebar: Settings
 
 Platform + agency coin/point rate catalogues (including Call Price caps, Elite/Rich recharge thresholds, payout rails, and messaging edit/delete window in seconds/minutes/hours). Hydrate rates via aggregate GET (+ dedicated payout-rails / messaging / rich-tier GETs); each section saves with its own PUT.
 
+**App downloads tab (SUPER_ADMIN only, intentionally not in this view's endpoint list):** offoolive.com store links + Android APK (`AppLinksSettingsTab.vue`). The tab is hidden for other roles, and the backend gates these with `requireAdminRole('SUPER_ADMIN')`, so they can't be granted through a view:
+`GET|PUT /admin/system-settings/app-links`, `POST /admin/system-settings/app-links/apk/upload-url`, `POST /admin/system-settings/app-links/apk/releases`, `PUT /admin/system-settings/app-links/apk/current`.
+
 ```
 GET /admin/system-settings/rates
 GET /admin/system-settings/host-revenue-shares

@@ -4,6 +4,8 @@ import axios from 'axios'
 import { format, parseISO } from 'date-fns'
 import { systemSettingsApi } from '@/api/systemSettings'
 import InlineEditField from '@/components/shared/InlineEditField.vue'
+import AppLinksSettingsTab from '@/components/settings/AppLinksSettingsTab.vue'
+import { useAuthStore } from '@/stores/auth'
 import type {
   CallPriceBandDraft,
   CoinPackage,
@@ -55,6 +57,7 @@ type SettingsTab =
   | 'agency'
   | 'platformReward'
   | 'payroll'
+  | 'appLinks'
 
 const PAYOUT_RAIL_KEYS = ['epay', 'bank'] as const
 
@@ -72,7 +75,15 @@ const TABS: { value: SettingsTab; label: string; short: string }[] = [
   { value: 'agency', label: 'Agency', short: 'Agency' },
   { value: 'platformReward', label: 'Platform rewards', short: 'Rewards' },
   { value: 'payroll', label: 'Payroll / FX', short: 'Payroll' },
+  { value: 'appLinks', label: 'App downloads', short: 'Apps' },
 ]
+
+/** Tabs whose endpoints are SUPER_ADMIN-only on the backend (not grantable through admin views). */
+const SUPER_ADMIN_TABS: SettingsTab[] = ['appLinks']
+const auth = useAuthStore()
+const visibleTabs = computed(() =>
+  TABS.filter((t) => auth.isSuperAdmin || !SUPER_ADMIN_TABS.includes(t.value)),
+)
 
 const MAX_WINDOW_MINUTES = 365 * 24 * 60
 const MAX_MESSAGING_WINDOW_SECONDS = 7 * 24 * 60 * 60
@@ -2059,7 +2070,7 @@ onMounted(() => {
         class="inline-flex min-w-full gap-0.5 rounded-md border border-admin-border bg-admin-surface p-0.5 sm:flex sm:min-w-0 sm:flex-wrap"
       >
         <button
-          v-for="tab in TABS"
+          v-for="tab in visibleTabs"
           :key="tab.value"
           type="button"
           :class="[
@@ -2076,7 +2087,10 @@ onMounted(() => {
       </div>
     </div>
 
-    <div v-if="loading" class="admin-card py-6 text-center text-xs text-admin-subtext">
+    <!-- Loads its own data; independent of the rates load below -->
+    <AppLinksSettingsTab v-if="activeTab === 'appLinks'" />
+
+    <div v-else-if="loading" class="admin-card py-6 text-center text-xs text-admin-subtext">
       Loading rates…
     </div>
 
