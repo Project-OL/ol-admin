@@ -74,6 +74,7 @@ const giftForm = reactive({
   categoryId: '',
   displayOrder: 0,
   vipOnly: false,
+  isLucky: false,
   isActive: true,
 })
 
@@ -191,6 +192,7 @@ function resetGiftForm() {
   giftForm.categoryId = ''
   giftForm.displayOrder = 0
   giftForm.vipOnly = false
+  giftForm.isLucky = false
   giftForm.isActive = true
   displayAssetMode.value = 'url'
   effectAssetMode.value = 'url'
@@ -367,6 +369,7 @@ function openEditGift(gift: GiftAdminListItem) {
   giftForm.categoryId = gift.category?.id ?? ''
   giftForm.displayOrder = gift.displayOrder
   giftForm.vipOnly = gift.vipOnly
+  giftForm.isLucky = gift.isLucky ?? false
   giftForm.isActive = gift.status === 'active'
   displayAssetMode.value = 'url'
   effectAssetMode.value = 'url'
@@ -420,6 +423,7 @@ async function submitCreateGift() {
       categoryId: giftForm.categoryId || null,
       displayOrder: Number(giftForm.displayOrder),
       vipOnly: giftForm.vipOnly,
+      isLucky: giftForm.isLucky,
       isActive: giftForm.isActive,
     }
     await giftAdminApi.createGift(payload)
@@ -482,6 +486,7 @@ async function submitEditGift() {
       categoryId: giftForm.categoryId || null,
       displayOrder: Number(giftForm.displayOrder),
       vipOnly: giftForm.vipOnly,
+      isLucky: giftForm.isLucky,
       isActive: giftForm.isActive,
     })
     showToast('Gift updated', 'success')
@@ -963,6 +968,7 @@ onMounted(async () => {
                 <td class="tabular-nums">{{ formatNumber(gift.timesSent) }}</td>
                 <td>
                   <span v-if="gift.vipOnly" class="rounded bg-amber-500/20 px-1.5 py-0.5 text-xs text-amber-400">VIP</span>
+                  <span v-if="gift.isLucky" class="ml-1 rounded bg-emerald-500/20 px-1.5 py-0.5 text-xs text-emerald-400">Lucky</span>
                   <span v-else class="text-admin-muted">—</span>
                 </td>
                 <td>
@@ -1272,6 +1278,13 @@ onMounted(async () => {
             <label class="flex items-center gap-2 text-sm">
               <input v-model="giftForm.vipOnly" type="checkbox" class="accent-admin-accent" />
               VIP only
+            </label>
+            <label
+              class="flex items-center gap-2 text-sm"
+              title="Sends go through the lucky draw (host earns 4%, sender can win coins). Gifts in a category named &quot;Lucky&quot; are lucky either way."
+            >
+              <input v-model="giftForm.isLucky" type="checkbox" class="accent-admin-accent" />
+              Lucky
             </label>
             <label class="flex items-center gap-2 text-sm">
               <input v-model="giftForm.isActive" type="checkbox" class="accent-admin-accent" />

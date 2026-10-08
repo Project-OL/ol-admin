@@ -34,6 +34,12 @@ export interface GiftAdminListItem {
   coinCost: number
   displayOrder: number
   vipOnly: boolean
+  /**
+   * Lucky (RTP draw) gift. Live-server also treats every gift in a category named or
+   * slugged "lucky" as lucky; this flag keeps it lucky if that category is renamed.
+   * Older backends omit it.
+   */
+  isLucky?: boolean
   timesSent: number
   status: GiftAdminStatus
   createdAt: string
@@ -106,6 +112,7 @@ export interface CreateGiftPayload {
   categoryId?: string | null
   displayOrder?: number
   vipOnly?: boolean
+  isLucky?: boolean
   isActive?: boolean
 }
 
@@ -119,6 +126,7 @@ export interface PatchGiftPayload {
   categoryId?: string | null
   displayOrder?: number
   vipOnly?: boolean
+  isLucky?: boolean
   isActive?: boolean
 }
 
