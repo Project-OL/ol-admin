@@ -8,6 +8,7 @@ import { useLiveModerationActions } from '@/composables/useLiveModerationActions
 import { useAuthStore } from '@/stores/auth'
 import SortableTh from '@/components/shared/SortableTh.vue'
 import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
+import LiveFailuresPanel from '@/components/live/LiveFailuresPanel.vue'
 import { useSortableRows } from '@/composables/useSortableRows'
 import { REPORT_REASON_OPTIONS } from '@/types/customerSupport'
 import { formatNumber } from '@/utils/format'
@@ -23,7 +24,7 @@ import type {
   VideoCallNudityLogItem,
 } from '@/types/api'
 
-type Workbench = LiveModerationKind | 'open_streams' | 'restrictions'
+type Workbench = LiveModerationKind | 'open_streams' | 'restrictions' | 'failures'
 
 const route = useRoute()
 const router = useRouter()
@@ -43,6 +44,7 @@ const loading = ref(false)
 const actingId = ref<string | null>(null)
 const stopAllOpen = ref(false)
 const stoppingAll = ref(false)
+const failuresPanel = ref<InstanceType<typeof LiveFailuresPanel> | null>(null)
 
 const items = ref<Array<LiveNudityLogItem | VideoCallNudityLogItem | HostStreamBanItem | LiveUserReportItem>>(
   [],
@@ -67,7 +69,8 @@ function hydrateFromRoute() {
     k === 'host_ban' ||
     k === 'user_report' ||
     k === 'open_streams' ||
-    k === 'restrictions'
+    k === 'restrictions' ||
+    k === 'failures'
   ) {
     kind.value = k
   }
@@ -101,7 +104,14 @@ async function load(nextPage = 1) {
   syncQuery()
   const uid = userId.value.trim() || undefined
   try {
-    if (kind.value === 'open_streams') {
+    if (kind.value === 'failures') {
+      // LiveFailuresPanel fetches from the live backend itself.
+      items.value = []
+      streams.value = []
+      restrictions.value = []
+      total.value = 0
+      await failuresPanel.value?.load(1)
+    } else if (kind.value === 'open_streams') {
       const { data } = await userAdminApi.listAllActiveLiveStreams({
         hostUserId: uid,
         country: countryFilter.value.trim() || undefined,
@@ -313,7 +323,8 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
     <div>
       <h1 class="text-lg font-semibold">Live moderation</h1>
       <p class="text-sm text-admin-muted">
-        Overall and per-user nudity detections, user reports, host bans, and open rooms.
+        Overall and per-user nudity detections, user reports, host bans, open rooms, and go-live /
+        join failures.
         Chat mute, audio mute, and going-live ban are applied on the live backend
         (live.offoolive.com) — not room kick or stream-admin tools.
       </p>
@@ -327,6 +338,7 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
         <option value="user_report">User live reports</option>
         <option value="open_streams">Open live streams</option>
         <option value="restrictions">Active mutes / bans</option>
+        <option value="failures">Go-live / join failures</option>
       </select>
       <input
         v-model="userId"
@@ -397,7 +409,9 @@ async function resolveReport(id: string, status: 'RESOLVED' | 'DISMISSED') {
       </button>
     </div>
 
-    <div v-if="kind === 'open_streams'" class="admin-table-wrap">
+    <LiveFailuresPanel v-if="kind === 'failures'" ref="failuresPanel" :user-id="userId" />
+
+    <div v-else-if="kind === 'open_streams'" class="admin-table-wrap">
       <table class="admin-table">
         <thead>
           <tr>
