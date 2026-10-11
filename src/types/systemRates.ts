@@ -228,9 +228,38 @@ export type PayoutRailDto = {
   enabled: boolean
 }
 
+export type BankFieldKey =
+  | 'firstName'
+  | 'lastName'
+  | 'bankName'
+  | 'branch'
+  | 'ifscCode'
+  | 'accountNumber'
+  | 'upiId'
+  | 'email'
+  | 'phone'
+
+/** One field of the host "Bind bank" form, with its admin toggles and the check it enforces. */
+export type BankFieldRuleDto = {
+  field: BankFieldKey
+  label: string
+  required: boolean
+  /** When true the format check (`format` / `pattern`) is enforced. */
+  validate: boolean
+  minLength: number
+  maxLength: number
+  format: string
+  pattern: string
+  patternFlags: string
+}
+
+export type BankFieldRuleDraft = { required: boolean; validate: boolean }
+
 export type PayoutRailsConfig = {
   epay: PayoutRailDto
   bank: PayoutRailDto
+  /** Absent on backends older than the bank-field-rules release. */
+  bankFields?: BankFieldRuleDto[]
   updatedAt: string
 }
 
@@ -243,6 +272,7 @@ export type PayoutRailUpdate = {
 export type PayoutRailsConfigUpdate = {
   epay?: PayoutRailUpdate
   bank?: PayoutRailUpdate
+  bankFields?: Partial<Record<BankFieldKey, Partial<BankFieldRuleDraft>>>
 }
 
 export type PayoutRailDraft = {

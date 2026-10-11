@@ -23,6 +23,8 @@ import type {
   PayrollFeeTierDraft,
   PayoutRailDraft,
   PayoutRailsConfig,
+  BankFieldKey,
+  BankFieldRuleDraft,
   RateTier,
   RateTierDraft,
   SupportReviewWindowConfigDto,
@@ -188,6 +190,15 @@ const payoutRailsForm = reactive({
   epay: { enabled: true, feePercent: 6, arrivalTime: 'Within 24 hours' } as PayoutRailDraft,
   bank: { enabled: true, feePercent: 6, arrivalTime: '3-5 business days' } as PayoutRailDraft,
 })
+/** Per-field required / format-check toggles for the host "Bind bank" form. */
+const bankFieldsForm = reactive<Partial<Record<BankFieldKey, BankFieldRuleDraft>>>({})
+const bankFieldRows = computed(() => payoutRailsSaved.value?.bankFields ?? [])
+const bankPayToFieldsOff = computed(
+  () =>
+    bankFieldRows.value.length > 0 &&
+    !bankFieldsForm.accountNumber?.required &&
+    !bankFieldsForm.upiId?.required,
+)
 
 const messagingSaved = ref<MessagingConfigDto | null>(null)
 const messagingForm = reactive({
@@ -548,6 +559,9 @@ function applyPayoutRails(cfg: PayoutRailsConfig) {
   payoutRailsForm.bank.enabled = cfg.bank.enabled
   payoutRailsForm.bank.feePercent = cfg.bank.feePercent
   payoutRailsForm.bank.arrivalTime = cfg.bank.arrivalTime
+  for (const f of cfg.bankFields ?? []) {
+    bankFieldsForm[f.field] = { required: f.required, validate: f.validate }
+  }
 }
 
 function applyMessaging(cfg: MessagingConfigDto) {
@@ -1595,6 +1609,7 @@ async function savePayoutRails() {
     const { data } = await systemSettingsApi.updatePayoutRailsConfig({
       epay: toRailBody(payoutRailsForm.epay),
       bank: toRailBody(payoutRailsForm.bank),
+      ...(bankFieldRows.value.length > 0 && { bankFields: { ...bankFieldsForm } }),
     })
     applyPayoutRails(data)
     showToast('Payout methods saved.', 'success')
@@ -4223,7 +4238,7 @@ onMounted(() => {
             <p class="mt-0.5 text-xs text-admin-subtext">
               Enable or disable host withdraw rails (EPAY / BANK) and edit display fee % and arrival
               copy. Display fee does not change payroll math. Disabling blocks new binds and
-              withdrawals; in-flight withdrawals are not cancelled.
+              withdrawals; in-flight withdrawals are not cancelled. Bank form field rules are below.
             </p>
           </div>
 
@@ -4277,6 +4292,75 @@ onMounted(() => {
                 Hosts cannot bind or start new withdrawals with this method until re-enabled.
               </p>
             </div>
+          </div>
+
+          <div v-if="bankFieldRows.length" class="space-y-2">
+            <div>
+              <h3 class="text-xs font-semibold uppercase tracking-wide text-admin-text">
+                Bank form fields
+              </h3>
+              <p class="mt-0.5 text-[11px] text-admin-subtext">
+                What hosts must fill in when binding a bank account. <b>Required</b> makes the
+                field mandatory; <b>Check format</b> enforces the rule shown. With the format check
+                off only the min/max length applies. Max length is always enforced. Applies to new
+                binds and edits; saved accounts are not re-checked.
+              </p>
+            </div>
+            <div class="overflow-x-auto rounded-md border border-admin-border">
+              <table class="w-full text-xs">
+                <thead class="bg-admin-bg/60 text-left text-[11px] text-admin-subtext">
+                  <tr>
+                    <th class="px-2 py-1.5 font-medium">Field</th>
+                    <th class="px-2 py-1.5 font-medium">Required</th>
+                    <th class="px-2 py-1.5 font-medium">Check format</th>
+                    <th class="px-2 py-1.5 font-medium">Validation</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="row in bankFieldRows"
+                    :key="row.field"
+                    class="border-t border-admin-border align-top"
+                  >
+                    <td class="px-2 py-1.5 font-medium text-admin-text">{{ row.label }}</td>
+                    <td class="px-2 py-1.5">
+                      <input
+                        v-if="bankFieldsForm[row.field]"
+                        v-model="bankFieldsForm[row.field]!.required"
+                        type="checkbox"
+                        class="rounded border-admin-border"
+                        :aria-label="`${row.label} required`"
+                        :disabled="savingPayoutRails"
+                      />
+                    </td>
+                    <td class="px-2 py-1.5">
+                      <input
+                        v-if="bankFieldsForm[row.field]"
+                        v-model="bankFieldsForm[row.field]!.validate"
+                        type="checkbox"
+                        class="rounded border-admin-border"
+                        :aria-label="`${row.label} check format`"
+                        :disabled="savingPayoutRails"
+                      />
+                    </td>
+                    <td class="px-2 py-1.5 text-admin-subtext">
+                      <span
+                        :class="bankFieldsForm[row.field]?.validate ? 'text-admin-text' : 'line-through'"
+                      >
+                        {{ row.format }}
+                      </span>
+                      <span class="block text-[11px]">
+                        Length {{ row.minLength }}–{{ row.maxLength }} characters
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p v-if="bankPayToFieldsOff" class="text-[11px] text-admin-warn">
+              Account number and UPI ID are both optional: hosts must still enter at least one of
+              them so payroll has somewhere to pay.
+            </p>
           </div>
 
           <dl class="grid grid-cols-1 gap-2 rounded-md bg-admin-bg px-2.5 py-2 text-xs sm:grid-cols-2">
