@@ -20,6 +20,9 @@ export type GcpThresholds = {
   connectionsCrit?: number
   eventLoopLagWarnMs?: number
   eventLoopLagCritMs?: number
+  /** INF-22: email a "consider downgrading" note when memory stays <= this % for memLowDays days. */
+  memLowPct?: number
+  memLowDays?: number
 }
 
 export type GcpUsageMetrics = {

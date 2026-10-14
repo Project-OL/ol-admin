@@ -264,6 +264,13 @@ onMounted(async () => {
                       </div>
                     </label>
                     <label class="flex flex-col gap-1 text-xs text-admin-subtext">
+                      Memory low (%) / for days (downgrade hint)
+                      <div class="flex gap-2">
+                        <input v-model.number="editForm.thresholds.memLowPct" type="number" min="0" max="100" class="admin-input" placeholder="e.g. 20" />
+                        <input v-model.number="editForm.thresholds.memLowDays" type="number" min="1" max="60" class="admin-input" placeholder="7" />
+                      </div>
+                    </label>
+                    <label class="flex flex-col gap-1 text-xs text-admin-subtext">
                       Disk warn / crit (%)
                       <div class="flex gap-2">
                         <input v-model.number="editForm.thresholds.diskWarn" type="number" class="admin-input" />
