@@ -150,6 +150,8 @@ const hostForm = reactive({
   subscriptionPercent: 75,
   guardianPurchasePercent: 75,
   videoCallHostSharePercent: 60,
+  luckyHostSharePercent: 4,
+  luckyTargetRtpPercent: 92,
 })
 
 const personalExchangeTiers = ref<RateTierDraft[]>([])
@@ -448,6 +450,8 @@ function applyHost(shares: HostRevenueShares) {
   hostForm.subscriptionPercent = bpToPercent(shares.subscriptionBp)
   hostForm.guardianPurchasePercent = bpToPercent(shares.guardianPurchaseBp)
   hostForm.videoCallHostSharePercent = bpToPercent(shares.videoCallHostShareBp)
+  if (shares.luckyHostShareBp != null) hostForm.luckyHostSharePercent = bpToPercent(shares.luckyHostShareBp)
+  if (shares.luckyTargetRtpBp != null) hostForm.luckyTargetRtpPercent = bpToPercent(shares.luckyTargetRtpBp)
 }
 
 function applyCommissionWindow(cfg: CommissionWindowSnapshot) {
@@ -924,6 +928,17 @@ async function saveHostShares() {
       return
     }
   }
+  // Same bounds as the backend: a host cut above 20% or an RTP outside 50–99% is a typo.
+  const luckyHostBp = percentToBp(hostForm.luckyHostSharePercent)
+  const luckyRtpBp = percentToBp(hostForm.luckyTargetRtpPercent)
+  if (!Number.isInteger(luckyHostBp) || luckyHostBp < 0 || luckyHostBp > 2000) {
+    hostError.value = 'Lucky gift host share must be between 0% and 20%.'
+    return
+  }
+  if (!Number.isInteger(luckyRtpBp) || luckyRtpBp < 5000 || luckyRtpBp > 9900) {
+    hostError.value = 'Lucky gift RTP target must be between 50% and 99%.'
+    return
+  }
   savingHost.value = true
   try {
     const { data } = await systemSettingsApi.updateHostRevenueShares({
@@ -931,6 +946,8 @@ async function saveHostShares() {
       subscriptionBp: percentToBp(hostForm.subscriptionPercent),
       guardianPurchaseBp: percentToBp(hostForm.guardianPurchasePercent),
       videoCallHostShareBp: percentToBp(hostForm.videoCallHostSharePercent),
+      luckyHostShareBp: luckyHostBp,
+      luckyTargetRtpBp: luckyRtpBp,
     })
     applyHost(data)
     showToast('Host revenue shares saved.', 'success')
@@ -2173,6 +2190,36 @@ onMounted(() => {
               suffix="%"
               :disabled="savingHost"
             />
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Lucky gift host share</label>
+            <InlineEditField
+              v-model="hostForm.luckyHostSharePercent"
+              type="number"
+              :min="0"
+              :max="20"
+              step="0.01"
+              suffix="%"
+              :disabled="savingHost"
+            />
+            <p class="mt-0.5 text-[11px] text-admin-subtext">
+              Host points (and livestream XP) per lucky gift, of its total cost. 0–20%.
+            </p>
+          </div>
+          <div>
+            <label class="mb-0.5 block text-[11px] text-admin-subtext">Lucky gift RTP target</label>
+            <InlineEditField
+              v-model="hostForm.luckyTargetRtpPercent"
+              type="number"
+              :min="50"
+              :max="99"
+              step="0.01"
+              suffix="%"
+              :disabled="savingHost"
+            />
+            <p class="mt-0.5 text-[11px] text-admin-subtext">
+              Share of lucky-gift spend the draw aims to pay back to senders. 50–99%.
+            </p>
           </div>
 
           <dl

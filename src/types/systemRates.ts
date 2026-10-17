@@ -126,6 +126,10 @@ export type HostRevenueShares = {
   subscriptionBp: number
   guardianPurchaseBp: number
   videoCallHostShareBp: number
+  /** Lucky gifts: host cut of the total cost (400 = 4%). Absent on backends before BE-20 step 1.3. */
+  luckyHostShareBp?: number
+  /** Lucky gifts: reserve-pool RTP target (9200 = 92%). */
+  luckyTargetRtpBp?: number
   updatedAt: string | null
   updatedByAdminId: string | null
 }
@@ -135,6 +139,8 @@ export type HostRevenueSharesUpdate = {
   subscriptionBp?: number
   guardianPurchaseBp?: number
   videoCallHostShareBp?: number
+  luckyHostShareBp?: number
+  luckyTargetRtpBp?: number
 }
 
 export type CommissionWindowSnapshot = {
