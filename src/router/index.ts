@@ -293,6 +293,12 @@ const router = createRouter({
           component: () => import('../views/GcpInfraView.vue'),
           meta: { title: 'GCP Infra & Cost', roles: ['SUPER_ADMIN'] },
         },
+        {
+          path: 'admin/capacity',
+          name: 'gcp-capacity',
+          component: () => import('../views/GcpCapacityView.vue'),
+          meta: { title: 'Capacity', roles: ['SUPER_ADMIN'] },
+        },
       ],
     },
   ],

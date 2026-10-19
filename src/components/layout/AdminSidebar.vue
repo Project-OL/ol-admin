@@ -188,6 +188,13 @@ const allNavItems: NavItem[] = [
     roles: ['SUPER_ADMIN'],
     superAdminOnly: true,
   },
+  {
+    to: '/admin/capacity',
+    label: 'Capacity',
+    icon: 'settings',
+    roles: ['SUPER_ADMIN'],
+    superAdminOnly: true,
+  },
 ]
 
 const navItems = computed(() => {
