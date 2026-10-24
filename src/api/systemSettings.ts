@@ -1,5 +1,11 @@
 import api from '@/api/client'
 import type {
+  LuckyTierDashboard,
+  LuckyTierListItem,
+  LuckyTierModeUpdate,
+  LuckyTierSeedBody,
+} from '@/types/luckyTiers'
+import type {
   CoinPackage,
   CoinPackagesBody,
   CommissionLevel,
@@ -237,6 +243,25 @@ export const systemSettingsApi = {
   updateRestrictedIdentityWords(payload: RestrictedIdentityWordsBody) {
     return api.put<RestrictedIdentityWordsDto>(
       '/admin/system-settings/restricted-words',
+      payload,
+    )
+  },
+
+  getLuckyTiers() {
+    return api.get<{ tiers: LuckyTierListItem[] }>('/admin/system-settings/lucky-tiers')
+  },
+
+  getLuckyTierDashboard(tierId: string) {
+    return api.get<LuckyTierDashboard>(`/admin/system-settings/lucky-tiers/${tierId}/dashboard`)
+  },
+
+  updateLuckyTierMode(tierId: string, payload: LuckyTierModeUpdate) {
+    return api.put<LuckyTierListItem>(`/admin/system-settings/lucky-tiers/${tierId}/mode`, payload)
+  },
+
+  seedLuckyTier(tierId: string, payload: LuckyTierSeedBody) {
+    return api.post<{ seedLogId: string; poolBalance: string | null }>(
+      `/admin/system-settings/lucky-tiers/${tierId}/seed`,
       payload,
     )
   },
