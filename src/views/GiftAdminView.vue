@@ -4,6 +4,7 @@ import axios from 'axios'
 import { format } from 'date-fns'
 import { uploadAdminCatalogAsset } from '@/api/catalogAssetUpload'
 import { giftAdminApi, normalizeGiftCategories } from '@/api/giftAdmin'
+import { systemSettingsApi } from '@/api/systemSettings'
 import type {
   CreateGiftPayload,
   GalleryCategoryAdmin,
@@ -105,6 +106,37 @@ const loadingCatalogGifts = ref(false)
 const gallerySelectedGiftIds = ref<string[]>([])
 const galleryGiftPickerId = ref('')
 const galleryFormError = ref('')
+
+/** C13 / B11 F9: water_v1 rejects P when floor(P × r_bp / 10000) = 0. Use tier r_bp when loaded. */
+const LUCKY_DEFAULT_R_BP = 9200
+const luckyTierRows = ref<{ priceMin: number; priceMax: number | null; rBp: number }[]>([])
+async function loadLuckyTierForF9() {
+  try {
+    const { data } = await systemSettingsApi.getLuckyTiers()
+    luckyTierRows.value = (data.tiers ?? []).map((t) => ({
+      priceMin: t.priceMin,
+      priceMax: t.priceMax,
+      rBp: t.rBp,
+    }))
+  } catch {
+    luckyTierRows.value = []
+  }
+}
+function rBpForCoinCost(coinCost: number): number {
+  const hit = luckyTierRows.value.find(
+    (t) => coinCost >= t.priceMin && (t.priceMax == null || coinCost <= t.priceMax),
+  )
+  return hit?.rBp ?? LUCKY_DEFAULT_R_BP
+}
+const luckyEffectiveRBp = computed(() => {
+  const p = Number(giftForm.coinCost)
+  if (!Number.isFinite(p) || p <= 0) return LUCKY_DEFAULT_R_BP
+  return rBpForCoinCost(p)
+})
+const luckyPriceTooLow = computed(() => {
+  const p = Number(giftForm.coinCost)
+  return giftForm.isLucky && Number.isFinite(p) && p > 0 && p * luckyEffectiveRBp.value < 10_000
+})
 
 const mostSent = computed(() => analytics.value?.mostSentGifts?.slice(0, 5) ?? [])
 
@@ -745,7 +777,13 @@ function formatChange(value: number | null) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadAnalytics(), loadGifts(), loadCategories(), loadGallery()])
+  await Promise.all([
+    loadAnalytics(),
+    loadGifts(),
+    loadCategories(),
+    loadGallery(),
+    loadLuckyTierForF9(),
+  ])
 })
 </script>
 
@@ -1291,6 +1329,15 @@ onMounted(async () => {
               Active
             </label>
           </div>
+          <p
+            v-if="luckyPriceTooLow"
+            class="sm:col-span-2 text-xs text-amber-400"
+            role="status"
+          >
+            Warning (F9): coin cost {{ giftForm.coinCost }} is too low for water-level pool inflow
+            (P × {{ luckyEffectiveRBp }} &lt; 10000). Under enforce the ledger returns
+            LUCKY_PRICE_TOO_LOW. Raise the price so floor(P × r_bp / 10000) ≥ 1 for this tier.
+          </p>
         </div>
       </template>
       <template #footer>
