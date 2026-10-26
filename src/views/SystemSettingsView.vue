@@ -5,6 +5,7 @@ import { format, parseISO } from 'date-fns'
 import { systemSettingsApi } from '@/api/systemSettings'
 import InlineEditField from '@/components/shared/InlineEditField.vue'
 import AppLinksSettingsTab from '@/components/settings/AppLinksSettingsTab.vue'
+import LuckyTiersSettingsTab from '@/components/settings/LuckyTiersSettingsTab.vue'
 import { useAuthStore } from '@/stores/auth'
 import type {
   CallPriceBandDraft,
@@ -60,11 +61,13 @@ type SettingsTab =
   | 'platformReward'
   | 'payroll'
   | 'appLinks'
+  | 'luckyTiers'
 
 const PAYOUT_RAIL_KEYS = ['epay', 'bank'] as const
 
 const TABS: { value: SettingsTab; label: string; short: string }[] = [
   { value: 'host', label: 'Host shares', short: 'Host' },
+  { value: 'luckyTiers', label: 'Lucky tiers', short: 'Lucky' },
   { value: 'callPrice', label: 'Call Price', short: 'Call' },
   { value: 'personal', label: 'Personal', short: 'Personal' },
   { value: 'elite', label: 'Elite tier', short: 'Elite' },
@@ -2122,6 +2125,8 @@ onMounted(() => {
     <!-- Loads its own data; independent of the rates load below -->
     <AppLinksSettingsTab v-if="activeTab === 'appLinks'" />
 
+    <LuckyTiersSettingsTab v-else-if="activeTab === 'luckyTiers'" />
+
     <div v-else-if="loading" class="admin-card py-6 text-center text-xs text-admin-subtext">
       Loading rates…
     </div>
@@ -2218,7 +2223,8 @@ onMounted(() => {
               :disabled="savingHost"
             />
             <p class="mt-0.5 text-[11px] text-admin-subtext">
-              Share of lucky-gift spend the draw aims to pay back to senders. 50–99%.
+              Legacy reserve-pool RTP target (Live-server steering). Under water_v1, each lucky tier
+              has its own <code class="text-xs">r_bp</code> on the Lucky tiers tab. 50–99%.
             </p>
           </div>
 
