@@ -30,6 +30,13 @@ type NavItem = {
 
 const allNavItems: NavItem[] = [
   { to: '/', label: 'Home', icon: 'home', exact: true, roles: ['SUPER_ADMIN'], viewName: 'HomeView' },
+  {
+    to: '/admin/traffic',
+    label: 'Traffic',
+    icon: 'transactions',
+    roles: ['SUPER_ADMIN'],
+    superAdminOnly: true,
+  },
   { to: '/admin/users', label: 'Users', icon: 'users', roles: ['SUPER_ADMIN'], viewName: 'UserListView' },
   {
     to: '/admin/locations',
