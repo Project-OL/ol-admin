@@ -26,7 +26,7 @@ const seedForm = reactive<
 
 function ensureSeedForm(tierId: string) {
   if (!seedForm[tierId]) {
-    seedForm[tierId] = { choice: 'start_empty', amount: '', reason: '' }
+    seedForm[tierId] = { choice: 'seed', amount: '', reason: '' }
   }
   return seedForm[tierId]
 }
@@ -110,8 +110,8 @@ onMounted(() => {
       <p class="mt-0.5 text-xs text-admin-subtext">
         Per price-band pools for server-draw lucky gifts. Global host share and RTP sliders on the
         Host tab still apply; under water_v1 each tier has its own
-        <code class="text-xs">r_bp</code> (inflow rate). Enforce requires a seed decision and
-        normally prior shadow mode.
+        <code class="text-xs">r_bp</code> (inflow rate). Enforce requires a seed decision, a pool
+        at or above floor, and normally prior shadow mode (an override reason skips the last two).
       </p>
     </div>
 
@@ -212,9 +212,8 @@ onMounted(() => {
           <form class="space-y-1" @submit.prevent="submitSeed(tier.tierId)">
             <label class="mb-0.5 block text-[11px] text-admin-subtext">Seed decision (F10)</label>
             <select v-model="ensureSeedForm(tier.tierId).choice" class="admin-input w-full text-xs">
-              <option value="start_empty">start_empty</option>
-              <option value="capped_ladder">capped_ladder</option>
-              <option value="seed">seed (set pool balance)</option>
+              <option value="seed">seed (add to pool)</option>
+              <option value="start_empty">start_empty (enforce needs an override)</option>
             </select>
             <input
               v-if="ensureSeedForm(tier.tierId).choice === 'seed'"
@@ -222,7 +221,7 @@ onMounted(() => {
               type="text"
               inputmode="numeric"
               class="admin-input w-full text-xs"
-              placeholder="Pool balance (coins)"
+              :placeholder="`Coins to add (pool needs ≥ floor ${tier.floor} to enforce)`"
             />
             <input
               v-model="ensureSeedForm(tier.tierId).reason"
