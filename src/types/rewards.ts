@@ -1,4 +1,8 @@
-export type RewardClaimType = 'NORMAL_HOST' | 'ROYAL_HOST' | 'LIVESTREAM_STREAK'
+export type RewardClaimType =
+  | 'NORMAL_HOST'
+  | 'NORMAL_HOST_BASIC'
+  | 'ROYAL_HOST'
+  | 'LIVESTREAM_STREAK'
 
 export type RewardClaim = {
   type: RewardClaimType

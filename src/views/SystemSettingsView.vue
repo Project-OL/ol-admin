@@ -41,6 +41,7 @@ import type {
   RoyalHostRewardConfigDto,
   RoyalHostGiftingTierDraft,
   NormalHostRewardConfigDto,
+  NormalHostBasicRewardConfigDto,
   NormalHostTierDraft,
   RestrictedIdentityWordsDto,
 } from '@/types/systemRates'
@@ -124,6 +125,7 @@ const savingAgencyHost = ref(false)
 const savingLivestreamReward = ref(false)
 const savingRoyalHostReward = ref(false)
 const savingNormalHostReward = ref(false)
+const savingNormalHostBasicReward = ref(false)
 
 const hostError = ref('')
 const callPriceError = ref('')
@@ -146,6 +148,7 @@ const agencyHostError = ref('')
 const livestreamRewardError = ref('')
 const royalHostRewardError = ref('')
 const normalHostRewardError = ref('')
+const normalHostBasicRewardError = ref('')
 
 const hostSaved = ref<HostRevenueShares | null>(null)
 const hostForm = reactive({
@@ -250,6 +253,13 @@ const royalHostGiftingTiers = ref<RoyalHostGiftingTierDraft[]>([])
 
 const normalHostRewardSaved = ref<NormalHostRewardConfigDto | null>(null)
 const normalHostTierDrafts = ref<NormalHostTierDraft[]>([])
+
+const normalHostBasicRewardSaved = ref<NormalHostBasicRewardConfigDto | null>(null)
+const normalHostBasicRewardForm = reactive({
+  enabled: false,
+  requiredMinutes: 60 as number | null,
+  pointsAmount: '800',
+})
 
 const callPriceBands = ref<CallPriceBandDraft[]>([])
 
@@ -619,6 +629,13 @@ function applyNormalHostReward(cfg: NormalHostRewardConfigDto) {
   normalHostTierDrafts.value = cfg.tiers.map((t) => ({ ...t }))
 }
 
+function applyNormalHostBasicReward(cfg: NormalHostBasicRewardConfigDto) {
+  normalHostBasicRewardSaved.value = cfg
+  normalHostBasicRewardForm.enabled = cfg.enabled
+  normalHostBasicRewardForm.requiredMinutes = cfg.requiredMinutes
+  normalHostBasicRewardForm.pointsAmount = cfg.pointsAmount
+}
+
 function defaultCallPriceBands(): CallPriceBandDraft[] {
   return [
     { minLevel: 1, maxLevel: 4, label: '≤Lv4', prices: [1800] },
@@ -761,6 +778,15 @@ async function loadAll() {
       normalHostRewardError.value = apiErrorMessage(
         err,
         'Failed to load Normal Host reward settings.',
+      )
+    }
+    try {
+      const basic = await systemSettingsApi.getNormalHostBasicRewardConfig()
+      applyNormalHostBasicReward(basic.data)
+    } catch (err) {
+      normalHostBasicRewardError.value = apiErrorMessage(
+        err,
+        'Failed to load Normal Host basic reward settings.',
       )
     }
     if (!richTierDrafts.value.length) {
@@ -2069,6 +2095,44 @@ async function saveNormalHostReward() {
     showToast(normalHostRewardError.value, 'error')
   } finally {
     savingNormalHostReward.value = false
+  }
+}
+
+async function saveNormalHostBasicReward() {
+  if (document.activeElement instanceof HTMLElement) {
+    document.activeElement.blur()
+  }
+  await nextTick()
+
+  normalHostBasicRewardError.value = ''
+  const minutes = Number(normalHostBasicRewardForm.requiredMinutes)
+  const points = String(normalHostBasicRewardForm.pointsAmount ?? '').trim()
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
+    normalHostBasicRewardError.value = 'Live minutes must be a whole number from 1 to 1440.'
+    return
+  }
+  if (!/^[1-9]\d{0,11}$/.test(points)) {
+    normalHostBasicRewardError.value = 'Points must be a positive whole number.'
+    return
+  }
+
+  savingNormalHostBasicReward.value = true
+  try {
+    const { data } = await systemSettingsApi.updateNormalHostBasicRewardConfig({
+      enabled: normalHostBasicRewardForm.enabled,
+      requiredMinutes: minutes,
+      pointsAmount: points,
+    })
+    applyNormalHostBasicReward(data)
+    showToast('Normal Host basic reward settings saved.', 'success')
+  } catch (e) {
+    normalHostBasicRewardError.value = apiErrorMessage(
+      e,
+      'Failed to save Normal Host basic reward settings.',
+    )
+    showToast(normalHostBasicRewardError.value, 'error')
+  } finally {
+    savingNormalHostBasicReward.value = false
   }
 }
 
@@ -4033,6 +4097,67 @@ onMounted(() => {
               @click="saveNormalHostReward"
             >
               {{ savingNormalHostReward ? 'Saving…' : 'Save Normal Host reward' }}
+            </button>
+          </div>
+        </div>
+
+        <div class="admin-card max-w-3xl space-y-3">
+          <div>
+            <h2 class="text-sm font-semibold text-admin-text">Normal Host basic daily reward</h2>
+            <p class="mt-0.5 text-xs text-admin-subtext">
+              For Normal Hosts who haven't reached any tier above today: go live for the set
+              minutes today and claim the set points, once per day, whatever they earned. Hosts who
+              reach a tier later the same day can still claim their tier slots. Off hides it from
+              the app.
+            </p>
+          </div>
+
+          <div class="grid gap-2 sm:grid-cols-3">
+            <label class="flex items-center gap-1.5 self-end pb-1 text-xs text-admin-text">
+              <input
+                v-model="normalHostBasicRewardForm.enabled"
+                type="checkbox"
+                class="rounded border-admin-border"
+                :disabled="savingNormalHostBasicReward"
+              />
+              Enabled
+            </label>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Live minutes today</label>
+              <InlineEditField
+                v-model="normalHostBasicRewardForm.requiredMinutes"
+                type="number"
+                :min="1"
+                :max="1440"
+                step="1"
+                :disabled="savingNormalHostBasicReward"
+              />
+            </div>
+            <div>
+              <label class="mb-0.5 block text-[11px] text-admin-subtext">Reward points</label>
+              <InlineEditField
+                v-model="normalHostBasicRewardForm.pointsAmount"
+                type="text"
+                :disabled="savingNormalHostBasicReward"
+              />
+            </div>
+          </div>
+
+          <p class="text-xs text-admin-subtext">
+            Last updated: {{ formatDt(normalHostBasicRewardSaved?.updatedAt ?? null) }}
+          </p>
+          <p v-if="normalHostBasicRewardError" class="text-xs text-admin-danger">
+            {{ normalHostBasicRewardError }}
+          </p>
+
+          <div>
+            <button
+              type="button"
+              class="admin-btn-primary"
+              :disabled="savingNormalHostBasicReward"
+              @click="saveNormalHostBasicReward"
+            >
+              {{ savingNormalHostBasicReward ? 'Saving…' : 'Save basic reward' }}
             </button>
           </div>
         </div>

@@ -394,6 +394,20 @@ export type NormalHostRewardConfigUpdate = {
   tiers: NormalHostTier[]
 }
 
+/** Normal Host basic daily reward: flat points for live minutes on a day with no tier. */
+export type NormalHostBasicRewardConfigDto = {
+  enabled: boolean
+  requiredMinutes: number
+  pointsAmount: string
+  updatedAt: string
+}
+
+export type NormalHostBasicRewardConfigUpdate = {
+  enabled: boolean
+  requiredMinutes: number
+  pointsAmount: string
+}
+
 /** Editable tier row for the Normal Host reward editor. */
 export type NormalHostTierDraft = {
   thresholdPoints: string

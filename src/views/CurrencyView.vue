@@ -238,7 +238,7 @@ const METRIC_HELP: Record<
       '• Admin clawbacks from customers (Adjust debits on coins, trading coins, or points)',
       'Costs subtracted:',
       '• Login / weekly / platform coin rewards (DAILY_LOGIN, WEEKLY_TOPUP, PLATFORM_REWARD coins, VIP_REWARD)',
-      '• Livestream streak, platform, Normal Host and Royal Host point rewards (LIVESTREAM_STREAK_REWARD, PLATFORM_REWARD, NORMAL_HOST_REWARD, ROYAL_HOST_REWARD points)',
+      '• Livestream streak, platform, Normal Host (tier and basic) and Royal Host point rewards (LIVESTREAM_STREAK_REWARD, PLATFORM_REWARD, NORMAL_HOST_REWARD, NORMAL_HOST_BASIC_REWARD, ROYAL_HOST_REWARD points)',
       '• Promotional admin Adjust credits',
       '• Treasury promo / write-off grants',
     ],
