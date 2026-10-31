@@ -35,6 +35,17 @@ export type NormalHostTierListItem = {
   windowDays: number
 }
 
+/** `null` while the basic reward is switched off. */
+export type NormalHostBasicReward = {
+  requiredMinutes: number
+  completedMinutes: number
+  pointsAmount: string
+  available: boolean
+  unlocked: boolean
+  claimed: boolean
+  claimedAt: string | null
+}
+
 export type NormalHostRewardStatus =
   | { eligible: false }
   | {
@@ -44,6 +55,7 @@ export type NormalHostRewardStatus =
       hasTier: false
       nextTier: NormalHostNextTier
       tiers: NormalHostTierListItem[]
+      basicReward?: NormalHostBasicReward | null
     }
   | {
       eligible: true
@@ -60,6 +72,7 @@ export type NormalHostRewardStatus =
       slots: NormalHostSlot[]
       totalClaimedToday: string
       tiers: NormalHostTierListItem[]
+      basicReward?: NormalHostBasicReward | null
     }
 
 export type RoyalHostTimingClaimType = 'TIMING_STEP_1' | 'TIMING_STEP_2'

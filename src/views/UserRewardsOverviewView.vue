@@ -304,6 +304,24 @@ function fmtDate(iso: string) {
                 </span>
               </div>
             </template>
+            <div
+              v-if="overview.normalHostReward.basicReward && (overview.normalHostReward.basicReward.available || overview.normalHostReward.basicReward.claimed)"
+              class="admin-kv-row"
+            >
+              <span class="admin-kv-label">Basic reward</span>
+              <span class="admin-kv-value tabular-nums">
+                {{ formatPoints(Number(overview.normalHostReward.basicReward.pointsAmount)) }} pts ·
+                {{ overview.normalHostReward.basicReward.completedMinutes }} /
+                {{ overview.normalHostReward.basicReward.requiredMinutes }} min ·
+                {{
+                  overview.normalHostReward.basicReward.claimed
+                    ? 'claimed'
+                    : overview.normalHostReward.basicReward.unlocked
+                      ? 'claimable'
+                      : 'locked'
+                }}
+              </span>
+            </div>
           </template>
         </div>
 

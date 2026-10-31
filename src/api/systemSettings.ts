@@ -37,6 +37,8 @@ import type {
   RoyalHostRewardConfigUpdate,
   NormalHostRewardConfigDto,
   NormalHostRewardConfigUpdate,
+  NormalHostBasicRewardConfigDto,
+  NormalHostBasicRewardConfigUpdate,
   RestrictedIdentityWordsBody,
   RestrictedIdentityWordsDto,
   SystemRatesAggregate,
@@ -232,6 +234,19 @@ export const systemSettingsApi = {
   updateNormalHostRewardConfig(payload: NormalHostRewardConfigUpdate) {
     return api.put<NormalHostRewardConfigDto>(
       '/admin/system-settings/normal-host-reward',
+      payload,
+    )
+  },
+
+  getNormalHostBasicRewardConfig() {
+    return api.get<NormalHostBasicRewardConfigDto>(
+      '/admin/system-settings/normal-host-basic-reward',
+    )
+  },
+
+  updateNormalHostBasicRewardConfig(payload: NormalHostBasicRewardConfigUpdate) {
+    return api.put<NormalHostBasicRewardConfigDto>(
+      '/admin/system-settings/normal-host-basic-reward',
       payload,
     )
   },

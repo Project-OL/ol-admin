@@ -292,6 +292,7 @@ onMounted(() => {
         <select v-model="filters.type" class="admin-input w-auto">
           <option value="">All reward types</option>
           <option value="NORMAL_HOST">Normal Host</option>
+          <option value="NORMAL_HOST_BASIC">Normal Host Basic</option>
           <option value="ROYAL_HOST">Royal Host</option>
           <option value="LIVESTREAM_STREAK">Livestream Streak</option>
         </select>
