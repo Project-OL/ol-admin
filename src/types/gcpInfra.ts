@@ -110,3 +110,17 @@ export type GcpCostByServiceParams = {
   month?: number
   refresh?: boolean
 }
+
+/** GET /admin/gcp-infra/livekit-bandwidth (LIVE-63). Bytes are plain numbers (< 2^53). */
+export type LivekitBandwidth = {
+  source: string
+  monthlyQuotaBytes: number
+  monthToDate: { from: string; incomingBytes: number; outgoingBytes: number; totalBytes: number; pctOfQuota: number }
+  rolling30d: { incomingBytes: number; outgoingBytes: number; totalBytes: number; pctOfQuota: number }
+  projectedMonthBytes: number
+  currentMbps: { incoming: number; outgoing: number }
+  peakMbps7d: number
+  hourly7d: Array<{ t: string; incomingMbps: number; outgoingMbps: number }>
+  thresholds: { warnPct: number; critPct: number; portMbps: number; portAlertMbps: number }
+  generatedAt: string
+}

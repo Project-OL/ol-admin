@@ -10,6 +10,7 @@ import type {
   GcpResourceConfigUpdate,
   GcpResourceWithUsage,
   GcpThresholds,
+  LivekitBandwidth,
 } from '@/types/gcpInfra'
 import { formatUsd } from '@/utils/format'
 import { showToast } from '@/utils/toast'
@@ -77,10 +78,58 @@ async function loadCost(refresh = false) {
   }
 }
 
+// LIVE-63: video server (LiveKit VPS) transfer vs its 32 TB/month allowance.
+const bandwidth = ref<LivekitBandwidth | { error: string } | null>(null)
+const loadingBandwidth = ref(false)
+
+async function loadBandwidth(refresh = false) {
+  loadingBandwidth.value = true
+  try {
+    const res = await gcpInfraApi.getLivekitBandwidth(refresh)
+    bandwidth.value = res.data
+  } catch {
+    bandwidth.value = null
+    showToast('Failed to load video server bandwidth', 'error')
+  } finally {
+    loadingBandwidth.value = false
+  }
+}
+
+const bw = computed(() => (bandwidth.value && !isFetchError(bandwidth.value) ? bandwidth.value : null))
+const bwError = computed(() => (bandwidth.value && isFetchError(bandwidth.value) ? bandwidth.value.error : null))
+
+function formatBytes(n: number) {
+  if (n >= 1e12) return `${(n / 1e12).toFixed(2)} TB`
+  if (n >= 1e9) return `${(n / 1e9).toFixed(1)} GB`
+  return `${(n / 1e6).toFixed(0)} MB`
+}
+
+function quotaPct(bytes: number) {
+  return bw.value ? Math.min(100, (bytes / bw.value.monthlyQuotaBytes) * 100) : 0
+}
+
+function quotaBarClass(p: number) {
+  if (!bw.value) return 'bg-admin-accent'
+  if (p >= bw.value.thresholds.critPct) return 'bg-admin-danger'
+  if (p >= bw.value.thresholds.warnPct) return 'bg-amber-500'
+  return 'bg-admin-success'
+}
+
+/** Polyline points for the hourly total (in + out) Mbps sparkline, 0..portMbps scaled to 0..40. */
+const sparkline = computed(() => {
+  const rows = bw.value?.hourly7d ?? []
+  if (rows.length < 2) return ''
+  const max = Math.max(...rows.map((r) => r.incomingMbps + r.outgoingMbps), 1)
+  return rows
+    .map((r, i) => `${((i / (rows.length - 1)) * 300).toFixed(1)},${(40 - ((r.incomingMbps + r.outgoingMbps) / max) * 38).toFixed(1)}`)
+    .join(' ')
+})
+
 function refreshAll() {
   loadResources()
   loadFlags()
   loadCost(true)
+  loadBandwidth(true)
 }
 
 const monthLabel = computed(() => {
@@ -166,7 +215,7 @@ async function resolveFlag(id: string) {
 }
 
 onMounted(async () => {
-  await Promise.all([loadResources(), loadFlags(), loadCost()])
+  await Promise.all([loadResources(), loadFlags(), loadCost(), loadBandwidth()])
 })
 </script>
 
@@ -183,12 +232,88 @@ onMounted(async () => {
       <button
         type="button"
         class="admin-btn-secondary"
-        :disabled="loadingResources || loadingFlags || loadingCost"
+        :disabled="loadingResources || loadingFlags || loadingCost || loadingBandwidth"
         @click="refreshAll"
       >
-        {{ loadingResources || loadingFlags || loadingCost ? 'Refreshing…' : 'Refresh' }}
+        {{ loadingResources || loadingFlags || loadingCost || loadingBandwidth ? 'Refreshing…' : 'Refresh' }}
       </button>
     </div>
+
+    <!-- Video server bandwidth (LIVE-63) -->
+    <section class="admin-card">
+      <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 class="text-lg font-medium">Video server bandwidth (LiveKit VPS)</h2>
+        <p v-if="bw" class="text-xs text-admin-muted">
+          Updated {{ format(new Date(bw.generatedAt), 'dd MMM HH:mm') }} · refreshes every 5 min
+        </p>
+      </div>
+
+      <p v-if="bwError" class="rounded-md bg-admin-danger/10 p-3 text-sm text-admin-danger">{{ bwError }}</p>
+      <p v-else-if="loadingBandwidth && !bw" class="py-6 text-center text-admin-muted">Loading…</p>
+
+      <template v-else-if="bw">
+        <div class="mb-4">
+          <div class="mb-1 flex flex-wrap justify-between gap-2 text-sm">
+            <span>
+              This month (UTC): <strong class="tabular-nums">{{ formatBytes(bw.monthToDate.totalBytes) }}</strong>
+              of {{ formatBytes(bw.monthlyQuotaBytes) }}
+            </span>
+            <span class="tabular-nums">{{ bw.monthToDate.pctOfQuota.toFixed(2) }}%</span>
+          </div>
+          <div class="relative h-3 w-full overflow-hidden rounded-full bg-admin-subtext/15">
+            <div
+              class="h-full rounded-full"
+              :class="quotaBarClass(quotaPct(bw.monthToDate.totalBytes))"
+              :style="{ width: `${Math.max(0.5, quotaPct(bw.monthToDate.totalBytes))}%` }"
+            />
+            <div class="absolute inset-y-0 w-px bg-amber-500" :style="{ left: `${bw.thresholds.warnPct}%` }" title="Alert at 60%" />
+            <div class="absolute inset-y-0 w-px bg-admin-danger" :style="{ left: `${bw.thresholds.critPct}%` }" title="Alert at 80%" />
+          </div>
+          <p class="mt-1 text-xs text-admin-subtext">
+            Marks at {{ bw.thresholds.warnPct }}% and {{ bw.thresholds.critPct }}% are the email alerts. Over 32 TB
+            Hostinger throttles the server to 10 Mbps, which means no video.
+          </p>
+        </div>
+
+        <div class="grid grid-cols-2 gap-4 sm:grid-cols-4">
+          <div>
+            <p class="text-xs text-admin-subtext">Projected this month</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ formatBytes(bw.projectedMonthBytes) }}</p>
+            <p class="text-xs text-admin-muted">{{ ((bw.projectedMonthBytes / bw.monthlyQuotaBytes) * 100).toFixed(1) }}% of allowance</p>
+          </div>
+          <div>
+            <p class="text-xs text-admin-subtext">Last 30 days</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ formatBytes(bw.rolling30d.totalBytes) }}</p>
+            <p class="text-xs text-admin-muted">
+              in {{ formatBytes(bw.rolling30d.incomingBytes) }} · out {{ formatBytes(bw.rolling30d.outgoingBytes) }}
+            </p>
+          </div>
+          <div>
+            <p class="text-xs text-admin-subtext">Now (10 min avg)</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">
+              {{ (bw.currentMbps.incoming + bw.currentMbps.outgoing).toFixed(1) }} Mbps
+            </p>
+            <p class="text-xs text-admin-muted">of ~{{ bw.thresholds.portMbps }} Mbps port</p>
+          </div>
+          <div>
+            <p class="text-xs text-admin-subtext">Peak hour, 7 days</p>
+            <p class="mt-1 text-lg font-semibold tabular-nums">{{ bw.peakMbps7d.toFixed(1) }} Mbps</p>
+            <p class="text-xs text-admin-muted">alert at {{ bw.thresholds.portAlertMbps }} Mbps for 10 min</p>
+          </div>
+        </div>
+
+        <div v-if="sparkline" class="mt-4">
+          <p class="mb-1 text-xs text-admin-subtext">Hourly traffic, last 7 days (in + out)</p>
+          <svg viewBox="0 0 300 40" preserveAspectRatio="none" class="h-12 w-full" role="img" aria-label="Hourly traffic, last 7 days">
+            <polyline :points="sparkline" fill="none" stroke="currentColor" stroke-width="1.5" class="text-admin-accent" vector-effect="non-scaling-stroke" />
+          </svg>
+        </div>
+
+        <p class="mt-3 text-xs text-admin-muted">
+          Source: {{ bw.source }}. Hostinger's own counter runs somewhat higher; check hPanel near the limits.
+        </p>
+      </template>
+    </section>
 
     <!-- Resources -->
     <section class="admin-card">
