@@ -2805,7 +2805,8 @@ onMounted(() => {
           <p class="mt-0.5 text-xs text-admin-subtext">
             Monthly recharge thresholds for RICH I–X. Used for the live badge, rollover carryover,
             and the derived <code>adminTags</code> label on user profiles. New recharges pick up
-            the ladder immediately; existing badges stay until the next recharge or month rollover.
+            the ladder immediately; existing badges only move up on a recharge and are re-checked
+            (and can drop) at the monthly rollover.
           </p>
         </div>
 
