@@ -8,6 +8,8 @@ import ConfirmActionDialog from '@/components/shared/ConfirmActionDialog.vue'
 import { useAgencyPayrollStore } from '@/stores/agencyPayroll'
 import { agencyAdminApi } from '@/api/agencyAdmin'
 import type { AgencyListItem } from '@/types/agency'
+import { agencyPayrollAdminApi } from '@/api/agencyPayrollAdmin'
+import { EPAY_PAYOUT_LIVE, type EpayPayoutAttempt } from '@/types/agencyPayroll'
 import { formatLocalMoney, formatPoints, formatUsd } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 
@@ -50,6 +52,80 @@ const canCompleteManually = computed(() => detail.value?.canCompletePayrollManua
 const isDisputed = computed(() => detail.value?.status === 'DISPUTED')
 const isWaiting = computed(() => detail.value?.status === 'WAITING')
 
+// ── Epay-to-Epay payout ("Pay via Epay") ──
+const epayAttempts = ref<EpayPayoutAttempt[]>([])
+const epayConfirmOpen = ref(false)
+const EPAY_POLL_MS = 5000
+let epayPollTimer: ReturnType<typeof setTimeout> | null = null
+
+/** An attempt that may still move money: manual pay / reverse are blocked server-side too. */
+const liveEpayAttempt = computed(
+  () => epayAttempts.value.find((a) => EPAY_PAYOUT_LIVE.includes(a.status)) ?? null,
+)
+const hostEpayEmail = computed(() =>
+  detail.value?.paymentMethod?.methodType === 'EPAY' ? detail.value.paymentMethod.epayEmail : null,
+)
+const canPayViaEpay = computed(
+  () =>
+    canPay.value &&
+    detail.value?.methodType === 'EPAY' &&
+    !!hostEpayEmail.value &&
+    !liveEpayAttempt.value,
+)
+const epayConfirmMessage = computed(() => {
+  const usd = detail.value?.hostPayoutUsd != null ? formatUsd(Number(detail.value.hostPayoutUsd)) : '—'
+  return `Send ${usd} from the company Epay balance to ${hostEpayEmail.value ?? '—'}. This moves real money and is sent once; the result is confirmed with Epay automatically.`
+})
+
+function stopEpayPoll() {
+  if (epayPollTimer) clearTimeout(epayPollTimer)
+  epayPollTimer = null
+}
+
+async function loadEpayAttempts(silent = false) {
+  stopEpayPoll()
+  const id = withdrawalId.value
+  if (!id || !isPlatform.value) {
+    epayAttempts.value = []
+    return
+  }
+  const wasLive = !!liveEpayAttempt.value
+  try {
+    const { data } = await agencyPayrollAdminApi.listEpayPayouts(id, { silent })
+    if (id !== withdrawalId.value) return
+    epayAttempts.value = data.items
+  } catch {
+    // keep the last list; the next poll retries
+  }
+  if (liveEpayAttempt.value) {
+    // Cheap poll (one indexed query) only while something is in flight; stops when final.
+    epayPollTimer = setTimeout(() => void loadEpayAttempts(true), EPAY_POLL_MS)
+  } else if (wasLive) {
+    // Just settled: the withdrawal status changed (WAITING on success).
+    await store.fetchWithdrawalDetail(id).catch(() => {})
+  }
+}
+
+async function handlePayViaEpay() {
+  if (!detail.value || actingLocal.value) return
+  actingLocal.value = true
+  try {
+    await store.payViaEpay(detail.value.id)
+    epayConfirmOpen.value = false
+  } catch {
+    // the API client already showed the server's message (e.g. EPAY_PAYOUT_DISABLED)
+  } finally {
+    actingLocal.value = false
+    await loadEpayAttempts()
+  }
+}
+
+function epayStatusTone(s: EpayPayoutAttempt['status']) {
+  if (s === 'SUCCESS') return 'text-admin-success'
+  if (s === 'FAILED') return 'text-admin-danger'
+  return 'text-admin-warn'
+}
+
 const waitingLabel = computed(() => {
   const expires = detail.value?.waitingExpiresAt
   if (!expires) return '—'
@@ -85,6 +161,7 @@ async function load() {
   } catch {
     store.withdrawalDetail = null
   }
+  await loadEpayAttempts(true)
 }
 
 function onPayFile(ev: Event) {
@@ -275,6 +352,7 @@ onMounted(() => {
 watch(withdrawalId, () => load())
 onUnmounted(() => {
   if (tick) clearInterval(tick)
+  stopEpayPoll()
   store.clearDetail()
 })
 </script>
@@ -450,14 +528,57 @@ onUnmounted(() => {
             <p v-else class="text-sm text-admin-muted">No payment method</p>
           </div>
 
+          <div v-if="isPlatform && (epayAttempts.length || canPayViaEpay)" class="admin-card space-y-2">
+            <div class="flex items-center justify-between">
+              <h2 class="text-sm font-semibold">Epay payouts</h2>
+              <span v-if="liveEpayAttempt" class="flex items-center gap-1.5 text-xs text-admin-warn">
+                <span class="h-2 w-2 animate-pulse rounded-full bg-admin-warn" />
+                Confirming with Epay…
+              </span>
+            </div>
+            <p v-if="!epayAttempts.length" class="text-sm text-admin-muted">
+              No Epay payout yet. "Pay via Epay" sends the host payout straight to their Epay account.
+            </p>
+            <ul v-else class="divide-y divide-admin-border text-sm">
+              <li v-for="a in epayAttempts" :key="a.id" class="py-2">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <span class="font-semibold" :class="epayStatusTone(a.status)">{{ a.status }}</span>
+                  <span class="tabular-nums">{{ a.amount }} {{ a.currency }}</span>
+                </div>
+                <p class="font-mono text-xs text-admin-subtext">
+                  {{ a.merchantOrderNo }}<template v-if="a.epayOrderNo"> · Epay {{ a.epayOrderNo }}</template>
+                </p>
+                <p class="text-xs text-admin-muted">
+                  To {{ a.receiveEpayAccount }} · {{ formatDate(a.createdAt) }}
+                  <template v-if="a.fee"> · fee {{ a.fee }}</template>
+                  <template v-if="a.epayStatus"> · Epay status {{ a.epayStatus }}</template>
+                </p>
+                <p v-if="a.failureReason" class="text-xs text-admin-warn">{{ a.failureReason }}</p>
+              </li>
+            </ul>
+            <p v-if="liveEpayAttempt" class="text-xs text-admin-muted">
+              Reverse and manual pay are locked until Epay reports a final result, so the host can
+              never be both paid and refunded.
+            </p>
+          </div>
+
           <div class="admin-card flex flex-wrap gap-2">
             <button
-              v-if="canPay"
+              v-if="canPayViaEpay"
               type="button"
               class="admin-btn-primary text-sm"
+              :disabled="actingLocal"
+              @click="epayConfirmOpen = true"
+            >
+              Pay via Epay
+            </button>
+            <button
+              v-if="canPay && !liveEpayAttempt"
+              type="button"
+              :class="canPayViaEpay ? 'admin-btn-secondary text-sm' : 'admin-btn-primary text-sm'"
               @click="payOpen = true; payFile = null"
             >
-              Pay
+              {{ canPayViaEpay ? 'Paid manually (upload proof)' : 'Pay' }}
             </button>
             <button
               v-if="canCompleteManually"
@@ -468,7 +589,7 @@ onUnmounted(() => {
               Attach proof &amp; complete
             </button>
             <button
-              v-if="canReverse"
+              v-if="canReverse && !liveEpayAttempt"
               type="button"
               class="admin-btn-danger text-sm"
               @click="reverseOpen = true"
@@ -670,6 +791,17 @@ onUnmounted(() => {
         </button>
       </template>
     </BaseDialog>
+
+    <ConfirmActionDialog
+      :open="epayConfirmOpen"
+      title="Pay via Epay"
+      :message="epayConfirmMessage"
+      confirm-label="Send payment"
+      variant="warn"
+      :require-reason="false"
+      @close="epayConfirmOpen = false"
+      @confirm="handlePayViaEpay"
+    />
 
     <ConfirmActionDialog
       :open="reverseOpen"
