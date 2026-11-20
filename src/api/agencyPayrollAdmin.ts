@@ -7,6 +7,8 @@ import type {
   AdminPendingPlatformPage,
   AdminWithdrawalDetail,
   CursorPageQuery,
+  EpayPayoutAttempt,
+  EpayPayoutResult,
 } from '@/types/agencyPayroll'
 
 export const agencyPayrollAdminApi = {
@@ -45,6 +47,21 @@ export const agencyPayrollAdminApi = {
     return api.post<{ ok: boolean; hostPayoutPoints: string; waitingExpiresAt: string }>(
       `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/complete`,
       { proofS3Key, proofS3Bucket },
+    )
+  },
+
+  /** Transfer the host payout from our Epay balance to the host's Epay account (sent once). */
+  payViaEpay(withdrawalId: string) {
+    return api.post<EpayPayoutResult>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/epay-payout`,
+      {},
+    )
+  },
+
+  listEpayPayouts(withdrawalId: string, opts: { silent?: boolean } = {}) {
+    return api.get<{ items: EpayPayoutAttempt[] }>(
+      `/admin/agency/withdrawal/${encodeURIComponent(withdrawalId)}/epay-payouts`,
+      opts.silent ? { skipErrorToast: true } : undefined,
     )
   },
 

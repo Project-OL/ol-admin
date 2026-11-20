@@ -170,6 +170,31 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
       }
     },
 
+    /**
+     * "Pay via Epay". The server sends the transfer exactly once; this never retries on its own.
+     * SUBMITTED / UNKNOWN finish in the background (reconcile job) - the view polls the attempts.
+     */
+    async payViaEpay(withdrawalId: string) {
+      this.acting = true
+      try {
+        const { data } = await agencyPayrollAdminApi.payViaEpay(withdrawalId)
+        if (data.status === 'SUCCESS') {
+          showToast('Paid via Epay - withdrawal is now in its waiting window', 'success')
+        } else if (data.status === 'FAILED') {
+          showToast(`Epay did not send it: ${data.failureReason ?? 'rejected'}. Nothing was paid.`, 'error')
+        } else {
+          showToast('Sent to Epay - confirming. This page updates by itself.', 'info')
+        }
+        if (this.withdrawalDetail?.id === withdrawalId) {
+          await this.fetchWithdrawalDetail(withdrawalId)
+        }
+        if (this.pendingAdminPay.length) void this.fetchPendingAdminPay()
+        return data
+      } finally {
+        this.acting = false
+      }
+    },
+
     async updatePayrollProof(
       withdrawalId: string,
       file: File,

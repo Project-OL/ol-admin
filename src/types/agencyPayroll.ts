@@ -162,6 +162,41 @@ export type CursorPageQuery = {
   handler?: 'PLATFORM' | 'AGENCY'
 }
 
+/** One Epay-to-Epay payout attempt (GET /admin/agency/withdrawal/:id/epay-payouts). */
+export type EpayPayoutAttemptStatus = 'SUBMITTING' | 'SUBMITTED' | 'UNKNOWN' | 'SUCCESS' | 'FAILED'
+
+export type EpayPayoutAttempt = {
+  id: string
+  merchantOrderNo: string
+  epayOrderNo: string | null
+  receiveEpayAccount: string
+  amount: string
+  currency: string
+  status: EpayPayoutAttemptStatus
+  epayStatus: string | null
+  fee: string | null
+  failureReason: string | null
+  requestedByAdminId: string | null
+  submittedAt: string | null
+  completedAt: string | null
+  lastQueriedAt: string | null
+  createdAt: string
+}
+
+export type EpayPayoutResult = {
+  ok: boolean
+  merchantOrderNo: string
+  status: 'SUCCESS' | 'SUBMITTED' | 'UNKNOWN' | 'FAILED'
+  epayOrderNo?: string | null
+  failureReason?: string
+}
+
+export const EPAY_PAYOUT_LIVE: readonly EpayPayoutAttemptStatus[] = [
+  'SUBMITTING',
+  'SUBMITTED',
+  'UNKNOWN',
+]
+
 export type AdminWithdrawalDetail = {
   id: string
   withdrawalId: string
