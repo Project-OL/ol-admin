@@ -181,7 +181,11 @@ export const useAgencyPayrollStore = defineStore('agencyPayroll', {
         if (data.status === 'SUCCESS') {
           showToast('Paid via Epay - withdrawal is now in its waiting window', 'success')
         } else if (data.status === 'FAILED') {
-          showToast(`Epay did not send it: ${data.failureReason ?? 'rejected'}. Nothing was paid.`, 'error')
+          const why =
+            data.failureReason === 'INSUFFICIENT_MERCHANT_BALANCE'
+              ? 'the company Epay balance is too low - top it up, then pay again'
+              : (data.failureReason ?? 'rejected')
+          showToast(`Epay did not send it: ${why}. Nothing was paid.`, 'error')
         } else {
           showToast('Sent to Epay - confirming. This page updates by itself.', 'info')
         }
