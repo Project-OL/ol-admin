@@ -261,8 +261,19 @@ export type BankFieldRuleDto = {
 
 export type BankFieldRuleDraft = { required: boolean; validate: boolean }
 
+/**
+ * EPAY is switched per audience. `enabled` = enabledForAgents || enabledForUsers.
+ * The two fields are absent on backends older than the 2026-11-24 release.
+ */
+export type EpayRailDto = PayoutRailDto & {
+  /** Users with is_agent = true. */
+  enabledForAgents?: boolean
+  /** Everyone else (hosts, plain users). Business rule keeps it off. */
+  enabledForUsers?: boolean
+}
+
 export type PayoutRailsConfig = {
-  epay: PayoutRailDto
+  epay: EpayRailDto
   bank: PayoutRailDto
   /** Absent on backends older than the bank-field-rules release. */
   bankFields?: BankFieldRuleDto[]
@@ -276,7 +287,8 @@ export type PayoutRailUpdate = {
 }
 
 export type PayoutRailsConfigUpdate = {
-  epay?: PayoutRailUpdate
+  /** `enabled` is the legacy single switch: the backend maps it to agents only. */
+  epay?: PayoutRailUpdate & { enabledForAgents?: boolean; enabledForUsers?: boolean }
   bank?: PayoutRailUpdate
   bankFields?: Partial<Record<BankFieldKey, Partial<BankFieldRuleDraft>>>
 }
@@ -285,6 +297,12 @@ export type PayoutRailDraft = {
   enabled: boolean
   feePercent: number
   arrivalTime: string
+}
+
+/** EPAY form: `enabled` is unused; the two audience switches drive it. */
+export type EpayRailDraft = PayoutRailDraft & {
+  enabledForAgents: boolean
+  enabledForUsers: boolean
 }
 
 export type MessagingActionUnit = 'seconds' | 'minutes' | 'hours'
