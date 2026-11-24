@@ -22,6 +22,7 @@ import type {
   PayrollConfigSnapshot,
   PayrollCountryFxDraft,
   PayrollFeeTierDraft,
+  EpayRailDraft,
   PayoutRailDraft,
   PayoutRailsConfig,
   BankFieldKey,
@@ -195,7 +196,13 @@ const payrollCountryRates = ref<PayrollCountryFxDraft[]>([])
 
 const payoutRailsSaved = ref<PayoutRailsConfig | null>(null)
 const payoutRailsForm = reactive({
-  epay: { enabled: true, feePercent: 6, arrivalTime: 'Within 24 hours' } as PayoutRailDraft,
+  epay: {
+    enabled: true,
+    enabledForAgents: true,
+    enabledForUsers: false,
+    feePercent: 6,
+    arrivalTime: 'Within 24 hours',
+  } as EpayRailDraft,
   bank: { enabled: true, feePercent: 6, arrivalTime: '3-5 business days' } as PayoutRailDraft,
 })
 /** Per-field required / format-check toggles for the host "Bind bank" form. */
@@ -571,6 +578,9 @@ function usdToPointsLabel(usd: number | null | undefined) {
 function applyPayoutRails(cfg: PayoutRailsConfig) {
   payoutRailsSaved.value = cfg
   payoutRailsForm.epay.enabled = cfg.epay.enabled
+  // Older backend (single switch): it governed everyone, show it as the agents' switch.
+  payoutRailsForm.epay.enabledForAgents = cfg.epay.enabledForAgents ?? cfg.epay.enabled
+  payoutRailsForm.epay.enabledForUsers = cfg.epay.enabledForUsers ?? false
   payoutRailsForm.epay.feePercent = cfg.epay.feePercent
   payoutRailsForm.epay.arrivalTime = cfg.epay.arrivalTime
   payoutRailsForm.bank.enabled = cfg.bank.enabled
@@ -1626,21 +1636,28 @@ async function savePayoutRails() {
     }
   }
 
-  const bothOff = !payoutRailsForm.epay.enabled && !payoutRailsForm.bank.enabled
-  const disablingEpay = Boolean(payoutRailsSaved.value?.epay.enabled && !payoutRailsForm.epay.enabled)
-  const disablingBank = Boolean(payoutRailsSaved.value?.bank.enabled && !payoutRailsForm.bank.enabled)
+  const saved = payoutRailsSaved.value
+  const form = payoutRailsForm
+  const savedAgents = saved ? (saved.epay.enabledForAgents ?? saved.epay.enabled) : false
+  const savedUsers = saved?.epay.enabledForUsers ?? false
+  const disabling = [
+    savedAgents && !form.epay.enabledForAgents ? 'EPAY for agents' : null,
+    savedUsers && !form.epay.enabledForUsers ? 'EPAY for users' : null,
+    saved?.bank.enabled && !form.bank.enabled ? 'BANK' : null,
+  ].filter(Boolean)
+  const usersHaveNoRail = !form.epay.enabledForUsers && !form.bank.enabled
+  const agentsHaveNoRail = !form.epay.enabledForAgents && !form.bank.enabled
 
-  if (bothOff) {
+  if (usersHaveNoRail || agentsHaveNoRail) {
+    const who =
+      usersHaveNoRail && agentsHaveNoRail ? 'Hosts and agents' : usersHaveNoRail ? 'Hosts and users' : 'Agents'
     const ok = window.confirm(
-      'Both EPAY and BANK will be disabled. Hosts cannot withdraw by any method until you re-enable at least one. Continue?',
+      `${who} will have no withdraw method (EPAY and BANK both off for them) until you re-enable one. Continue?`,
     )
     if (!ok) return
-  } else if (disablingEpay || disablingBank) {
-    const names = [disablingEpay ? 'EPAY' : null, disablingBank ? 'BANK' : null]
-      .filter(Boolean)
-      .join(' and ')
+  } else if (disabling.length) {
     const ok = window.confirm(
-      `${names} will be disabled. Hosts cannot bind or start new withdrawals with this method until re-enabled. Continue?`,
+      `${disabling.join(' and ')} will be disabled. They cannot bind or start new withdrawals with this method until re-enabled. Continue?`,
     )
     if (!ok) return
   }
@@ -1653,7 +1670,14 @@ async function savePayoutRails() {
       arrivalTime: rail.arrivalTime.trim(),
     })
     const { data } = await systemSettingsApi.updatePayoutRailsConfig({
-      epay: toRailBody(payoutRailsForm.epay),
+      // `enabled` mirrors the agents' switch: the backend maps the legacy field to agents only,
+      // so it is the right value for a backend that predates the per-audience switch too.
+      epay: {
+        ...toRailBody(payoutRailsForm.epay),
+        enabled: payoutRailsForm.epay.enabledForAgents,
+        enabledForAgents: payoutRailsForm.epay.enabledForAgents,
+        enabledForUsers: payoutRailsForm.epay.enabledForUsers,
+      },
       bank: toRailBody(payoutRailsForm.bank),
       ...(bankFieldRows.value.length > 0 && { bankFields: { ...bankFieldsForm } }),
     })
@@ -4415,8 +4439,8 @@ onMounted(() => {
           <div>
             <h2 class="text-sm font-semibold text-admin-text">Payout methods</h2>
             <p class="mt-0.5 text-xs text-admin-subtext">
-              Enable or disable host withdraw rails (EPAY / BANK) and edit display fee % and arrival
-              copy. Display fee does not change payroll math. Disabling blocks new binds and
+              Enable or disable withdraw rails (EPAY separately for agents and users / BANK for
+              everyone) and edit display fee % and arrival copy. Display fee does not change payroll math. Disabling blocks new binds and
               withdrawals; in-flight withdrawals are not cancelled. Bank form field rules are below.
             </p>
           </div>
@@ -4431,9 +4455,29 @@ onMounted(() => {
                 <h3 class="text-xs font-semibold uppercase tracking-wide text-admin-text">
                   {{ railKey === 'epay' ? 'EPAY' : 'BANK' }}
                 </h3>
-                <label class="flex items-center gap-1.5 text-xs text-admin-text">
+                <div v-if="railKey === 'epay'" class="flex items-center gap-3">
+                  <label class="flex items-center gap-1.5 text-xs text-admin-text">
+                    <input
+                      v-model="payoutRailsForm.epay.enabledForAgents"
+                      type="checkbox"
+                      class="rounded border-admin-border"
+                      :disabled="savingPayoutRails"
+                    />
+                    Agents
+                  </label>
+                  <label class="flex items-center gap-1.5 text-xs text-admin-text">
+                    <input
+                      v-model="payoutRailsForm.epay.enabledForUsers"
+                      type="checkbox"
+                      class="rounded border-admin-border"
+                      :disabled="savingPayoutRails"
+                    />
+                    Users
+                  </label>
+                </div>
+                <label v-else class="flex items-center gap-1.5 text-xs text-admin-text">
                   <input
-                    v-model="payoutRailsForm[railKey].enabled"
+                    v-model="payoutRailsForm.bank.enabled"
                     type="checkbox"
                     class="rounded border-admin-border"
                     :disabled="savingPayoutRails"
@@ -4441,6 +4485,11 @@ onMounted(() => {
                   Enabled
                 </label>
               </div>
+
+              <p v-if="railKey === 'epay'" class="text-[11px] text-admin-subtext">
+                Agents = accounts that own an agency. Users = everyone else, including hosts
+                (normally kept off).
+              </p>
 
               <div>
                 <label class="mb-0.5 block text-[11px] text-admin-subtext">Display fee</label>
@@ -4465,10 +4514,16 @@ onMounted(() => {
               </div>
 
               <p
-                v-if="!payoutRailsForm[railKey].enabled"
+                v-if="railKey === 'epay' && !payoutRailsForm.epay.enabledForAgents && !payoutRailsForm.epay.enabledForUsers"
                 class="text-[11px] text-admin-warn"
               >
-                Hosts cannot bind or start new withdrawals with this method until re-enabled.
+                Nobody can bind or start new withdrawals with EPAY until re-enabled.
+              </p>
+              <p
+                v-else-if="railKey === 'bank' && !payoutRailsForm.bank.enabled"
+                class="text-[11px] text-admin-warn"
+              >
+                Nobody can bind or start new withdrawals with BANK until re-enabled.
               </p>
             </div>
           </div>
@@ -4552,10 +4607,16 @@ onMounted(() => {
           </dl>
 
           <p
-            v-if="!payoutRailsForm.epay.enabled && !payoutRailsForm.bank.enabled"
+            v-if="!payoutRailsForm.bank.enabled && !payoutRailsForm.epay.enabledForUsers"
             class="text-xs text-admin-danger"
           >
-            Both rails are off — hosts cannot withdraw by any method.
+            BANK is off and EPAY is off for users: hosts and users cannot withdraw by any method.
+          </p>
+          <p
+            v-if="!payoutRailsForm.bank.enabled && !payoutRailsForm.epay.enabledForAgents"
+            class="text-xs text-admin-danger"
+          >
+            BANK is off and EPAY is off for agents: agents cannot withdraw by any method.
           </p>
 
           <p v-if="payoutRailsError" class="text-xs text-admin-danger">{{ payoutRailsError }}</p>
