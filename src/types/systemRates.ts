@@ -270,6 +270,8 @@ export type EpayRailDto = PayoutRailDto & {
   enabledForAgents?: boolean
   /** Everyone else (hosts, plain users). Business rule keeps it off. */
   enabledForUsers?: boolean
+  /** EPAY-only minimum withdrawal in USD (USD and USDT alike); absent before 2026-11-26. */
+  minWithdrawalUsd?: number
 }
 
 export type PayoutRailsConfig = {
@@ -288,7 +290,11 @@ export type PayoutRailUpdate = {
 
 export type PayoutRailsConfigUpdate = {
   /** `enabled` is the legacy single switch: the backend maps it to agents only. */
-  epay?: PayoutRailUpdate & { enabledForAgents?: boolean; enabledForUsers?: boolean }
+  epay?: PayoutRailUpdate & {
+    enabledForAgents?: boolean
+    enabledForUsers?: boolean
+    minWithdrawalUsd?: number
+  }
   bank?: PayoutRailUpdate
   bankFields?: Partial<Record<BankFieldKey, Partial<BankFieldRuleDraft>>>
 }
@@ -303,6 +309,8 @@ export type PayoutRailDraft = {
 export type EpayRailDraft = PayoutRailDraft & {
   enabledForAgents: boolean
   enabledForUsers: boolean
+  /** null when the backend predates the field (then it is not sent). */
+  minWithdrawalUsd: number | null
 }
 
 export type MessagingActionUnit = 'seconds' | 'minutes' | 'hours'
