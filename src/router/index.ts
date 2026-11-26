@@ -192,6 +192,16 @@ const router = createRouter({
           },
         },
         {
+          path: 'admin/payments',
+          name: 'payments',
+          component: () => import('../views/PaymentsView.vue'),
+          meta: {
+            title: 'Payments',
+            roles: ['SUPER_ADMIN'],
+            viewName: 'PaymentsView',
+          },
+        },
+        {
           path: 'admin/ledger-audit',
           name: 'ledger-audit',
           component: () => import('../views/LedgerAuditView.vue'),

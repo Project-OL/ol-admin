@@ -16,6 +16,7 @@ const ACTION_LABEL: Record<ModerationNotificationType, string> = {
   LIVE_AUDIO_MUTE: 'Muted live audio',
   MESSAGING_DISABLE: 'Disabled messaging',
   PROFILE_PICTURE_REMOVED: 'Removed profile picture',
+  PAYMENT_REFUND_SUSPENSION: 'Purchase refunded: account suspended',
 }
 
 async function toggle() {
