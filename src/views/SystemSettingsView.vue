@@ -202,6 +202,7 @@ const payoutRailsForm = reactive({
     enabledForUsers: false,
     feePercent: 6,
     arrivalTime: 'Within 24 hours',
+    minWithdrawalUsd: 1000,
   } as EpayRailDraft,
   bank: { enabled: true, feePercent: 6, arrivalTime: '3-5 business days' } as PayoutRailDraft,
 })
@@ -583,6 +584,7 @@ function applyPayoutRails(cfg: PayoutRailsConfig) {
   payoutRailsForm.epay.enabledForUsers = cfg.epay.enabledForUsers ?? false
   payoutRailsForm.epay.feePercent = cfg.epay.feePercent
   payoutRailsForm.epay.arrivalTime = cfg.epay.arrivalTime
+  payoutRailsForm.epay.minWithdrawalUsd = cfg.epay.minWithdrawalUsd ?? null
   payoutRailsForm.bank.enabled = cfg.bank.enabled
   payoutRailsForm.bank.feePercent = cfg.bank.feePercent
   payoutRailsForm.bank.arrivalTime = cfg.bank.arrivalTime
@@ -1635,6 +1637,11 @@ async function savePayoutRails() {
       return
     }
   }
+  const epayMin = payoutRailsForm.epay.minWithdrawalUsd
+  if (epayMin != null && (!Number.isFinite(epayMin) || epayMin <= 0 || epayMin > 10_000_000)) {
+    payoutRailsError.value = 'EPAY minimum withdrawal must be between $0.01 and $10,000,000.'
+    return
+  }
 
   const saved = payoutRailsSaved.value
   const form = payoutRailsForm
@@ -1677,6 +1684,7 @@ async function savePayoutRails() {
         enabled: payoutRailsForm.epay.enabledForAgents,
         enabledForAgents: payoutRailsForm.epay.enabledForAgents,
         enabledForUsers: payoutRailsForm.epay.enabledForUsers,
+        ...(epayMin != null && { minWithdrawalUsd: Math.round(epayMin * 100) / 100 }),
       },
       bank: toRailBody(payoutRailsForm.bank),
       ...(bankFieldRows.value.length > 0 && { bankFields: { ...bankFieldsForm } }),
@@ -4511,6 +4519,23 @@ onMounted(() => {
                   empty-label="—"
                   :disabled="savingPayoutRails"
                 />
+              </div>
+
+              <div v-if="railKey === 'epay' && payoutRailsForm.epay.minWithdrawalUsd != null">
+                <label class="mb-0.5 block text-[11px] text-admin-subtext">
+                  Minimum withdrawal (USD and USDT)
+                </label>
+                <InlineEditField
+                  v-model="payoutRailsForm.epay.minWithdrawalUsd"
+                  type="number"
+                  :min="0.01"
+                  step="0.01"
+                  suffix="USD"
+                  :disabled="savingPayoutRails"
+                />
+                <p class="mt-0.5 text-[11px] text-admin-subtext">
+                  EPAY only. BANK uses the payroll minimum.
+                </p>
               </div>
 
               <p
