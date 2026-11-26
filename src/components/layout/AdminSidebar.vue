@@ -119,6 +119,13 @@ const allNavItems: NavItem[] = [
     viewName: 'PushNotificationsView',
   },
   {
+    to: '/admin/payments',
+    label: 'Payments',
+    icon: 'transactions',
+    roles: ['SUPER_ADMIN'],
+    viewName: 'PaymentsView',
+  },
+  {
     to: '/admin/ledger-audit',
     label: 'Ledger Audit',
     icon: 'ledger',

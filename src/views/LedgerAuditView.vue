@@ -27,6 +27,8 @@ const CODE_OPTIONS: { value: LedgerAuditCode | ''; label: string }[] = [
   { value: 'NON_APP_ADMIN_LEDGER', label: 'Admin ledger (INFO)' },
   { value: 'NON_APP_UNKNOWN_LEDGER', label: 'Unknown ledger' },
   { value: 'LEDGER_BALANCE_CHAIN_BREAK', label: 'Balance chain break' },
+  { value: 'PAYMENT_REFUND', label: 'Purchase refunded (buyer)' },
+  { value: 'PAYMENT_REFUND_GIFT_RECIPIENT', label: 'Got coins from a refunder' },
 ]
 
 const CATEGORY_OPTIONS: { value: LedgerAuditCategory | ''; label: string }[] = [
@@ -63,6 +65,7 @@ const PRESETS: { id: string; label: string; category?: LedgerAuditCategory; code
     { id: 'chain', label: 'Balance integrity', code: 'LEDGER_BALANCE_CHAIN_BREAK' },
     { id: 'admin', label: 'Admin money trail', code: 'NON_APP_ADMIN_LEDGER' },
     { id: 'unknown', label: 'Suspicious money', code: 'NON_APP_UNKNOWN_LEDGER' },
+    { id: 'refund', label: 'Payment refunds', code: 'PAYMENT_REFUND' },
   ]
 
 const route = useRoute()

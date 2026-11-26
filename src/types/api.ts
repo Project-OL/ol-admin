@@ -513,6 +513,7 @@ export type ModerationNotificationType =
   | 'LIVE_AUDIO_MUTE'
   | 'MESSAGING_DISABLE'
   | 'PROFILE_PICTURE_REMOVED'
+  | 'PAYMENT_REFUND_SUSPENSION'
 
 export interface SuperAdminModerationNotification {
   id: string
