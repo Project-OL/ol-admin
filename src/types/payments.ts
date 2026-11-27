@@ -106,6 +106,51 @@ export type PaymentAttentionResponse = {
   payouts: AttentionPayout[]
 }
 
+export type AutoPayoutConfig = {
+  enabled: boolean
+  maxSinglePayoutUsd: string
+  userDailyCapUsd: string
+  platformDailyCapUsd: string
+  emailChangeHoldHours: number
+  minBalanceBufferUsd: string
+  feeReserveUsd: string
+  updatedAt: string
+}
+
+export type AutoPayoutSkipReason =
+  | 'ABOVE_SINGLE_LIMIT'
+  | 'USER_DAILY_CAP'
+  | 'EMAIL_RECENTLY_CHANGED'
+  | 'ACCOUNT_NOT_ACTIVE'
+  | 'POINTS_FROZEN'
+  | 'SUSPECT_LIST'
+  | 'NO_EPAY_ACCOUNT'
+
+export type AutoPayoutRun = {
+  at: string
+  enabled: boolean
+  stoppedBy:
+    | null
+    | 'DISABLED'
+    | 'EPAY_PAYOUT_OFF'
+    | 'PLATFORM_DAILY_CAP'
+    | 'LOW_BALANCE'
+    | 'BALANCE_UNAVAILABLE'
+  balanceUsd: string | null
+  paid: { withdrawalId: string; amountUsd: string; status: string }[]
+  skipped: { withdrawalId: string; amountUsd: string; reason: AutoPayoutSkipReason }[]
+}
+
+export type AutoPayoutConfigPatch = Partial<{
+  enabled: boolean
+  maxSinglePayoutUsd: number
+  userDailyCapUsd: number
+  platformDailyCapUsd: number
+  emailChangeHoldHours: number
+  minBalanceBufferUsd: number
+  feeReserveUsd: number
+}>
+
 export type AdminPaymentRefundBody = {
   channel: PaymentChannel
   purchaseExternalId: string
