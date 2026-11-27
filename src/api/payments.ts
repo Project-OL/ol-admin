@@ -2,6 +2,9 @@ import api from '@/api/client'
 import type {
   AdminPaymentRefundBody,
   AdminPaymentRefundResult,
+  AutoPayoutConfig,
+  AutoPayoutConfigPatch,
+  AutoPayoutRun,
   PaymentAttentionResponse,
   PaymentSuspect,
   PaymentSuspectListQuery,
@@ -14,6 +17,16 @@ import type {
 export const paymentsApi = {
   listTransactions(params: PaymentTxnListQuery = {}) {
     return api.get<PaymentTxnListResponse>('/admin/payments/transactions', { params })
+  },
+
+  getAutoPayout() {
+    return api.get<{ config: AutoPayoutConfig; lastRun: AutoPayoutRun | null }>(
+      '/admin/payments/auto-payout',
+    )
+  },
+
+  updateAutoPayout(body: AutoPayoutConfigPatch) {
+    return api.put<{ config: AutoPayoutConfig }>('/admin/payments/auto-payout', body)
   },
 
   attention() {

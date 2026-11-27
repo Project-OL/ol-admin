@@ -7,6 +7,9 @@ import { paymentsApi } from '@/api/payments'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import type {
   AttentionPayout,
+  AutoPayoutConfig,
+  AutoPayoutRun,
+  AutoPayoutSkipReason,
   PaymentAttentionResponse,
   PaymentChannel,
   PaymentSuspect,
@@ -18,7 +21,7 @@ import type {
 import { formatNumber } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 
-type Tab = 'transactions' | 'attention' | 'suspects'
+type Tab = 'transactions' | 'attention' | 'auto' | 'suspects'
 
 const CHANNEL_OPTIONS: { value: PaymentChannel | ''; label: string }[] = [
   { value: '', label: 'All channels' },
@@ -116,6 +119,84 @@ function payoutProblemLabel(p: AttentionPayout) {
   return p.problem === 'INSUFFICIENT_MERCHANT_BALANCE'
     ? 'Our Epay balance was too low: top up, then pay again'
     : 'Outcome unknown: re-checked every 2 min, do not pay by hand'
+}
+
+// ── Automatic payouts ────────────────────────────────────────────────────────
+const autoLoading = ref(false)
+const autoSaving = ref(false)
+const autoRun = ref<AutoPayoutRun | null>(null)
+const autoSaved = ref<AutoPayoutConfig | null>(null)
+const autoForm = reactive({
+  enabled: false,
+  maxSinglePayoutUsd: 5000,
+  userDailyCapUsd: 10000,
+  platformDailyCapUsd: 50000,
+  emailChangeHoldHours: 48,
+  minBalanceBufferUsd: 0,
+  feeReserveUsd: 1,
+})
+
+const SKIP_LABELS: Record<AutoPayoutSkipReason, string> = {
+  ABOVE_SINGLE_LIMIT: 'Above the single-payout limit',
+  USER_DAILY_CAP: 'User daily cap reached',
+  EMAIL_RECENTLY_CHANGED: 'Epay email changed recently',
+  ACCOUNT_NOT_ACTIVE: 'Account not active',
+  POINTS_FROZEN: 'Points frozen',
+  SUSPECT_LIST: 'On the suspect list',
+  NO_EPAY_ACCOUNT: 'No Epay email',
+}
+const STOP_LABELS: Record<string, string> = {
+  DISABLED: 'Automatic payouts are off',
+  EPAY_PAYOUT_OFF: 'Epay payouts are switched off on the server',
+  PLATFORM_DAILY_CAP: 'Platform daily cap reached',
+  LOW_BALANCE: 'Epay balance too low: top up the merchant account',
+  BALANCE_UNAVAILABLE: 'Could not read the Epay balance',
+}
+
+function applyAuto(cfg: AutoPayoutConfig) {
+  autoSaved.value = cfg
+  autoForm.enabled = cfg.enabled
+  autoForm.maxSinglePayoutUsd = Number(cfg.maxSinglePayoutUsd)
+  autoForm.userDailyCapUsd = Number(cfg.userDailyCapUsd)
+  autoForm.platformDailyCapUsd = Number(cfg.platformDailyCapUsd)
+  autoForm.emailChangeHoldHours = cfg.emailChangeHoldHours
+  autoForm.minBalanceBufferUsd = Number(cfg.minBalanceBufferUsd)
+  autoForm.feeReserveUsd = Number(cfg.feeReserveUsd)
+}
+
+async function loadAuto() {
+  autoLoading.value = true
+  try {
+    const { data } = await paymentsApi.getAutoPayout()
+    applyAuto(data.config)
+    autoRun.value = data.lastRun
+  } catch (err) {
+    showToast(errorMessage(err, 'Could not load automatic payout settings'), 'error')
+  } finally {
+    autoLoading.value = false
+  }
+}
+
+async function saveAuto() {
+  const turningOn = autoForm.enabled && !autoSaved.value?.enabled
+  if (
+    turningOn &&
+    !window.confirm(
+      'Turn ON automatic Epay payouts? Eligible EPAY withdrawals will be paid from the Epay balance every minute without an admin click.',
+    )
+  ) {
+    return
+  }
+  autoSaving.value = true
+  try {
+    const { data } = await paymentsApi.updateAutoPayout({ ...autoForm })
+    applyAuto(data.config)
+    showToast('Automatic payout settings saved', 'success')
+  } catch (err) {
+    showToast(errorMessage(err, 'Could not save the settings'), 'error')
+  } finally {
+    autoSaving.value = false
+  }
 }
 
 // ── Suspects ─────────────────────────────────────────────────────────────────
@@ -282,11 +363,13 @@ function setTab(next: Tab) {
   tab.value = next
   if (next === 'suspects' && !suspects.value.length) void loadSuspects(1)
   if (next === 'attention') void loadAttention()
+  if (next === 'auto') void loadAuto()
 }
 
 function refreshTab() {
   if (tab.value === 'transactions') void loadTxns(txnPage.value)
   else if (tab.value === 'attention') void loadAttention()
+  else if (tab.value === 'auto') void loadAuto()
   else void loadSuspects(suspectPage.value)
 }
 
@@ -329,6 +412,7 @@ onMounted(() => {
             value: 'attention',
             label: attentionCount ? `Needs attention (${attentionCount})` : 'Needs attention',
           },
+          { value: 'auto', label: 'Automatic payouts' },
           { value: 'suspects', label: 'Suspect list' },
         ] as const"
         :key="t.value"
@@ -576,6 +660,83 @@ onMounted(() => {
             </tbody>
           </table>
         </div>
+      </div>
+    </section>
+
+    <!-- Automatic payouts -->
+    <section v-else-if="tab === 'auto'" class="admin-card space-y-6">
+      <div>
+        <h2 class="mb-1 text-base font-semibold">Automatic Epay payouts</h2>
+        <p class="text-sm text-admin-subtext">
+          When on, eligible EPAY withdrawals are paid every minute, oldest first, from the Epay
+          balance. Anything a rule holds back stays in Payroll for an admin to pay by hand.
+        </p>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2">
+        <label class="flex items-center gap-2 text-sm font-medium sm:col-span-2">
+          <input v-model="autoForm.enabled" type="checkbox" class="rounded border-admin-border" />
+          Automatic payouts on
+        </label>
+        <label class="block text-sm">
+          Largest single payout (USD)
+          <input v-model.number="autoForm.maxSinglePayoutUsd" type="number" min="1" class="admin-input mt-1" />
+        </label>
+        <label class="block text-sm">
+          Per user, last 24 h (USD)
+          <input v-model.number="autoForm.userDailyCapUsd" type="number" min="1" class="admin-input mt-1" />
+        </label>
+        <label class="block text-sm">
+          Whole platform, last 24 h (USD)
+          <input v-model.number="autoForm.platformDailyCapUsd" type="number" min="1" class="admin-input mt-1" />
+        </label>
+        <label class="block text-sm">
+          Wait after an Epay email change (hours)
+          <input v-model.number="autoForm.emailChangeHoldHours" type="number" min="0" class="admin-input mt-1" />
+        </label>
+        <label class="block text-sm">
+          Keep at least this in the Epay balance (USD)
+          <input v-model.number="autoForm.minBalanceBufferUsd" type="number" min="0" class="admin-input mt-1" />
+        </label>
+        <label class="block text-sm">
+          Fee reserve per payout (USD)
+          <input v-model.number="autoForm.feeReserveUsd" type="number" min="0" step="0.01" class="admin-input mt-1" />
+        </label>
+      </div>
+      <p class="text-xs text-admin-subtext">
+        Always held back for an admin: suspended or frozen accounts, the suspect list, and an
+        Epay email changed within the wait above.
+      </p>
+      <div>
+        <button type="button" class="admin-btn-primary" :disabled="autoSaving || autoLoading" @click="saveAuto">
+          {{ autoSaving ? 'Saving…' : 'Save' }}
+        </button>
+      </div>
+
+      <div>
+        <h3 class="mb-2 text-sm font-semibold">Last run</h3>
+        <p v-if="!autoRun" class="text-sm text-admin-muted">No run recorded yet.</p>
+        <template v-else>
+          <p class="text-sm">
+            {{ formatDt(autoRun.at) }}
+            <span v-if="autoRun.balanceUsd"> · Epay balance ${{ autoRun.balanceUsd }}</span>
+            · paid {{ autoRun.paid.length }} · held back {{ autoRun.skipped.length }}
+          </p>
+          <p v-if="autoRun.stoppedBy" class="mt-1 text-sm text-admin-warn">
+            {{ STOP_LABELS[autoRun.stoppedBy] ?? autoRun.stoppedBy }}
+          </p>
+          <ul v-if="autoRun.skipped.length" class="mt-2 space-y-1 text-sm">
+            <li v-for="s in autoRun.skipped" :key="s.withdrawalId">
+              <RouterLink
+                :to="`/admin/agency-payroll/w/${s.withdrawalId}`"
+                class="font-mono text-xs text-admin-accent hover:underline"
+              >
+                {{ s.withdrawalId.slice(0, 8) }}…
+              </RouterLink>
+              ${{ s.amountUsd }}: {{ SKIP_LABELS[s.reason] ?? s.reason }}
+            </li>
+          </ul>
+        </template>
       </div>
     </section>
 
