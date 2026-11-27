@@ -73,6 +73,39 @@ export type PaymentSuspectListResponse = {
   limit: number
 }
 
+export type AttentionReviewPayin = {
+  kind: 'PERSONAL_TOPUP' | 'TRADING_TOPUP'
+  orderId: string
+  userId: string
+  merchantOrderNo: string | null
+  orderAmount: string
+  currency: string
+  paidAmount: string | null
+  paidCurrency: string | null
+  units: string
+  failureReason: string | null
+  updatedAt: string
+}
+
+export type AttentionPayout = {
+  payoutId: string
+  withdrawalId: string
+  userId: string | null
+  merchantOrderNo: string
+  amount: string
+  currency: string
+  status: string
+  problem: 'INSUFFICIENT_MERCHANT_BALANCE' | 'OUTCOME_UNKNOWN'
+  failureReason: string | null
+  createdAt: string
+}
+
+export type PaymentAttentionResponse = {
+  counts: { reviewPayins: number; payouts: number }
+  reviewPayins: AttentionReviewPayin[]
+  payouts: AttentionPayout[]
+}
+
 export type AdminPaymentRefundBody = {
   channel: PaymentChannel
   purchaseExternalId: string

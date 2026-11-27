@@ -8,7 +8,12 @@ export type LedgerGrain =
   | 'year'
   | 'custom'
 export type CompanyCashDirection = 'IN' | 'OUT'
-export type CompanyCashReason = 'AGENCY_TRADING_PURCHASE' | 'EPAY_PAYOUT' | 'PAYROLL_TAKEOVER_PAYOUT'
+export type CompanyCashReason =
+  | 'AGENCY_TRADING_PURCHASE'
+  | 'EPAY_PAYOUT'
+  | 'PAYROLL_TAKEOVER_PAYOUT'
+  | 'EPAY_FEE'
+  | 'EPAY_REFUND'
 export type LedgerAccountRoleType = 'TREASURY' | 'COMPANY_AGENCY' | 'GAME_HOUSE'
 export type TreasuryFlowKind = 'COIN_TRADING_TRANSFER' | 'AGENT_POINT_TRANSFER'
 export type TreasuryFlowClassification = 'SALE' | 'PROMO' | 'INTERNAL' | 'WRITE_OFF'

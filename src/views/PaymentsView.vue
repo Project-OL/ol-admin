@@ -6,6 +6,8 @@ import axios from 'axios'
 import { paymentsApi } from '@/api/payments'
 import BaseDialog from '@/components/shared/BaseDialog.vue'
 import type {
+  AttentionPayout,
+  PaymentAttentionResponse,
   PaymentChannel,
   PaymentSuspect,
   PaymentTxn,
@@ -16,7 +18,7 @@ import type {
 import { formatNumber } from '@/utils/format'
 import { showToast } from '@/utils/toast'
 
-type Tab = 'transactions' | 'suspects'
+type Tab = 'transactions' | 'attention' | 'suspects'
 
 const CHANNEL_OPTIONS: { value: PaymentChannel | ''; label: string }[] = [
   { value: '', label: 'All channels' },
@@ -89,6 +91,31 @@ function searchTxns() {
 function resetTxns() {
   Object.assign(txnFilters, { channel: '', kind: '', externalId: '', userId: '', from: '', to: '' })
   searchTxns()
+}
+
+// ── Needs attention ──────────────────────────────────────────────────────────
+const attention = ref<PaymentAttentionResponse | null>(null)
+const attentionLoading = ref(false)
+const attentionCount = computed(() =>
+  attention.value ? attention.value.counts.reviewPayins + attention.value.counts.payouts : 0,
+)
+
+async function loadAttention() {
+  attentionLoading.value = true
+  try {
+    const { data } = await paymentsApi.attention()
+    attention.value = data
+  } catch (err) {
+    showToast(errorMessage(err, 'Could not load payments that need attention'), 'error')
+  } finally {
+    attentionLoading.value = false
+  }
+}
+
+function payoutProblemLabel(p: AttentionPayout) {
+  return p.problem === 'INSUFFICIENT_MERCHANT_BALANCE'
+    ? 'Our Epay balance was too low: top up, then pay again'
+    : 'Outcome unknown: re-checked every 2 min, do not pay by hand'
 }
 
 // ── Suspects ─────────────────────────────────────────────────────────────────
@@ -254,10 +281,18 @@ function unitsLabel(t: PaymentTxn) {
 function setTab(next: Tab) {
   tab.value = next
   if (next === 'suspects' && !suspects.value.length) void loadSuspects(1)
+  if (next === 'attention') void loadAttention()
+}
+
+function refreshTab() {
+  if (tab.value === 'transactions') void loadTxns(txnPage.value)
+  else if (tab.value === 'attention') void loadAttention()
+  else void loadSuspects(suspectPage.value)
 }
 
 onMounted(() => {
   void loadTxns(0)
+  void loadAttention()
 })
 </script>
 
@@ -275,8 +310,8 @@ onMounted(() => {
         <button
           type="button"
           class="admin-btn-secondary text-sm"
-          :disabled="txnLoading || suspectLoading"
-          @click="tab === 'transactions' ? loadTxns(txnPage) : loadSuspects(suspectPage)"
+          :disabled="txnLoading || suspectLoading || attentionLoading"
+          @click="refreshTab"
         >
           Refresh
         </button>
@@ -290,6 +325,10 @@ onMounted(() => {
       <button
         v-for="t in [
           { value: 'transactions', label: 'Transactions' },
+          {
+            value: 'attention',
+            label: attentionCount ? `Needs attention (${attentionCount})` : 'Needs attention',
+          },
           { value: 'suspects', label: 'Suspect list' },
         ] as const"
         :key="t.value"
@@ -441,6 +480,101 @@ onMounted(() => {
           >
             Next
           </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Needs attention -->
+    <section v-else-if="tab === 'attention'" class="admin-card space-y-6">
+      <div>
+        <h2 class="mb-1 text-base font-semibold">Paid, but held for review</h2>
+        <p class="mb-3 text-sm text-admin-subtext">
+          Epay confirmed the payment but the amount or currency does not match the order, so no
+          coins were added. Check the order in the Epay portal.
+        </p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Updated</th>
+                <th>Order</th>
+                <th>User</th>
+                <th>Order amount</th>
+                <th>Paid</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="r in attention?.reviewPayins ?? []" :key="r.orderId">
+                <td class="whitespace-nowrap text-xs">{{ formatDt(r.updatedAt) }}</td>
+                <td>
+                  <p class="font-mono text-xs">{{ r.merchantOrderNo ?? r.orderId }}</p>
+                  <p class="text-xs text-admin-muted">
+                    {{ r.kind === 'TRADING_TOPUP' ? 'Trading top-up' : 'Personal top-up' }}
+                  </p>
+                </td>
+                <td>
+                  <RouterLink
+                    :to="`/admin/users/${r.userId}`"
+                    class="font-mono text-xs text-admin-accent hover:underline"
+                  >
+                    {{ r.userId.slice(0, 8) }}…
+                  </RouterLink>
+                </td>
+                <td class="whitespace-nowrap font-mono text-sm">{{ r.orderAmount }} {{ r.currency }}</td>
+                <td class="whitespace-nowrap font-mono text-sm">
+                  {{ r.paidAmount ?? '—' }} {{ r.paidCurrency ?? '' }}
+                </td>
+                <td class="font-mono text-xs">{{ r.failureReason }}</td>
+              </tr>
+              <tr v-if="!attentionLoading && !(attention?.reviewPayins.length)">
+                <td colspan="6" class="py-6 text-center text-admin-muted">Nothing held</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div>
+        <h2 class="mb-1 text-base font-semibold">Epay payouts</h2>
+        <p class="mb-3 text-sm text-admin-subtext">
+          Payouts whose outcome is not known after 10 minutes, and payouts Epay refused because our
+          balance was too low (while the withdrawal is still unpaid).
+        </p>
+        <div class="admin-table-wrap">
+          <table class="admin-table">
+            <thead>
+              <tr>
+                <th>Created</th>
+                <th>Payout</th>
+                <th>Amount</th>
+                <th>Problem</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="p in attention?.payouts ?? []" :key="p.payoutId">
+                <td class="whitespace-nowrap text-xs">{{ formatDt(p.createdAt) }}</td>
+                <td>
+                  <p class="font-mono text-xs">{{ p.merchantOrderNo }}</p>
+                  <p class="text-xs text-admin-muted">{{ p.status }}</p>
+                </td>
+                <td class="whitespace-nowrap font-mono text-sm">{{ p.amount }} {{ p.currency }}</td>
+                <td class="text-sm">{{ payoutProblemLabel(p) }}</td>
+                <td>
+                  <RouterLink
+                    :to="`/admin/agency-payroll/w/${p.withdrawalId}`"
+                    class="admin-btn-secondary text-xs"
+                  >
+                    Open withdrawal
+                  </RouterLink>
+                </td>
+              </tr>
+              <tr v-if="!attentionLoading && !(attention?.payouts.length)">
+                <td colspan="5" class="py-6 text-center text-admin-muted">Nothing to look at</td>
+              </tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </section>

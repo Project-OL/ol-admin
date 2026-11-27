@@ -17,6 +17,8 @@ const ACTION_LABEL: Record<ModerationNotificationType, string> = {
   MESSAGING_DISABLE: 'Disabled messaging',
   PROFILE_PICTURE_REMOVED: 'Removed profile picture',
   PAYMENT_REFUND_SUSPENSION: 'Purchase refunded: account suspended',
+  PAYMENT_REVIEW_NEEDED: 'Payment held for review',
+  EPAY_PAYOUT_ATTENTION: 'Epay payout needs attention',
 }
 
 async function toggle() {
