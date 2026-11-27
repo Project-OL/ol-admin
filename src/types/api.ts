@@ -514,6 +514,8 @@ export type ModerationNotificationType =
   | 'MESSAGING_DISABLE'
   | 'PROFILE_PICTURE_REMOVED'
   | 'PAYMENT_REFUND_SUSPENSION'
+  | 'PAYMENT_REVIEW_NEEDED'
+  | 'EPAY_PAYOUT_ATTENTION'
 
 export interface SuperAdminModerationNotification {
   id: string

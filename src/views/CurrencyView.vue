@@ -1513,6 +1513,8 @@ const CASH_REASONS: { value: CompanyCashReason; label: string }[] = [
   { value: 'AGENCY_TRADING_PURCHASE', label: 'Agency trading purchase' },
   { value: 'EPAY_PAYOUT', label: 'EPAY payout' },
   { value: 'PAYROLL_TAKEOVER_PAYOUT', label: 'Payroll takeover payout' },
+  { value: 'EPAY_FEE', label: 'Epay fee' },
+  { value: 'EPAY_REFUND', label: 'Epay refund' },
 ]
 </script>
 

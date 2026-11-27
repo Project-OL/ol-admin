@@ -2,6 +2,7 @@ import api from '@/api/client'
 import type {
   AdminPaymentRefundBody,
   AdminPaymentRefundResult,
+  PaymentAttentionResponse,
   PaymentSuspect,
   PaymentSuspectListQuery,
   PaymentSuspectListResponse,
@@ -13,6 +14,10 @@ import type {
 export const paymentsApi = {
   listTransactions(params: PaymentTxnListQuery = {}) {
     return api.get<PaymentTxnListResponse>('/admin/payments/transactions', { params })
+  },
+
+  attention() {
+    return api.get<PaymentAttentionResponse>('/admin/payments/attention')
   },
 
   listSuspects(params: PaymentSuspectListQuery = {}) {
